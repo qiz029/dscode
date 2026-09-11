@@ -6,6 +6,7 @@
 ![Node.js](https://img.shields.io/badge/Node.js-22.19%2B%20%7C%2024%2B-43853D?logo=node.js&logoColor=white)
 ![DSH](https://img.shields.io/badge/DSH-0.1.5--rc.1-2563EB)
 ![License](https://img.shields.io/badge/license-MIT-green)
+[![npm](https://img.shields.io/npm/v/@toddzheng024/dscode)](https://www.npmjs.com/package/@toddzheng024/dscode)
 
 DSCODE 是基于 DeepSeek Harness 的 coding agent preset：以极简模式的持久 Shell 为核心，配上 TUI、自动权限审核、子 agent、Chrome MCP、Computer Use、skills 和上下文压缩。
 
@@ -34,7 +35,7 @@ DSCODE 是基于 DeepSeek Harness 的 coding agent preset：以极简模式的�
 
 ### npm + Plugin Hub
 
-> **发布状态：候选包已构建并通过本地安装、运行和回退验证，尚未公开发布。以下 npm 命令在正式发布后可用。** 当前可以使用下方的源码或 tar 包安装。
+> **v0.1.0 已发布。** [npm 启动器](https://www.npmjs.com/package/@toddzheng024/dscode) · [Hub preset](https://dshpluginhub.ai/profiles/dscode) · [GitHub Releases](https://github.com/qiz029/dscode/releases)
 
 ```sh
 npm install -g @toddzheng024/dscode
@@ -76,7 +77,7 @@ npm start -- --cwd /path/to/project
 
 ### tar 包安装（现在可用）
 
-发布者在仓库运行 `npm run dist`，将生成的 `artifacts/dscode-0.1.0.tar.gz` 提供给使用者：
+从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.1.0.tar.gz`，然后执行：
 
 ```sh
 mkdir dscode-install
@@ -147,7 +148,7 @@ Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第�
 
 完整流程见 **[npm + Hub 分发指南](docs/hub-distribution.md)**。先发布 bundle，再上线 Hub release，最后发布 launcher。`artifacts/npm/` 是完整分发产物；旧 `npm run release` 只保留基础配置导出，不能替代完整 bundle。
 
-本地验证使用确定性模型和未发布包的 loopback registry，不代表已公开发布，也不代表真实远程模型、浏览器操作或桌面操作已验收。[验证说明 →](docs/verification.md)
+本地集成验证使用确定性模型；公开 npm/Hub 安装与真实 TUI 启动另行验证。真实远程模型、浏览器操作或桌面操作不属于这轮发布测试的验收范围。[验证说明 →](docs/verification.md)
 
 ---
 

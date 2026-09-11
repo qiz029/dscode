@@ -65,3 +65,7 @@ Run `npm run doctor` to regenerate local evidence. On this workstation the agent
 - The installed launcher opened the real TUI; Ultra appeared in the effort menu and the telemetry footer was right-aligned.
 - `artifacts/local/hub-verification.json` records exact npm tarball integrities and the disposable test home. Publish tooling requires those exact tested artifacts.
 - Public npm publication, Hub package claiming/discovery, public Hub installation, and a remote Git push remain separate steps. No remote-model inference or browser/desktop action was used by these tests.
+
+## Public release 0.1.0
+
+Source: https://github.com/qiz029/dscode. npm packages: @toddzheng024/dscode and @toddzheng024/dscode-bundle. Hub profile: dscode@0.1.0. Public Hub installation and doctor passed in a fresh state directory; the downloaded published .dshprofile passed the archive reader and content hash verification. See GitHub Releases for downloadable artifacts.

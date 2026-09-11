@@ -2,7 +2,7 @@
 
 新增 npm + Hub 发布路径见 [Hub 分发](hub-distribution.md)。以下保留 tar 安装方式。
 
-交付物是可安装的 `dscode-0.1.0.tar.gz`，不是只有配置的 `.dshprofile`。安装后用户直接运行 `dscode`。目前没有发布到 npm、Homebrew 或下载站。
+交付物是可安装的 `dscode-0.1.0.tar.gz`，不是只有配置的 `.dshprofile`。安装后用户直接运行 `dscode`。npm + Hub 安装已提供，tar 包通过 GitHub Releases 分发；尚无 Homebrew formula。
 
 ## 发布者
 

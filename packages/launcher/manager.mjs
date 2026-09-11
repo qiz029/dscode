@@ -49,7 +49,7 @@ export async function run(args, release) {
   const pnpm = join(dirname(fileURLToPath(import.meta.url)), 'tools');
   const env = { ...process.env, DSH_HOME: home, DSH_AGENTS_HOME: join(home, 'agents'), PATH: process.env.PATH };
   const exec = (entry, argv, cwd = process.cwd()) => new Promise((resolvePromise, reject) => {
-    const child = spawn(process.execPath, [entry, ...argv], { env: entry === hub ? { ...env, PATH: pnpm + ':' + env.PATH, npm_config_ignore_scripts: 'true' } : env, cwd, stdio: 'inherit' });
+    const child = spawn(process.execPath, [entry, ...argv], { env: entry === hub ? { ...env, PATH: pnpm + ':' + env.PATH, npm_config_ignore_scripts: 'true', DSH_HUB_MACHINE: '1' } : env, cwd, stdio: 'inherit' });
     const forward = signal => child.kill(signal);
     const handlers = ['SIGTERM','SIGHUP'].map(signal => { const handler = () => forward(signal); process.on(signal,handler); return [signal,handler]; });
     const cleanup = () => handlers.forEach(([signal,handler]) => process.off(signal,handler));

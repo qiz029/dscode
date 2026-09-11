@@ -8,7 +8,7 @@
 
 完整 bundle 显式固定共享 DSH 依赖。不要将它与另一个 base/TUI bundle 叠加在同一 profile：Hub 顺序安装多个根 bundle 会让宽范围传递依赖先解析到另一条 rc 版本线。独立 profile 的 pnpm hoisted + autoInstallPeers=false 是验证过的安装方式。直接 `npm install` bundle 会碰到 Computer Use 的旧 peer 范围；终端用户通过 launcher 安装。
 
-## 使用者（正式发布后）
+## 使用者
 
 ```sh
 npm install -g @toddzheng024/dscode
@@ -55,6 +55,6 @@ npm run verify:hub
 5. 在全新 DSH_HOME 通过公开 Hub apply/doctor 验证后，发布 launcher tgz。
 6. 在另一干净目录用公开 npm 的 launcher 完成首次启动验证。
 
-不能在 bundle/Hub release 可用之前发布 launcher，否则用户的首次启动会失败。新的版本必须重新生成包和 release，不能复用旧完整性哈希。目前本仓库生成的是发布候选产物，不代表已在线发布。
+不能在 bundle/Hub release 可用之前发布 launcher，否则用户的首次启动会失败。新的版本必须重新生成包和 release，不能复用旧完整性哈希。`build:packages` 与 `release:hub` 生成候选产物；只有发布并确认公开 registry 后才算完成发布。v0.1.0 已通过 npm + Hub 公开分发。
 
 发布脚本按阶段执行：`npm run publish:hub -- bundle`、`npm run publish:hub -- profile`、`npm run publish:hub -- launcher`。每阶段核对测试产物哈希；launcher 发布前检查公开 Hub release 的确切版本及完整性。Hub 认领仍需发布者控制台操作，登录使用 `dsh-hub login`。
