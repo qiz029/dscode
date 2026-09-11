@@ -1,0 +1,23 @@
+- id: permission
+  config:
+    defaultPreset: auto
+    presets:
+      auto:
+        sandbox: workspace-write
+        approval: ask
+        name: Auto review
+        description: Workspace writes; automatic review of eligible approval requests, with human fallback.
+      ask:
+        sandbox: workspace-write
+        approval: ask
+        name: Ask me
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      read-only:
+        sandbox: read-only
+        approval: ask
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+

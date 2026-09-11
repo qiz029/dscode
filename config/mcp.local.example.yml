@@ -1,0 +1,14 @@
+# Copy to config/mcp.local.yml and edit locally; the launcher loads it last.
+# Each MCP server is a separate native dsh-mcp-client row.
+- insert:
+    - id: mcp-example
+      name: '@deepseek-ai/dsh-mcp-client'
+      disabled: true
+      config:
+        serverName: example
+        transport: streamable-http
+        url: http://127.0.0.1:3000/mcp
+        # For authenticated servers, reference an environment variable.
+        # headers:
+        #   Authorization: !!js "'Bearer ' + process.env.EXAMPLE_MCP_TOKEN"
+        failOnStartupError: true

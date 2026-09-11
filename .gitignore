@@ -1,0 +1,15 @@
+node_modules/
+.runtime/
+.research/
+.env
+.env.*
+!.env.example
+config/*.local.yml
+artifacts/local/
+*.log
+.DS_Store
+
+config/*.local.json
+
+# Generated release packages and machine-specific verification evidence
+artifacts/

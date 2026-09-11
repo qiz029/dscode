@@ -1,0 +1,12 @@
+#!/usr/bin/env node
+// Hub invokes npx for its exact DSH runner. npm exec rewrites PATH; include
+// pnpm explicitly in that same execution environment so global pnpm cannot win.
+import { spawn } from 'node:child_process';
+const [yes, spec, ...args] = process.argv.slice(2);
+if (yes !== '-y' || !/^@deepseek-ai\/dsh@\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(spec ?? '')) {
+  console.error('DSCODE installer received an unsupported runtime command.');process.exit(1);
+}
+const child = spawn('npm', ['exec','--yes','--ignore-scripts',`--package=${spec}`,'--package=pnpm@10.15.1','--','dsh',...args], {stdio:'inherit'});
+for (const signal of ['SIGTERM','SIGHUP']) process.on(signal,()=>child.kill(signal));
+child.on('error',error=>{console.error(error.message);process.exitCode=1;});
+child.on('exit',(code)=>{process.exitCode=code??1;});

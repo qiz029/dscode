@@ -1,0 +1,39 @@
+# Host/profile overlay. The upstream standard Agent Preset supplies coding,
+# skills, planning, compaction and native subagents in their correct scopes.
+- id: agent-presets
+  config:
+    default: standard
+
+- id: sandbox-policy
+  config:
+    mode: workspace-write
+
+- id: approval
+  config:
+    policy: ask
+
+- id: computer-use
+  config:
+    observationTtlMs: 30000
+    allowAllApps: false
+    interaction:
+      focusPolicy: preserve
+      keyboardPolicy: activate
+      pointerInputPolicy: targeted
+      cursorVisualization: visible
+
+# Official stdio MCP bridge; Chrome starts lazily at the first browser call.
+# Local launcher resolves the pinned, preinstalled entrypoint. A Hub import
+# uses the equally pinned npx fallback and needs npm access on first launch.
+- insert:
+    - id: mcp-chrome
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: chrome
+        transport: stdio
+        command: !!js "process.env.DSH_TUI_CHROME_ENTRY ? process.execPath : 'npx'"
+        args: !!js "[...(process.env.DSH_TUI_CHROME_ENTRY ? [process.env.DSH_TUI_CHROME_ENTRY] : ['--yes', 'chrome-devtools-mcp@1.9.0']), '--isolated', '--no-usage-statistics', '--no-performance-crux']"
+        env:
+          CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS: '1'
+        failOnStartupError: true
+        toolCallTimeoutMs: 60000

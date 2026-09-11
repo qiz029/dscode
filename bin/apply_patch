@@ -1,0 +1,4 @@
+#!/bin/sh
+# Accept a standard unified diff on stdin. Works without a Git repository.
+# git apply checks all hunks before writing; --check performs a dry run.
+exec git apply --whitespace=nowarn "$@"

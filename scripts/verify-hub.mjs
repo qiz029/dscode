@@ -1,0 +1,103 @@
+// Pre-publication integration: real Hub lifecycle + real DSH plugin installer,
+// with only our unpublished npm tarball served by a loopback registry fixture.
+import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, cpSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { canonical } from './release.mjs';
+import { installResolvedProfile, rollbackProfile, listProfileRevisions } from '@dsh-plugin-hub/cli';
+const root = join(import.meta.dirname, '..');
+const out = join(root,'artifacts/npm');
+const read = path=>JSON.parse(readFileSync(path,'utf8'));
+const release=read(join(out,'hub-release.json'));
+const pkg=read(join(out,'bundle/package.json'));
+const pack=read(join(out,'bundle-pack.json'))[0];
+const home=mkdtempSync(join(tmpdir(),'dscode-hub-verify-'));
+const launcherRoot=join(home,'launcher');
+const launcherPack=read(join(out,'launcher-pack.json'))[0];
+await new Promise((resolve,reject)=>{
+  const child=spawn('npm',['install','--prefix',launcherRoot,'--ignore-scripts','--no-audit','--no-fund',join(out,launcherPack.filename)],{stdio:'inherit'});
+  child.on('error',reject);child.on('close',code=>code===0?resolve():reject(Error('Launcher npm install failed')));
+});
+const pnpm=join(launcherRoot,'node_modules/@toddzheng024/dscode/tools');
+const upgradeDir=join(home,'upgrade-fixture');cpSync(join(out,'bundle'),upgradeDir,{recursive:true});
+const upgradePackage={...pkg,version:'0.1.1-test'};
+writeFileSync(join(upgradeDir,'package.json'),JSON.stringify(upgradePackage));
+const packedUpgrade=spawnSync('npm',['pack','--ignore-scripts','--json','--pack-destination',home],{cwd:upgradeDir,encoding:'utf8'});
+if(packedUpgrade.status!==0) throw Error(packedUpgrade.stderr);
+const upgradePack=JSON.parse(packedUpgrade.stdout)[0];
+let registry;
+const server=createServer(async(req,res)=>{
+  try {
+    const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
+    if(pathname==='/'+pkg.name) {
+      const version={...pkg,dist:{integrity:pack.integrity,shasum:pack.shasum,tarball:registry+'/bundle.tgz'}};
+      const upgradeVersion={...upgradePackage,dist:{integrity:upgradePack.integrity,shasum:upgradePack.shasum,tarball:registry+'/upgrade.tgz'}};
+      res.setHeader('content-type','application/json'); res.end(JSON.stringify({name:pkg.name,'dist-tags':{latest:pkg.version},versions:{[pkg.version]:version,[upgradePackage.version]:upgradeVersion}}));
+    } else if(pathname==='/bundle.tgz') {res.end(readFileSync(join(out,pack.filename)));}
+    else if(pathname==='/upgrade.tgz') {res.end(readFileSync(join(home,upgradePack.filename)));}
+    else {
+      const upstream=await fetch('https://registry.npmjs.org'+req.url,{headers:{accept:'application/json'}});
+      res.writeHead(upstream.status,{'content-type':upstream.headers.get('content-type')??'application/json'});res.end(Buffer.from(await upstream.arrayBuffer()));
+    }
+  } catch(error) {res.writeHead(502);res.end('Fixture registry failed');}
+});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+registry='http://127.0.0.1:'+server.address().port;
+const npmrc=join(home,'registry.npmrc');
+writeFileSync(npmrc,`registry=${registry}\n@toddzheng024:registry=${registry}\nignore-scripts=true\n`);
+process.env.DSH_HOME=home;process.env.DSH_AGENTS_HOME=join(home,'agents');
+const env={...process.env,DSH_HOME:home,DSH_AGENTS_HOME:join(home,'agents'),PATH:pnpm+':'+process.env.PATH,npm_config_userconfig:npmrc,NPM_CONFIG_USERCONFIG:npmrc,npm_config_registry:registry,NPM_CONFIG_REGISTRY:registry,npm_config_ignore_scripts:'true',DSH_HUB_NO_TELEMETRY:'1'};
+const exec=(entry,args,extra={},program=false)=>new Promise((resolve,reject)=>{
+ const child=spawn(program ? entry : process.execPath,program ? args : [entry,...args],{cwd:home,env:{...env,...extra},stdio:['ignore','pipe','pipe']});let output='';
+ child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>output+=b);
+ const timeout=setTimeout(()=>child.kill('SIGTERM'),180000);
+ child.on('error',reject);child.on('close',code=>{clearTimeout(timeout);code===0?resolve(output):reject(Error(`Child exit ${code}:\n${output}`));});
+});
+const execute=async command=>{const output=await exec(command.command,command.args,{},true); if(/patch: .*skipping/.test(output)) throw Error(output);};
+const options={profile:'dscode',dshHome:home,hubProfileSlug:'dscode',release,resolved:{profileVersion:release.version,bundles:release.bundles},execute,validate:execute};
+try {
+  await installResolvedProfile(options);
+  console.log('PASS real Hub install + DSH compose:',home);
+  const profile=join(home,'profiles/dscode');
+  const installedBundle=join(profile,'node_modules',pkg.name);
+  assert.equal(read(join(installedBundle,'package.json')).version,pkg.version);
+  for(const name of readdirSync(join(profile,'node_modules/@deepseek-ai'))) {
+    if(!name.startsWith('dsh')) continue;
+    assert.equal(read(join(profile,'node_modules/@deepseek-ai',name,'package.json')).version,release.dsh,name);
+  }
+  mkdirSync(join(profile,'probe'));
+  for(const file of ['probe-plugin.mjs','dscode-probe.mjs']) {
+    writeFileSync(join(profile,'probe',file),readFileSync(join(root,'scripts',file),'utf8').replaceAll("'../plugins/",`'../node_modules/${pkg.name}/plugins/`));
+  }
+  cpSync(join(root,'scripts/hook-fixture.mjs'),join(home,'hook-fixture.mjs'));
+  mkdirSync(join(home,'config'),{recursive:true});
+  const quote=value=>"'"+value.replaceAll("'","'\"'\"'")+"'";
+  writeFileSync(join(home,'config/hooks.local.json'),JSON.stringify({hooks:{PreToolUse:[{matcher:'^bash$',hooks:[{type:'command',command:quote(process.execPath)+' '+quote(join(home,'hook-fixture.mjs')),timeout:5}]}]}}));
+  const overlay=join(home,'probe.patch.yml');
+  writeFileSync(overlay,`- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- insert:\n    - id: harness-probe\n      name: ${JSON.stringify(join(profile,'probe/probe-plugin.mjs'))}\n`);
+  const installedRuntime=join(profile,'node_modules/@deepseek-ai/dsh/lib/bin.js');
+  const result=await exec(installedRuntime,['--profile','dscode','--patch',overlay],{DSH_TUI_PROBE_REPORT:join(home,'probe.json')});
+  assert(result.includes('HARNESS_PROBE_PASSED'),result);
+  console.log('PASS installed bundle agent loop, shell, auto review, subagents, compaction and telemetry');
+  const marker=join(home,'session-preservation-test.txt');writeFileSync(marker,'retained');
+  const upgradeRelease={...release,version:upgradePackage.version,bundles:release.bundles.map(b=>({...b,selector:upgradePackage.version,version:upgradePackage.version,installSpec:b.packageName+'@'+upgradePackage.version,integrity:upgradePack.integrity}))};
+  delete upgradeRelease.contentHash;upgradeRelease.contentHash='sha256:'+createHash('sha256').update(canonical(upgradeRelease)).digest('hex');
+  const upgradeOptions={...options,release:upgradeRelease,resolved:{profileVersion:upgradeRelease.version,bundles:upgradeRelease.bundles}};
+  await assert.rejects(installResolvedProfile({...upgradeOptions,validate:async()=>{throw Error('fixture composition rejection');}}),/fixture composition rejection/);
+  assert.equal(read(join(profile,'node_modules',pkg.name,'package.json')).version,pkg.version);
+  await installResolvedProfile(upgradeOptions);
+  assert.equal(read(join(profile,'node_modules',pkg.name,'package.json')).version,upgradePackage.version);
+  assert((await listProfileRevisions('dscode',home)).length>0);
+  await rollbackProfile({profile:'dscode',dshHome:home});
+  assert.equal(readFileSync(marker,'utf8'),'retained');
+  assert.equal(read(join(profile,'node_modules',pkg.name,'package.json')).version,pkg.version);
+  const composed=await exec(installedRuntime,['--profile','dscode','--dump-config']);
+  assert(composed.includes('dscode-bootstrap'));
+  console.log('PASS failed upgrade preserves old profile; 0.1.0 -> 0.1.1-test -> rollback preserves state and restores a runnable profile');
+  mkdirSync(join(root,'artifacts/local'),{recursive:true});
+  writeFileSync(join(root,'artifacts/local/hub-verification.json'),JSON.stringify({home,package:pkg.name,version:pkg.version,integrity:pack.integrity,launcherIntegrity:launcherPack.integrity,install:true,agentProbe:read(join(home,'probe.json')),rollback:true,fixture:'Loopback npm registry for unpublished bundle; Version 0.1.1-test exercises failed upgrade, successful upgrade and rollback transactions. Public Hub discovery and npm publication not exercised.'},null,2));
+} finally {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
