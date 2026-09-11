@@ -43,6 +43,13 @@ cd /path/to/project
 dscode
 ```
 
+如果 npm 包名查询暂时返回 404，可直接安装同一版本的官方 registry tarball（此路径已完成安装和 TUI 启动验证）：
+
+```sh
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.1.0.tgz
+dscode
+```
+
 首次启动会从 [DSH Plugin Hub](https://dshpluginhub.ai) 安装固定版本的完整 preset；之后直接打开 TUI。无需手动拼装插件，也不需要全局安装 pnpm。
 
 第一次进入后，用 `/model` 配置模型和凭据，也可在启动前设置 `DEEPSEEK_API_KEY`。默认路由是 `deepseek-official/deepseek-flash`。Computer Use 的辅助功能和录屏权限需在 macOS 中单独授予。

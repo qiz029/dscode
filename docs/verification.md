@@ -69,3 +69,5 @@ Run `npm run doctor` to regenerate local evidence. On this workstation the agent
 ## Public release 0.1.0
 
 Source: https://github.com/qiz029/dscode. npm packages: @toddzheng024/dscode and @toddzheng024/dscode-bundle. Hub profile: dscode@0.1.0. Public Hub installation and doctor passed in a fresh state directory; the downloaded published .dshprofile passed the archive reader and content hash verification. See GitHub Releases for downloadable artifacts.
+
+The public launcher tarball was installed into an isolated global npm prefix, then its actual `dscode` executable completed a fresh public Hub install and opened the TUI. At release time the package-name metadata endpoint still returned 404 while the exact-version metadata and tarball endpoints were available; README includes the verified direct npm registry tarball command. Both public npm tarball integrities match the tested local artifacts.
