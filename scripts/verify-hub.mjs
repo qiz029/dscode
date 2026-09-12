@@ -16,9 +16,6 @@ const release=read(join(out,'hub-release.json'));
 const pkg=read(join(out,'bundle/package.json'));
 const pack=read(join(out,'bundle-pack.json'))[0];
 const home=mkdtempSync(join(tmpdir(),'dscode-hub-verify-'));
-// Card probes expect a project identity, not an arbitrary non-repository tmpdir.
-const project=spawnSync('git',['init','--quiet',home],{encoding:'utf8'});
-if(project.status!==0) throw Error(project.stderr);
 const launcherRoot=join(home,'launcher');
 const launcherPack=read(join(out,'launcher-pack.json'))[0];
 await new Promise((resolve,reject)=>{
@@ -86,6 +83,10 @@ try {
   const result=await exec(installedRuntime,['--profile','dscode','--patch',overlay],{DSH_TUI_PROBE_REPORT:join(home,'probe.json')});
   assert(result.includes('HARNESS_PROBE_PASSED'),result);
   console.log('PASS installed bundle agent loop, shell, auto review, subagents, compaction and telemetry');
+  // The shell probe above deliberately exercises a non-repository workspace.
+  // Only the card probes below require a project identity.
+  const project=spawnSync('git',['init','--quiet',home],{encoding:'utf8'});
+  if(project.status!==0) throw Error(project.stderr);
   const basePatch = '- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- id: mcp-chrome\n  disabled: true\n';
   for (const [name, settings, marker] of [
     ['session-messaging', '- id: dscode-session-cards\n  config:\n    enabled: false\n- id: dscode-memory\n  config:\n    generate: false\n', 'SESSION_MESSAGING_PROBE_PASSED'],
