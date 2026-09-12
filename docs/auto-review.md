@@ -58,7 +58,7 @@ provider/model 必须同时设置或都留空。每次最多请求 768 输出 to
 
 rc.1 的会话读取器不接受未知事件类型，因此没有把自定义审核事件硬塞进会话日志。备份时保留整个 `.runtime`，同时保留审核记录。
 
-`npm run dist` 的完整安装包包含此插件。Hub `.dshprofile` 仍只导出可解析的基础 bundle composition，不含尚未发布为 npm bundle 的本地 reviewer，不能声称独立 Hub 导入具有 auto 能力。
+`npm run dist` 的完整安装包包含此插件。正式 npm/Hub bundle 包含 reviewer；旧 `npm run release` 仅导出基础组合，不能代替 `npm run release:hub` 生成的完整发行版。
 
 ## 验证
 

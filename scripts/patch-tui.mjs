@@ -1,6 +1,10 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { patchIme } from './patch-ime.mjs';
+import { patchInteraction } from './patch-interaction.mjs';
 import { patchFooter } from './patch-footer.mjs';
+import { patchSessionBridge } from './patch-session-bridge.mjs';
+import { patchStyle } from './patch-style.mjs';
 
 export function patchText(text) {
   const before = '\t\t\tif (text === "/clear") {\n\t\t\t\trefresh();\n\t\t\t\tclearView();\n\t\t\t\tdismissNotice();\n\t\t\t\treturn;\n\t\t\t}';
@@ -21,6 +25,10 @@ export function patchTui(root) {
     const commands = [['status', 'session, model, permissions and usage'], ['doctor', 'read-only runtime diagnostics'], ['mcp', 'list and manage MCP servers'], ['skills', 'skill sources and conflicts'], ['hooks', 'hook configuration and reload']];
     after = after.replace(anchor, anchor + '\n// dscode: startup command discovery\n' + commands.map(([name, description]) => JSON.stringify({ label: '/' + name, description }) + ',').join('\n'));
   }
+  after = patchInteraction(after);
+  after = patchSessionBridge(after);
+  after = patchIme(after);
   after = patchFooter(after, root);
+  after = patchStyle(after);
   if (before !== after) writeFileSync(path, after);
 }

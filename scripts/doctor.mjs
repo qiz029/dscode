@@ -19,7 +19,7 @@ const overlay = join(home, 'probe.patch.yml');
 const hooksFixture = join(home, 'hooks-fixture.json');
 const quoteShell = value => "'" + value.replaceAll("'", "'\"'\"'") + "'";
 writeFileSync(hooksFixture, JSON.stringify({ hooks: { PreToolUse: [{ matcher: '^bash$', hooks: [{ type: 'command', command: `${quoteShell(process.execPath)} ${quoteShell(join(root, 'scripts/hook-fixture.mjs'))}`, timeout: 5 }] }] } }));
-writeFileSync(overlay, `- id: dscode-hooks\n  config:\n    configPath: ${JSON.stringify(hooksFixture)}\n- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- insert:\n    - id: harness-probe\n      name: ${JSON.stringify(join(root, 'scripts/probe-plugin.mjs'))}\n`);
+writeFileSync(overlay, `- id: dscode-hooks\n  config:\n    configPath: ${JSON.stringify(hooksFixture)}\n- id: dscode-session-cards\n  config:\n    enabled: false\n- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- insert:\n    - id: harness-probe\n      name: ${JSON.stringify(join(root, 'scripts/probe-plugin.mjs'))}\n`);
 const report = join(local, 'doctor.json');
 const child = spawn(process.execPath, [dshEntry, '--profile', 'tui', '--patch', overlay], {
   cwd: root, env: { ...environment(home), DSH_TUI_PROBE_REPORT: report }, stdio: ['ignore', 'pipe', 'pipe'],

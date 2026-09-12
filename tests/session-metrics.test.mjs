@@ -33,7 +33,7 @@ test('session totals weight input tokens, retain unknowns and survive replay', (
   assert(summarize([...rows, { kind: 'end', id: 'failed', cost: null }]).unknown);
   assert.equal(summarize([...rows, { kind: 'end', id: 'failed', cost: null }]).cache, null);
   for (const columns of [20, 32, 48, 80, 120]) assert(formatFooter(summary, 43.2, columns).length <= columns);
-  assert.match(formatFooter(summary, 43.2), /ctx 43%.*session ~\$0.0030.*cache 9.0%/);
+  assert.match(formatFooter(summary, 43.2), /ctx 43%.*~\$0.0030.*cache 9.0%/);
 });
 test('collector includes child costs in parent, emits one final usage and records aborted unknowns', async () => {
   const home = mkdtempSync(join(tmpdir(), 'dscode-metrics-'));

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { patchDeepSeek, patchBash, patchPersistent, patchRuntime } from '../scripts/patch-runtime.mjs';
+import { patchDeepSeek, patchBash, patchPersistent, patchSubagent, patchRuntime } from '../scripts/patch-runtime.mjs';
 import { root } from '../scripts/harness.mjs';
 import { apply } from '../plugins/dscode/index.mjs';
 
@@ -34,7 +34,7 @@ test('ultra uses native max on the actual wire and adds policy only to agent cal
   } finally { globalThis.fetch = original; }
 });
 test('pinned runtime patches are idempotent and reject unknown upstream code', () => {
-  for (const [name, patch] of [['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent]]) {
+  for (const [name, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent]]) {
     const text = readFileSync(`${root}/node_modules/@deepseek-ai/${name}/lib/index.js`, 'utf8');
     assert.equal(patch(text), text);
     assert.throws(() => patch('unknown upstream'));

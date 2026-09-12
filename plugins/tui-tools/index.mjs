@@ -1,3 +1,4 @@
+import { runShell } from './shell.mjs';
 import { readFile, readdir, access } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
@@ -72,6 +73,7 @@ export function apply(ctx) {
     try { const result = await handler(inv); return { ...result, text: redact(result.text ?? '') }; }
     catch (e) { return fail(redact(`${name}: ${e.message}`)); }
   }});
+  register('shell-exec', 'Run a user shell command (also !command)', ({ rawInput, agent, signal }) => runShell(rawInput, { cwd: agent.session.header.cwd ?? process.cwd(), signal }));
   register('status', 'Session, model, permissions, usage and plugin health', ({ agent }) => {
     const session = agent.session;
     const route = session.requestHeader()?.config ?? agent.options;

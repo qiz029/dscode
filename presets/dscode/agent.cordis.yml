@@ -219,7 +219,9 @@
         maxDepth: 1
 
     # Fork omits model selection so provider/model stay equal to the parent and
-    # the inherited history remains eligible for KV Cache reuse. This preset
+    # the inherited history remains eligible for KV Cache reuse. DSCODE exposes
+    # reasoning_effort independently; changing effort does not select a new route.
+    # This preset
     # keeps fork continuable; parent and child inherit the same messaging tool,
     # while the parent id and return guidance follow the inherited history.
     - id: tool-subagent-fork

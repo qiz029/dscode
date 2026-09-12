@@ -45,7 +45,7 @@ export async function probeDscode(ctx) {
       yield { type: 'block-end', index: 0, block: { type: 'text', text: 'DSCODE_PERSISTED_ULTRA' } };
       yield { type: 'finish', reason: { kind: 'stop' } };
     }
-    async resolveModel(provider, model) { return { provider, id: model, name: model, reasoning: { efforts: [{ id: 'max', name: 'Max' }, { id: 'ultra', name: 'Ultra' }], defaultEffort: 'max' }, context: { contextWindow: 100000 } }; }
+    async resolveModel(provider, model) { return { provider, id: model, name: model, reasoning: { efforts: [{ id: 'low', name: 'Low' }, { id: 'high', name: 'High' }, { id: 'max', name: 'Max' }, { id: 'ultra', name: 'Ultra' }], defaultEffort: 'max' }, context: { contextWindow: 100000 } }; }
   }
   ctx.llm.registerAdapter(['dscode-fixture'], new Adapter());
   const sessionId = `dscode-probe-${randomUUID()}`;
@@ -108,7 +108,22 @@ export async function probeDscode(ctx) {
   await agent.whenIdle();
   assert(childShells.size > 0, 'No real child agent ran');
   assert(seen.some(o => o.sessionId !== sessionId && JSON.stringify(o.messages).includes('CHILD_ENV=unset')), 'Child inherited parent shell state');
-  assert(seen.filter(o => o.sessionId !== sessionId).every(o => o.reasoningEffort === 'ultra'), 'Child lost ultra selection');
+  assert(seen.filter(o => childShells.has(o.sessionId) && !o.purpose).every(o => o.reasoningEffort === 'ultra'), 'Child lost ultra selection');
+  for (const [tool, effort] of [['subagent', 'low'], ['subagent_fork', 'high']]) {
+    const before = seen.length;
+    const result = await run(tool, { description: 'Verify child effort', prompt: 'Finish the local fixture.', reasoning_effort: effort, run_in_background: false });
+    assert(!result.includes('"isError":true'), result);
+    const calls = seen.slice(before).filter(o => childShells.has(o.sessionId) && !o.purpose);
+    assert(calls.length > 0, 'Missing child call');
+    assert(calls.every(o => o.reasoningEffort === effort), 'Child did not use requested effort');
+    assert(calls.every(o => o.provider === 'dscode-fixture' && o.model === 'fixture'), 'Effort-only choice changed model');
+    assert.equal(agent.session.requestHeader().config.reasoningEffort, 'ultra');
+  }
+  const beforeInvalid = childShells.size;
+  const invalid = await run('subagent', { description: 'Reject invalid effort', prompt: 'Must not execute.', reasoning_effort: 'invalid-effort', run_in_background: false });
+  assert(invalid.includes('isError') || invalid.includes('unsupported'), invalid);
+  assert.equal(childShells.size, beforeInvalid);
+
   assert((await run('bash', { command: 'printf "%s" "$DSCODE_FIXTURE_VAR"' })).includes('parent_only'));
   const compacted = await ctx.commands.execute(agent, '/compact', [], new AbortController().signal);
   assert.equal(compacted.result.kind, 'success', compacted.result.text);
@@ -122,5 +137,5 @@ export async function probeDscode(ctx) {
   await resumed.agent.whenIdle();
   assert.equal(seen.at(-1).reasoningEffort, 'ultra');
   await resumed.dispose();
-  return { tools, persistentCwdAndEnv: 'passed', patchViaShell: 'passed', resetAndCancellation: 'passed', freshRetryAndApprovalDenial: 'passed', ultraSessionResume: 'passed', childShellIsolation: 'passed', manualCompaction: 'passed' };
+  return { tools, persistentCwdAndEnv: 'passed', patchViaShell: 'passed', resetAndCancellation: 'passed', freshRetryAndApprovalDenial: 'passed', ultraSessionResume: 'passed', childShellIsolation: 'passed', childEffortSelection: 'spawn low, fork high, inheritance and invalid effort passed', manualCompaction: 'passed' };
 }

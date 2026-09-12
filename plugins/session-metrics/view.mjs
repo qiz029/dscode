@@ -39,11 +39,11 @@ export function formatFooter(metrics, context, columns = 80) {
   const ctx = Number.isFinite(context) ? `${Math.round(context)}%` : '--';
   const cache = metrics.cache === null ? '--' : `${metrics.cache.toFixed(1)}%`;
   const dollars = metrics.unknown && metrics.cost === 0 ? '--' : `~$${metrics.cost.toFixed(metrics.cost < 1 ? 4 : 2)}${metrics.unknown ? '+' : ''}${metrics.pending ? '…' : ''}`;
-  const full = `ctx ${ctx} · session ${dollars} · cache ${cache}`;
+  const full = `ctx ${ctx} · ${dollars} · cache ${cache}`;
   if (full.length <= columns) return full;
-  const short = `ctx ${ctx} $ ${dollars.replace('~$', '~')} hit ${cache}`;
+  const short = `ctx ${ctx} · ${dollars}`;
   if (short.length <= columns) return short;
-  const tiny = `${ctx} ${dollars} ${cache}`;
+  const tiny = `ctx ${ctx}`;
   return tiny.length <= columns ? tiny : tiny.slice(0, Math.max(0, columns));
 }
 export function footerFor(id, stats, columns) {

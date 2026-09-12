@@ -16,6 +16,9 @@ const release=read(join(out,'hub-release.json'));
 const pkg=read(join(out,'bundle/package.json'));
 const pack=read(join(out,'bundle-pack.json'))[0];
 const home=mkdtempSync(join(tmpdir(),'dscode-hub-verify-'));
+// Card probes expect a project identity, not an arbitrary non-repository tmpdir.
+const project=spawnSync('git',['init','--quiet',home],{encoding:'utf8'});
+if(project.status!==0) throw Error(project.stderr);
 const launcherRoot=join(home,'launcher');
 const launcherPack=read(join(out,'launcher-pack.json'))[0];
 await new Promise((resolve,reject)=>{
@@ -24,7 +27,7 @@ await new Promise((resolve,reject)=>{
 });
 const pnpm=join(launcherRoot,'node_modules/@toddzheng024/dscode/tools');
 const upgradeDir=join(home,'upgrade-fixture');cpSync(join(out,'bundle'),upgradeDir,{recursive:true});
-const upgradePackage={...pkg,version:'0.1.1-test'};
+const upgradePackage={...pkg,version:pkg.version.split('.').map((part,index)=>index===2?Number(part)+1:part).join('.')+'-test'};
 writeFileSync(join(upgradeDir,'package.json'),JSON.stringify(upgradePackage));
 const packedUpgrade=spawnSync('npm',['pack','--ignore-scripts','--json','--pack-destination',home],{cwd:upgradeDir,encoding:'utf8'});
 if(packedUpgrade.status!==0) throw Error(packedUpgrade.stderr);
@@ -70,7 +73,7 @@ try {
     assert.equal(read(join(profile,'node_modules/@deepseek-ai',name,'package.json')).version,release.dsh,name);
   }
   mkdirSync(join(profile,'probe'));
-  for(const file of ['probe-plugin.mjs','dscode-probe.mjs']) {
+  for(const file of ['probe-plugin.mjs','dscode-probe.mjs','session-messaging-probe.mjs','session-cards-probe.mjs','memory-probe.mjs']) {
     writeFileSync(join(profile,'probe',file),readFileSync(join(root,'scripts',file),'utf8').replaceAll("'../plugins/",`'../node_modules/${pkg.name}/plugins/`));
   }
   cpSync(join(root,'scripts/hook-fixture.mjs'),join(home,'hook-fixture.mjs'));
@@ -78,11 +81,26 @@ try {
   const quote=value=>"'"+value.replaceAll("'","'\"'\"'")+"'";
   writeFileSync(join(home,'config/hooks.local.json'),JSON.stringify({hooks:{PreToolUse:[{matcher:'^bash$',hooks:[{type:'command',command:quote(process.execPath)+' '+quote(join(home,'hook-fixture.mjs')),timeout:5}]}]}}));
   const overlay=join(home,'probe.patch.yml');
-  writeFileSync(overlay,`- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- insert:\n    - id: harness-probe\n      name: ${JSON.stringify(join(profile,'probe/probe-plugin.mjs'))}\n`);
+  writeFileSync(overlay,`- id: dscode-session-cards\n  config:\n    enabled: false\n- id: dscode-memory\n  config:\n    generate: false\n- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- insert:\n    - id: harness-probe\n      name: ${JSON.stringify(join(profile,'probe/probe-plugin.mjs'))}\n`);
   const installedRuntime=join(profile,'node_modules/@deepseek-ai/dsh/lib/bin.js');
   const result=await exec(installedRuntime,['--profile','dscode','--patch',overlay],{DSH_TUI_PROBE_REPORT:join(home,'probe.json')});
   assert(result.includes('HARNESS_PROBE_PASSED'),result);
   console.log('PASS installed bundle agent loop, shell, auto review, subagents, compaction and telemetry');
+  const basePatch = '- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- id: mcp-chrome\n  disabled: true\n';
+  for (const [name, settings, marker] of [
+    ['session-messaging', '- id: dscode-session-cards\n  config:\n    enabled: false\n- id: dscode-memory\n  config:\n    generate: false\n', 'SESSION_MESSAGING_PROBE_PASSED'],
+    ['session-cards', '- id: dscode-memory\n  config:\n    generate: false\n- id: dscode-session-cards\n  config:\n    minMessages: 1\n    debounceMs: 0\n    cooldownMs: 0\n', 'SESSION_CARDS_PROBE_PASSED'],
+    ['memory', '- id: dscode-session-cards\n  config:\n    enabled: false\n', 'MEMORY_PROBE_PASSED'],
+  ]) {
+    const patch = join(home, name + '.patch.yml');
+    writeFileSync(patch, basePatch + settings + `- insert:\n    - id: ${name}-probe\n      name: ${JSON.stringify(join(profile, 'probe', name + '-probe.mjs'))}\n`);
+    const output = await exec(installedRuntime, ['--profile','dscode','--patch',patch], {
+      DSCODE_MEMORY_HOME: join(home, 'memories'), DSCODE_MESSAGING_PATCH: patch,
+      DSCODE_MESSAGING_RUNTIME: installedRuntime, DSCODE_MESSAGING_PROFILE: 'dscode',
+    });
+    assert(output.includes(marker), output);
+    console.log('PASS installed bundle ' + name);
+  }
   const marker=join(home,'session-preservation-test.txt');writeFileSync(marker,'retained');
   const upgradeRelease={...release,version:upgradePackage.version,bundles:release.bundles.map(b=>({...b,selector:upgradePackage.version,version:upgradePackage.version,installSpec:b.packageName+'@'+upgradePackage.version,integrity:upgradePack.integrity}))};
   delete upgradeRelease.contentHash;upgradeRelease.contentHash='sha256:'+createHash('sha256').update(canonical(upgradeRelease)).digest('hex');
@@ -97,7 +115,7 @@ try {
   assert.equal(read(join(profile,'node_modules',pkg.name,'package.json')).version,pkg.version);
   const composed=await exec(installedRuntime,['--profile','dscode','--dump-config']);
   assert(composed.includes('dscode-bootstrap'));
-  console.log('PASS failed upgrade preserves old profile; 0.1.0 -> 0.1.1-test -> rollback preserves state and restores a runnable profile');
+  console.log(`PASS failed upgrade preserves old profile; ${pkg.version} -> ${upgradePackage.version} -> rollback preserves state and restores a runnable profile`);
   mkdirSync(join(root,'artifacts/local'),{recursive:true});
   writeFileSync(join(root,'artifacts/local/hub-verification.json'),JSON.stringify({home,package:pkg.name,version:pkg.version,integrity:pack.integrity,launcherIntegrity:launcherPack.integrity,install:true,agentProbe:read(join(home,'probe.json')),rollback:true,fixture:'Loopback npm registry for unpublished bundle; Version 0.1.1-test exercises failed upgrade, successful upgrade and rollback transactions. Public Hub discovery and npm publication not exercised.'},null,2));
 } finally {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

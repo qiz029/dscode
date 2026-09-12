@@ -5,6 +5,10 @@ Restart `dscode` to load these commands. Commands run locally and do not call th
 | Command | Behavior |
 | --- | --- |
 | `/status` | Session ID, workspace, model route, permission mode, recorded token totals/context pressure, tool/plugin counts. Unknown usage stays unknown. `/review-usage` reports the independent reviewer separately. |
+| `/memories [status\|on\|off\|global-on\|global-off\|run\|note <text>\|clear]` | Global cross-session memory controls and background model usage. [Behavior and configuration](memory.md). |
+| `/session` | Current session ID, local socket, and external send/read/watch commands. [Multi-source sessions](session-bridge.md). |
+| `/mailbox [cancel MESSAGE_ID]` | Read messages and deferred notes, or cancel a request/message. [Session communication](session-communication.md). |
+| `/session-new-task` | Explicitly start a fresh communication budget while idle; ordinary continuation and resume retain their existing budgets. |
 | `/doctor` | Read-only plugin, skill, MCP tool-discovery and Computer Use health. Does not test remote credentials or execute tools. |
 | `/mcp` | List MCP entry IDs, loader state and transport; credentials, headers and environment values are not printed. |
 | `/mcp tools <id>` | List registered tools for a server. |
@@ -57,3 +61,18 @@ The pinned official `@deepseek-ai/dsh-hooks-codex` bridge supports:
 The launcher applies an idempotent, version-checked patch to the pinned `dsh-code@1.0.6` bundle for `/clear` and startup command discovery. An unsupported upstream version/shape fails setup instead of patching blindly. All other command behavior lives in `plugins/tui-tools` and hooks use the official runtime plugin. `npm ci` followed by setup reinstalls the patch, including on distributed installs.
 
 `npm test` covers hook validation, MCP idle gating/reconnect, skill conflicts and patch drift. `npm run doctor` boots the real profile, calls the command registry, tests MCP unregister/remount, and uses a real hook subprocess to block a deterministic model's shell tool. No paid model call is used.
+
+## 输入与会话恢复
+
+- `!命令`：在当前会话目录用 `$SHELL`（默认 `/bin/sh`）执行用户输入的命令，展示 stdout、stderr 和退出码，不启动模型回合。支持多行命令；每次启动独立 shell，`cd` 和环境变量不跨命令保留。非交互执行，120 秒超时，显示最多 64 KiB 输出；退出或切换会话会取消未完成命令。
+- `Shift+Enter`：换行；`Enter`：发送。支持 CSI-u 和 xterm modifyOtherKeys 的 Shift+Enter 序列。不发送修饰键的终端可使用 `Ctrl+J` 换行。
+- `dscode resume`：继续最近会话；`dscode resume SESSION_ID`：恢复指定会话。可追加 `--cwd DIRECTORY`。退出并成功保存后会打印当前会话的恢复命令。
+- 主聊天区隐藏 thinking、工具参数、工具结果和已完成的工具调用；动态区域只显示正在执行的工具名。用户消息、agent 正文、用户 shell 命令结果和必要的错误/审批提示仍显示。完整记录保留在会话中，可通过历史详情或导出查看。
+- 中文输入法定位：每帧渲染后将终端真实光标同步到输入框的当前字符位置（包含中文宽度、换行和输入框内部滚动），重绘前恢复渲染位置。修改后需要重启 TUI；macOS 候选框显示仍需在实际使用的终端中验证。
+## DSCODE 界面布局
+
+启动头部使用两行 DSCODE、项目/分支和初始 session 标题；运行中变化的标题继续显示在底部。正文保留用户和 agent 输出，thinking 与工具调用历史仍隐藏。
+
+输入区上方统一显示思考、回复或当前工具及其描述，计时为本轮总耗时。只有运行标记动画，输入区不播放波浪。子 agent 概览区分 running / idle / done，输入 `/agents` 查看任务和当前活动。
+
+底栏默认保留模型、effort、权限、标题和必要的任务状态；ctx、费用、cache 使用弱对比色，窄窗口优先省略 cache，低于 64 列隐藏指标。`/statusline` 仍可自定义所有原有项目，已有自定义配置保持有效。

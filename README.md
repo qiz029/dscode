@@ -21,10 +21,14 @@ DSCODE 是基于 DeepSeek Harness 的 coding agent preset：以极简模式的�
 | 🛡️ Auto 权限 | 普通操作按本地策略执行；需要升级权限的适用请求交给独立模型审核 |
 | 🌐 浏览器与桌面 | Chrome DevTools MCP 与 macOS 原生 Computer Use，按需使用 |
 | 📚 长任务 | 项目指令、skills、plan、goal、hooks、自动压缩和会话恢复 |
+| 🗂️ 全局记忆 | 后台提取和整理跨会话经验，短摘要自动注入、详细来源按需检索；[使用与配置](docs/memory.md) |
+| 🔌 多来源会话 | TUI、CLI 和脚本连接同一个运行时，支持 queue/steer、快照读取和事件订阅；[使用方式](docs/session-bridge.md) |
+| ✉️ Session 通信 | agent 内置发送/回复工具，queue / steer / defer，持久化邮箱与防循环预算；[使用方式](docs/session-communication.md) |
+| 🪪 会话名片 | 项目、工作区、最近 5 个用户请求 topic；后台低 effort 提取，不包含结论；[使用与配置](docs/session-cards.md) |
 | 📊 会话统计 | 右下角显示上下文占用、session 美元估算、输入 token 缓存命中率 |
 
 ```text
-                              ctx 43% · session ~$0.0030 · cache 90.0%
+                              ctx 43% · ~$0.0030 · cache 90.0%
 ```
 
 费用包含已记录的子 agent、压缩和 auto 审核调用；统计本身不额外请求模型。[统计口径 →](docs/session-metrics.md)
@@ -35,7 +39,7 @@ DSCODE 是基于 DeepSeek Harness 的 coding agent preset：以极简模式的�
 
 ### npm + Plugin Hub
 
-> **v0.1.0 已发布。** [npm 启动器](https://www.npmjs.com/package/@toddzheng024/dscode) · [Hub preset](https://dshpluginhub.ai/profiles/dscode) · [GitHub Releases](https://github.com/qiz029/dscode/releases)
+> **v0.2.0。** [npm 启动器](https://www.npmjs.com/package/@toddzheng024/dscode) · [Hub preset](https://dshpluginhub.ai/profiles/dscode) · [GitHub Releases](https://github.com/qiz029/dscode/releases)
 
 ```sh
 npm install -g @toddzheng024/dscode
@@ -43,14 +47,16 @@ cd /path/to/project
 dscode
 ```
 
-如果 npm 包名查询暂时返回 404，可直接安装同一版本的官方 registry tarball（此路径已完成安装和 TUI 启动验证）：
+如果 npm 包名查询暂时返回 404，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.1.0.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.2.0.tgz
 dscode
 ```
 
 首次启动会从 [DSH Plugin Hub](https://dshpluginhub.ai) 安装固定版本的完整 preset；之后直接打开 TUI。无需手动拼装插件，也不需要全局安装 pnpm。
+
+npm 启动器会检查已安装 bundle 和 Harness 依赖的推荐版本组合。版本不匹配或无法核实时，只在启动时集中显示一次 warning，并继续运行，不要求确认，也不会自动降级或修改依赖。源码构建时的补丁匹配检查仍会在补丁无法安全应用时停止构建。
 
 第一次进入后，用 `/model` 配置模型和凭据，也可在启动前设置 `DEEPSEEK_API_KEY`。默认路由是 `deepseek-official/deepseek-flash`。Computer Use 的辅助功能和录屏权限需在 macOS 中单独授予。
 
@@ -59,11 +65,20 @@ dscode --continue                     # 继续上次会话
 dscode --resume SESSION_ID            # 恢复指定会话
 dscode --cwd /another/project         # 在指定目录工作
 
-dscode update 0.2.0                   # 示例：升级到已发布的确切版本
+dscode update 0.2.0                   # 升级到 0.2.0
 dscode history                        # 查看保留的版本记录
 dscode rollback                       # 回到上个 preset 版本
 dscode doctor                         # 检查 Hub 安装状态
 ```
+
+从 0.1.0 升级时，先更新启动器，再更新已安装的 profile：
+
+```sh
+npm install -g @toddzheng024/dscode@0.2.0
+dscode update 0.2.0
+```
+
+源码/tar 安装与 npm/Hub 使用不同的数据目录。升级不会自动迁移它们之间的会话和凭据。[0.2.0 更新说明](docs/releases/0.2.0.md)
 
 ### 从源码运行（现在可用）
 
@@ -84,11 +99,11 @@ npm start -- --cwd /path/to/project
 
 ### tar 包安装（现在可用）
 
-从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.1.0.tar.gz`，然后执行：
+从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.2.0.tar.gz`，然后执行：
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.1.0.tar.gz -C dscode-install
+tar -xzf dscode-0.2.0.tar.gz -C dscode-install
 sh dscode-install/install.sh
 cd /path/to/project
 dscode
@@ -103,6 +118,8 @@ dscode
 | `/model`、`/effort` | 选择模型、配置凭据、调整推理强度；Ultra 在 effort 菜单中 |
 | `/mode` | 选择 Agent Preset；新会话默认 `dscode` |
 | `/status`、`/doctor` | 会话状态与运行时诊断 |
+| `/memories` | 全局记忆状态、后台用量、开关与清理（源码版） |
+| `/session` | 当前 session ID 与外部发送、读取、订阅入口（源码版） |
 | `/permission auto`、`/permission ask` | 切换自动审核或人工审批 |
 | `/review-usage` | 查看自动审核的额外 token 与耗时 |
 | `/shell`、`/shell reset` | 检查或重置持久终端 |

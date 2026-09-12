@@ -1,0 +1,38 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { imePosition, imeWriter, patchIme } from '../scripts/patch-ime.mjs';
+import { readFileSync } from 'node:fs';
+const node = (x, y, parentNode) => ({ parentNode, yogaNode: { getComputedLeft: () => x, getComputedTop: () => y } });
+test('IME anchor follows layout, scrolled editor row and Unicode display columns', () => {
+  const anchor = { node: node(1, 3, node(0, 2)), row: 1, column: 6 };
+  assert.deepEqual(imePosition(anchor, 10, 80), { up: 4, column: 8 });
+  assert.deepEqual(imePosition(anchor, 8, 5), { up: 2, column: 5 });
+  assert.equal(imePosition({ ...anchor, active: false }, 10, 80), undefined);
+  assert.equal(imePosition(anchor, 3, 80), undefined);
+  assert.equal(imePosition(undefined, 10, 80), undefined);
+});
+test('redraw and external output restore renderer cursor; teardown restores write and position', () => {
+  const chunks = [];
+  const stream = { isTTY: true, columns: 80, write(s) { chunks.push(s); return true; } };
+  const original = stream.write;
+  const anchors = new WeakMap([[stream, { node: node(0, 2), row: 0, column: 6 }]]);
+  const writer = imeWriter(stream, anchors);
+  writer.park(6);
+  assert.equal(chunks.pop(), '\x1b7\x1b[4A\x1b[7G');
+  assert.equal(stream.write('redraw'), true);
+  assert.deepEqual(chunks.splice(0), ['\x1b8', 'redraw']);
+  writer.park(6); writer.park(6);
+  assert.deepEqual(chunks.splice(0), ['\x1b7\x1b[4A\x1b[7G', '\x1b8', '\x1b7\x1b[4A\x1b[7G']);
+  anchors.delete(stream); writer.park(6);
+  assert.deepEqual(chunks.splice(0), ['\x1b8']);
+  writer.dispose(); assert.equal(stream.write, original);
+});
+test('non-TTY output is untouched and patch rejects upstream drift', () => {
+  const stream = { write() { throw Error('unexpected output'); } };
+  const original = stream.write;
+  const writer = imeWriter(stream, new WeakMap());
+  writer.park(10); writer.dispose(); assert.equal(stream.write, original);
+  assert.throws(() => patchIme('unknown'), /drift/);
+  const source = readFileSync(new URL('../node_modules/dsh-code/lib/index.mjs', import.meta.url), 'utf8');
+  assert.equal(patchIme(source), source);
+});
