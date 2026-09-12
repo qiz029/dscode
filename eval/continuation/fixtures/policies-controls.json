@@ -1,0 +1,5 @@
+[
+  { "id": "controlled-80", "compact": true, "thresholdRatio": 0.8, "retainRatio": 0.064 },
+  { "id": "controlled-40", "compact": true, "thresholdRatio": 0.4, "retainRatio": 0.064 },
+  { "id": "controlled-25", "compact": true, "thresholdRatio": 0.25, "retainRatio": 0.064 }
+]

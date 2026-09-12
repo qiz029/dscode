@@ -1,0 +1,219 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { validateDataset, validatePolicies, gradeResponse, probePrompt, hash } from '../fixture.mjs';
+import { OfflineAdapter, BudgetAdapter, deepseekAdapter } from '../adapters.mjs';
+import { createRuntime, visibleMessages } from '../runtime.mjs';
+import { runEvaluation } from '../runner.mjs';
+import { summarize } from '../report.mjs';
+
+const dataset = JSON.parse(readFileSync(new URL('../fixtures/synthetic.json', import.meta.url)));
+const policies = JSON.parse(readFileSync(new URL('../policies.json', import.meta.url)));
+const signal = () => new AbortController().signal;
+function directory(t) {
+  const root = mkdtempSync(join(tmpdir(), 'dscode-eval-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  return root;
+}
+const tiny = () => ({ version: 1, id: 'tiny', cases: [{ id: 'one', system: 'Preserve current work.', stages: [{ id: 'a', messages: [{ role: 'user', text: '<state>{"next":"run tests"}</state>' }], probes: [{ id: 'next', category: 'continuation', question: 'What is next?', accept: ['run tests'] }] }] }] });
+
+test('fixture validation rejects ambiguous identifiers, malformed probes and unsafe expansion', () => {
+  assert.deepEqual(validateDataset(dataset), dataset);
+  const duplicate = tiny(); duplicate.cases.push(duplicate.cases[0]);
+  assert.throws(() => validateDataset(duplicate), /Duplicate case/);
+  for (const repeat of [0, 1.5, Infinity, 10001]) {
+    const sample = tiny(); sample.cases[0].stages[0].messages[0].repeat = repeat;
+    assert.throws(() => validateDataset(sample), /repeat/);
+  }
+  const malformed = tiny(); malformed.cases[0].stages[0].probes[0].accept = [];
+  assert.throws(() => validateDataset(malformed), /Probe/);
+  for (const p of [[{ id: 'bad', compact: true, thresholdRatio: .1, retainRatio: .2 }], [policies[0], policies[0]]]) assert.throws(() => validatePolicies(p));
+});
+
+test('probe projection excludes gold and grader rejects guessed substrings and invalid JSON', () => {
+  const probes = [{ id: 'path', category: 'artifact', question: 'Which path?', accept: ['src/Exact.ts'] }];
+  assert(!probePrompt(probes).includes('src/Exact.ts'));
+  assert.equal(gradeResponse('{"answers":{"path":" src/Exact.ts "}}', probes).passed, 1);
+  assert.equal(gradeResponse('{"answers":{"path":"src/exact.ts"}}', probes).passed, 0);
+  assert.equal(gradeResponse('{"answers":{"path":"maybe src/Exact.ts or src/Other.ts"}}', probes).passed, 0);
+  for (const text of ['bad JSON', '```json\n{}\n```', '{"answers":[]}', '{"answers":{"path":7}}', '{"answers":{"extra":"x"}}', '{"answers":{}}']) {
+    const grade = gradeResponse(text, probes); assert.equal(grade.passed, 0); assert.equal(grade.total, 1);
+  }
+});
+
+test('real engine matrix preserves corrections over repeated summaries; controls remain visible', async t => {
+  const result = await runEvaluation({ dataset, policies, output: join(directory(t), 'run') });
+  assert.equal(result.manifest.status, 'completed');
+  assert.equal(result.rows.length, 75);
+  assert(result.rows.every(row => row.grade.passed === 5));
+  const groups = summarize(result.rows);
+  assert.equal(groups.find(group => group.policy === 'full').compactions, 0);
+  assert.equal(groups.find(group => group.policy === 'shipped-80').compactions, 3);
+  assert.equal(groups.find(group => group.policy === 'controlled-80').compactions, 3);
+  assert(groups.find(group => group.policy === 'controlled-25').compactions >= 9);
+  const evidence = readFileSync(join(result.output, 'contexts.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert(evidence.every(row => !JSON.stringify(row.messages).includes('What is the next unfinished action?')));
+  assert(result.calls.every(call => call.usage === null));
+  assert.match(readFileSync(join(result.output, 'report.md'), 'utf8'), /OFFLINE PIPELINE CHECK/);
+  assert.equal(result.manifest.dataset.hash, hash(dataset));
+  assert.equal(Object.keys(result.manifest.dependencyHashes).length, 4);
+});
+
+test('old constraints and latest corrections survive at least five consecutive summaries', async t => {
+  const long = structuredClone(dataset); long.cases = [long.cases[0]];
+  const stages = long.cases[0].stages;
+  for (let n = 6; n <= 8; n++) {
+    const stage = structuredClone(stages[4]); stage.id = `checkpoint-${n}`;
+    stage.messages = stage.messages.filter(message => message.role !== 'user');
+    stages.push(stage);
+  }
+  const result = await runEvaluation({ dataset: long, policies: policies.filter(policy => policy.id === 'controlled-25'), output: join(directory(t), 'recurrent') });
+  assert(summarize(result.rows)[0].compactions >= 5);
+  assert.equal(result.rows.at(-1).grade.passed, 5);
+  assert.equal(result.rows.at(-1).grade.scores.find(score => score.id === 'constraint').answer, 'preserve the error code; the message may change');
+  assert.equal(result.rows.at(-1).grade.scores.find(score => score.id === 'endpoint').answer, '/api/auth/login');
+});
+
+test('compressor requests never receive evaluator-only gold or prior probe questions', async t => {
+  const input = structuredClone(dataset); input.cases = [input.cases[0]];
+  for (const stage of input.cases[0].stages) for (const probe of stage.probes) probe.accept = ['EVALUATOR_ONLY_CANARY'];
+  const requests = [];
+  class Capture extends OfflineAdapter {
+    async *stream(options) { requests.push(structuredClone({ purpose: options.purpose, messages: options.messages })); yield* super.stream(options); }
+  }
+  await runEvaluation({ dataset: input, policies: policies.filter(policy => policy.id === 'controlled-25'), adapterFactory: () => new Capture(16384), output: join(directory(t), 'isolation') });
+  assert(!JSON.stringify(requests).includes('EVALUATOR_ONLY_CANARY'));
+  const summaries = requests.filter(request => request.purpose === 'compaction');
+  assert(summaries.length > 0);
+  assert(summaries.every(request => !JSON.stringify(request).includes('Which source file was modified?')));
+});
+
+test('a truncated native summary fails visibly without replacing the history', async t => {
+  class Truncated extends OfflineAdapter {
+    async *stream(options) {
+      if (options.purpose !== 'compaction') { yield* super.stream(options); return; }
+      yield { type: 'block-start', index: 0, blockType: 'text' };
+      yield { type: 'block-end', index: 0, block: { type: 'text', text: 'Incomplete checkpoint' } };
+      yield { type: 'finish', reason: { kind: 'max-tokens' } };
+    }
+  }
+  const input = structuredClone(dataset); input.cases = [input.cases[0]];
+  const result = await runEvaluation({ dataset: input, policies: policies.filter(policy => policy.id === 'controlled-25'), adapterFactory: () => new Truncated(16384), output: join(directory(t), 'truncated') });
+  assert.equal(result.manifest.status, 'completed-with-errors');
+  assert.equal(summarize(result.rows)[0].total, 25);
+  assert.equal(summarize(result.rows)[0].compactions, 0);
+  assert(result.calls.some(call => call.status === 'incomplete'));
+  const saved = readFileSync(join(result.output, 'contexts.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert(saved.every(row => JSON.stringify(row.messages).includes('/api/auth/login')));
+});
+
+test('a lossy compressor scores worse without access to gold answers', async t => {
+  const root = directory(t);
+  const selected = policies.filter(policy => policy.id === 'controlled-25');
+  const good = await runEvaluation({ dataset, policies: selected, output: join(root, 'good') });
+  const bad = await runEvaluation({ dataset, policies: selected, adapterFactory: () => new OfflineAdapter(16384, { loseState: true }), output: join(root, 'bad') });
+  assert(summarize(bad.rows)[0].accuracy < summarize(good.rows)[0].accuracy);
+  assert(bad.rows.some(row => row.grade.scores.some(score => !score.passed && score.category === 'constraint')));
+});
+
+test('native tool pairs survive boundary selection and pruner runs before summarization', async () => {
+  const runtime = createRuntime({ policy: policies.find(p => p.id === 'controlled-25'), adapter: new OfflineAdapter(16384), provider: 'eval-offline', model: 'fixture', contextWindow: 16384 });
+  try {
+    runtime.initialize('Keep working.');
+    await runtime.append({ role: 'tool', name: 'read_file', text: 'Old log. '.repeat(3000) }, signal());
+    await runtime.append({ role: 'user', text: 'Continue.' }, signal());
+    const events = runtime.session.snapshotEvents();
+    assert(events.some(event => event.type === 'compaction/prune'));
+    assert(!events.some(event => event.type === 'compaction/summary'));
+    const messages = visibleMessages(runtime.session);
+    const calls = messages.flatMap(message => message.content.filter(block => block.type === 'tool-call'));
+    const results = messages.flatMap(message => message.content.filter(block => block.type === 'tool-result'));
+    assert.deepEqual(calls.map(call => call.id), results.map(result => result.toolCallId));
+    assert(runtime.measure().totalTokens < 4096);
+  } finally { await runtime.close(); }
+});
+
+test('unchanged replay is deterministic and output folders cannot overwrite earlier evidence', async t => {
+  const root = directory(t);
+  const first = await runEvaluation({ dataset: tiny(), policies: [policies[0]], output: join(root, 'a') });
+  const second = await runEvaluation({ dataset: tiny(), policies: [policies[0]], output: join(root, 'b') });
+  assert.deepEqual(first.rows, second.rows);
+  await assert.rejects(runEvaluation({ dataset: tiny(), policies: [policies[0]], output: join(root, 'a') }), /EEXIST/);
+  assert.equal(first.manifest.dataset.hash, second.manifest.dataset.hash);
+});
+
+test('call budget exhaustion keeps partial evidence and records an aborted run', async t => {
+  const out = join(directory(t), 'budget');
+  await assert.rejects(runEvaluation({ dataset, policies: [policies[0]], maxCalls: 1, output: out }), /partial evidence/);
+  const manifest = JSON.parse(readFileSync(join(out, 'manifest.json')));
+  assert.equal(manifest.status, 'aborted'); assert.equal(manifest.callsUsed, 1);
+  assert.equal(manifest.completedCheckpoints, 1);
+  assert(existsSync(join(out, 'report.md')));
+});
+
+test('overflow and malformed responses are counted as failed probes, not dropped trials', async t => {
+  const root = directory(t);
+  const big = tiny(); big.cases[0].stages[0].messages.push({ role: 'assistant', text: 'Irrelevant old history. '.repeat(2000) });
+  const overflow = await runEvaluation({ dataset: big, policies: [policies[0]], contextWindow: 4096, output: join(root, 'overflow') });
+  assert.equal(overflow.rows[0].error, 'probe-context-overflow'); assert.equal(overflow.rows[0].grade.passed, 0); assert.equal(overflow.rows[0].grade.total, 1);
+  class BadAnswer extends OfflineAdapter {
+    async *stream() { yield { type: 'block-start', index: 0, blockType: 'text' }; yield { type: 'block-end', index: 0, block: { type: 'text', text: 'not json' } }; yield { type: 'finish', reason: { kind: 'stop' } }; }
+  }
+  const invalid = await runEvaluation({ dataset: tiny(), policies: [policies[0]], adapterFactory: () => new BadAnswer(16384), output: join(root, 'invalid') });
+  assert.equal(invalid.manifest.status, 'completed-with-errors'); assert.equal(invalid.rows[0].grade.total, 1);
+});
+
+test('missing credentials and unsafe endpoints fail before creating live-run artifacts', async t => {
+  const out = join(directory(t), 'live');
+  await assert.rejects(runEvaluation({ dataset: tiny(), policies: [policies[0]], backend: 'deepseek', apiKey: '', output: out }), /DEEPSEEK_API_KEY/);
+  assert(!existsSync(out));
+  for (const baseURL of ['http://example.org', 'https://user:secret@example.org', 'https://example.org?key=x']) assert.throws(() => deepseekAdapter({ model: 'deepseek-flash', contextWindow: 16384, apiKey: 'placeholder', baseURL }), /Endpoint/);
+});
+
+test('official DeepSeek SSE adapter records usage and sends no gold or credentials into artifacts', async t => {
+  const oldFetch = globalThis.fetch, requests = [];
+  t.after(() => { globalThis.fetch = oldFetch; });
+  globalThis.fetch = async (_url, init) => {
+    requests.push(JSON.parse(init.body));
+    const chunks = [
+      { id: 'mock', choices: [{ index: 0, delta: { content: '{"answers":{"next":"run tests"}}' }, finish_reason: null }] },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 300, completion_tokens: 20, prompt_cache_hit_tokens: 100, prompt_cache_miss_tokens: 200 } },
+    ];
+    return new Response(chunks.map(chunk => 'data: ' + JSON.stringify(chunk) + '\n\n').join('') + 'data: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
+  };
+  const result = await runEvaluation({ dataset: tiny(), policies: [policies[0]], backend: 'deepseek', apiKey: 'test-only-secret', output: join(directory(t), 'wire') });
+  assert.equal(result.rows[0].grade.passed, 1); assert.equal(requests.length, 1);
+  assert.equal(requests[0].model, 'deepseek-flash'); assert.equal(requests[0].thinking.type, 'disabled');
+  assert.equal(result.calls[0].usage.inputTokens, 200); assert.equal(result.calls[0].usage.cacheReadTokens, 100);
+  for (const file of ['manifest.json', 'calls.jsonl', 'contexts.jsonl', 'scores.jsonl']) assert(!readFileSync(join(result.output, file), 'utf8').includes('test-only-secret'));
+  assert(!JSON.stringify(requests).includes('"accept"'));
+});
+
+test('adapter deadline aborts an outstanding request', async () => {
+  class Slow extends OfflineAdapter {
+    async *stream(options) { await new Promise((_, reject) => { const timer = setTimeout(() => reject(Error('deadline did not abort')), 1000); options.signal.addEventListener('abort', () => { clearTimeout(timer); reject(options.signal.reason); }, { once: true }); }); }
+  }
+  const bounded = new BudgetAdapter(new Slow(16384), { used: 0, limit: 1 }, 10);
+  await assert.rejects(async () => { for await (const _ of bounded.stream({ messages: [], signal: signal() })) {} }, /timeout/i);
+});
+
+test('adapter deadline returns even if a provider never observes the abort signal', async () => {
+  class IgnoringAbort extends OfflineAdapter {
+    async *stream() { await new Promise(() => {}); }
+  }
+  const bounded = new BudgetAdapter(new IgnoringAbort(16384), { used: 0, limit: 1 }, 10);
+  const started = performance.now();
+  await assert.rejects(async () => { for await (const _ of bounded.stream({ messages: [], signal: signal() })) {} }, /eval-call-timeout/);
+  assert(performance.now() - started < 2000);
+});
+
+test('CLI help is offline and rejects unknown flags', () => {
+  const entry = new URL('../runner.mjs', import.meta.url).pathname;
+  const help = spawnSync(process.execPath, [entry, '--help'], { encoding: 'utf8' });
+  assert.equal(help.status, 0); assert.match(help.stdout, /--backend offline\|deepseek/);
+  const invalid = spawnSync(process.execPath, [entry, '--surprise'], { encoding: 'utf8' });
+  assert.equal(invalid.status, 1);
+});

@@ -1,0 +1,35 @@
+import { join } from 'node:path';
+import { Scalar, stringify } from 'yaml';
+
+export const customPlugins = Object.freeze([
+  'auto-review', 'session-metrics', 'session-cards', 'session-bridge', 'memory', 'tui-tools',
+]);
+
+const expression = value => {
+  const scalar = new Scalar(value);
+  scalar.tag = 'tag:yaml.org,2002:js';
+  return scalar;
+};
+
+// Both install surfaces share entry IDs, policy defaults and ordering. Only
+// module/path resolution differs between a source checkout and an npm bundle.
+export function composePlugins({ root, bundle, hooks, presets }) {
+  if (!!root === !!bundle) throw Error('Choose one composition surface: root or bundle');
+  const plugin = name => bundle ? `${bundle}/${name}` : join(root, 'plugins', name, 'index.mjs');
+  const inject = bundle ? { inject: ['dscodePaths'] } : {};
+  const entries = customPlugins.map(name => ({
+    id: `dscode-${name}`, name: plugin(name),
+    ...(name === 'auto-review' ? { config: { timeoutMs: 30000, maxOutputTokens: 768, maxReviewsPerTurn: 20 } } : {}),
+  }));
+  entries.push({
+    id: 'dscode-hooks', name: '@deepseek-ai/dsh-hooks-codex', ...inject,
+    config: { configPath: bundle ? expression('ctx.dscodePaths.hooks') : hooks, defaultTimeoutMs: 10000, stderrSummaryMaxChars: 500 },
+  });
+  return stringify([
+    { id: 'credentials', name: plugin('credentials') },
+    { insert: entries },
+    { id: 'agent-presets', ...inject, config: {
+      default: 'dscode', roots: [{ path: bundle ? expression('ctx.dscodePaths.presets') : presets, trust: 'system' }],
+    } },
+  ]);
+}

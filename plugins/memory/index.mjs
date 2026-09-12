@@ -16,6 +16,9 @@ export function resolveConfig(options = {}) {
     ['maxConsolidationChars', 1000, 200000], ['timeoutMs', 1000, 300000]]) {
     if (!Number.isFinite(config[key]) || config[key] < min || config[key] > max) throw Error(`Invalid memory ${key}`);
   }
+  for (const key of ['maxPerRun', 'maxCandidates', 'maxInputChars', 'maxConsolidationChars', 'timeoutMs']) {
+    if (!Number.isSafeInteger(config[key])) throw Error(`Invalid memory ${key}: expected a safe integer`);
+  }
   for (const key of ['extractEffort', 'consolidationEffort']) if (!['low', 'high', 'max'].includes(config[key])) throw Error(`Invalid memory ${key}`);
   if (!!config.provider !== !!config.model) throw Error('Memory provider and model must be configured together');
   if (typeof config.generate !== 'boolean' || typeof config.use !== 'boolean') throw Error('Invalid memory switches');

@@ -1,3 +1,23 @@
+# Current checks — 2026-09-12
+
+Run `npm run check` for the maintained regression gate:
+
+| Command | Scope |
+|---|---|
+| `npm test` / `npm run test:unit` | Unit and component contracts, including real launcher processes, mailbox transactions, communication orchestration and fresh upstream patches |
+| `npm run test:coverage` | The same tests with a full first-party source inventory; unloaded files count as zero; line coverage must remain at least 75% |
+| `npm run test:integration` | Six deterministic native Harness probes: bridge, messaging, ownership/input boundaries, cards, memory and login |
+| `npm run test:ui` | Actual Ink login interactions and dark/light rendering at four terminal widths |
+| `npm run test:package` | Build and unpack both npm tarballs; verify integrity, exported files, JS syntax, native lock dependency and absence of local state/build paths |
+
+Tests use exact upstream archives verified against package-lock integrity, not already-patched developer dependencies. Cached npm content is read without mutation; cache misses fetch the exact locked tarball. Runtime patches are applied only in per-test temporary directories. The unit runner checks that the developer runtime files remain unchanged. Integration, UI and package checks also use disposable checkouts with local overlays and secrets excluded.
+
+Coverage artifacts are `artifacts/local/coverage/summary.json` and `lcov.info`. The denominator contains first-party `.mjs` runtime, launcher, build and patch files; probe/check fixtures are excluded. Coverage printed by Node itself only measures loaded files and has a different denominator. Generated vendor modules are exercised by behavior and patch contracts, not included as first-party source.
+
+The GitHub Actions workflow runs the gate on macOS with Node 22.19 and 24. Adding the workflow is not evidence of a remote CI pass. Local Unix socket and native flock access are required. No remote inference is performed. Package checks do not replace the separately requested clean npm/Hub install, upgrade/rollback and public-release verification below.
+
+## Historical verification records
+
 # Verification — 2026-09-11
 
 ## Passed

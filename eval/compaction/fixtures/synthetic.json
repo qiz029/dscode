@@ -1,0 +1,1590 @@
+{
+  "version": 1,
+  "id": "synthetic-coding-state-v1",
+  "cases": [
+    {
+      "id": "login-correction",
+      "system": "You are a coding assistant. Follow the latest user corrections. Preserve outstanding work and distinguish local tests from release or publication.",
+      "stages": [
+        {
+          "id": "checkpoint-1",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Preserve the original requirements through the entire task, including after debugging unrelated problems. Current task state; this supersedes older values for these keys. <state>{\"endpoint\": \"/api/auth/login\", \"file\": \"src/auth/session.ts\", \"decision\": \"reuse the existing session store\", \"next\": \"add the expired-session regression test\", \"constraint\": \"do not change the public response schema\"}</state>"
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "endpoint",
+              "category": "recall",
+              "question": "Which exact endpoint originally failed?",
+              "accept": [
+                "/api/auth/login"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which source file was modified?",
+              "accept": [
+                "src/auth/session.ts"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What implementation approach was chosen?",
+              "accept": [
+                "reuse the existing session store"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the next unfinished action?",
+              "accept": [
+                "add the expired-session regression test"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What public API constraint must remain in force?",
+              "accept": [
+                "do not change the public response schema"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-2",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "endpoint",
+              "category": "recall",
+              "question": "Which exact endpoint originally failed?",
+              "accept": [
+                "/api/auth/login"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which source file was modified?",
+              "accept": [
+                "src/auth/session.ts"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What implementation approach was chosen?",
+              "accept": [
+                "reuse the existing session store"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the next unfinished action?",
+              "accept": [
+                "add the expired-session regression test"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What public API constraint must remain in force?",
+              "accept": [
+                "do not change the public response schema"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-3",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Current task state; this supersedes older values for these keys. <state>{\"next\": \"run the full auth suite\"}</state>"
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "endpoint",
+              "category": "recall",
+              "question": "Which exact endpoint originally failed?",
+              "accept": [
+                "/api/auth/login"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which source file was modified?",
+              "accept": [
+                "src/auth/session.ts"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What implementation approach was chosen?",
+              "accept": [
+                "reuse the existing session store"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the next unfinished action?",
+              "accept": [
+                "run the full auth suite"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What public API constraint must remain in force?",
+              "accept": [
+                "do not change the public response schema"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-4",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "endpoint",
+              "category": "recall",
+              "question": "Which exact endpoint originally failed?",
+              "accept": [
+                "/api/auth/login"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which source file was modified?",
+              "accept": [
+                "src/auth/session.ts"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What implementation approach was chosen?",
+              "accept": [
+                "reuse the existing session store"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the next unfinished action?",
+              "accept": [
+                "run the full auth suite"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What public API constraint must remain in force?",
+              "accept": [
+                "do not change the public response schema"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-5",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Current task state; this supersedes older values for these keys. <state>{\"constraint\": \"preserve the error code; the message may change\"}</state>"
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "endpoint",
+              "category": "recall",
+              "question": "Which exact endpoint originally failed?",
+              "accept": [
+                "/api/auth/login"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which source file was modified?",
+              "accept": [
+                "src/auth/session.ts"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What implementation approach was chosen?",
+              "accept": [
+                "reuse the existing session store"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the next unfinished action?",
+              "accept": [
+                "run the full auth suite"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What public API constraint must remain in force?",
+              "accept": [
+                "preserve the error code; the message may change"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "launcher-evidence",
+      "system": "You are a coding assistant. Follow the latest user corrections. Preserve outstanding work and distinguish local tests from release or publication.",
+      "stages": [
+        {
+          "id": "checkpoint-1",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Preserve the original requirements through the entire task, including after debugging unrelated problems. Current task state; this supersedes older values for these keys. <state>{\"error\": \"EADDRINUSE\", \"file\": \"packages/launcher/locks.mjs\", \"decision\": \"use kernel locks instead of PID-only ownership\", \"next\": \"test recovery after SIGKILL\", \"constraint\": \"do not kill other running sessions\"}</state>"
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "What exact original error code was observed?",
+              "accept": [
+                "EADDRINUSE"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which file contains the lock change?",
+              "accept": [
+                "packages/launcher/locks.mjs"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which lock design was selected?",
+              "accept": [
+                "use kernel locks instead of PID-only ownership"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "Which verification is still pending?",
+              "accept": [
+                "test recovery after SIGKILL"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "Which restriction applies to other sessions?",
+              "accept": [
+                "do not kill other running sessions"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-2",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "What exact original error code was observed?",
+              "accept": [
+                "EADDRINUSE"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which file contains the lock change?",
+              "accept": [
+                "packages/launcher/locks.mjs"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which lock design was selected?",
+              "accept": [
+                "use kernel locks instead of PID-only ownership"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "Which verification is still pending?",
+              "accept": [
+                "test recovery after SIGKILL"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "Which restriction applies to other sessions?",
+              "accept": [
+                "do not kill other running sessions"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-3",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Current task state; this supersedes older values for these keys. <state>{\"next\": \"verify clean successor startup\"}</state>"
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "What exact original error code was observed?",
+              "accept": [
+                "EADDRINUSE"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which file contains the lock change?",
+              "accept": [
+                "packages/launcher/locks.mjs"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which lock design was selected?",
+              "accept": [
+                "use kernel locks instead of PID-only ownership"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "Which verification is still pending?",
+              "accept": [
+                "verify clean successor startup"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "Which restriction applies to other sessions?",
+              "accept": [
+                "do not kill other running sessions"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-4",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "What exact original error code was observed?",
+              "accept": [
+                "EADDRINUSE"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which file contains the lock change?",
+              "accept": [
+                "packages/launcher/locks.mjs"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which lock design was selected?",
+              "accept": [
+                "use kernel locks instead of PID-only ownership"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "Which verification is still pending?",
+              "accept": [
+                "verify clean successor startup"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "Which restriction applies to other sessions?",
+              "accept": [
+                "do not kill other running sessions"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-5",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Current task state; this supersedes older values for these keys. <state>{\"next\": \"publish the local verification report\"}</state>"
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "What exact original error code was observed?",
+              "accept": [
+                "EADDRINUSE"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which file contains the lock change?",
+              "accept": [
+                "packages/launcher/locks.mjs"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which lock design was selected?",
+              "accept": [
+                "use kernel locks instead of PID-only ownership"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "Which verification is still pending?",
+              "accept": [
+                "publish the local verification report"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "Which restriction applies to other sessions?",
+              "accept": [
+                "do not kill other running sessions"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "release-boundary",
+      "system": "You are a coding assistant. Follow the latest user corrections. Preserve outstanding work and distinguish local tests from release or publication.",
+      "stages": [
+        {
+          "id": "checkpoint-1",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Preserve the original requirements through the entire task, including after debugging unrelated problems. Current task state; this supersedes older values for these keys. <state>{\"version\": \"0.2.0-beta\", \"file\": \"dist/manifest.json\", \"decision\": \"keep the release marked beta\", \"next\": \"verify the tarball in a fresh checkout\", \"constraint\": \"do not publish without approval\"}</state>"
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "version",
+              "category": "recall",
+              "question": "What is the exact release version?",
+              "accept": [
+                "0.2.0-beta"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Where was the package manifest written?",
+              "accept": [
+                "dist/manifest.json"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What release status was chosen?",
+              "accept": [
+                "keep the release marked beta"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What work remains to be done?",
+              "accept": [
+                "verify the tarball in a fresh checkout"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What publication restriction remains?",
+              "accept": [
+                "do not publish without approval"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-2",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "version",
+              "category": "recall",
+              "question": "What is the exact release version?",
+              "accept": [
+                "0.2.0-beta"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Where was the package manifest written?",
+              "accept": [
+                "dist/manifest.json"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What release status was chosen?",
+              "accept": [
+                "keep the release marked beta"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What work remains to be done?",
+              "accept": [
+                "verify the tarball in a fresh checkout"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What publication restriction remains?",
+              "accept": [
+                "do not publish without approval"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-3",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Current task state; this supersedes older values for these keys. <state>{\"next\": \"run a real provider-backed session\"}</state>"
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "version",
+              "category": "recall",
+              "question": "What is the exact release version?",
+              "accept": [
+                "0.2.0-beta"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Where was the package manifest written?",
+              "accept": [
+                "dist/manifest.json"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What release status was chosen?",
+              "accept": [
+                "keep the release marked beta"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What work remains to be done?",
+              "accept": [
+                "run a real provider-backed session"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What publication restriction remains?",
+              "accept": [
+                "do not publish without approval"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-4",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "version",
+              "category": "recall",
+              "question": "What is the exact release version?",
+              "accept": [
+                "0.2.0-beta"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Where was the package manifest written?",
+              "accept": [
+                "dist/manifest.json"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What release status was chosen?",
+              "accept": [
+                "keep the release marked beta"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What work remains to be done?",
+              "accept": [
+                "run a real provider-backed session"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What publication restriction remains?",
+              "accept": [
+                "do not publish without approval"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-5",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Current task state; this supersedes older values for these keys. <state>{\"next\": \"request approval with the finished release artifacts\"}</state>"
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "version",
+              "category": "recall",
+              "question": "What is the exact release version?",
+              "accept": [
+                "0.2.0-beta"
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Where was the package manifest written?",
+              "accept": [
+                "dist/manifest.json"
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What release status was chosen?",
+              "accept": [
+                "keep the release marked beta"
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What work remains to be done?",
+              "accept": [
+                "request approval with the finished release artifacts"
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What publication restriction remains?",
+              "accept": [
+                "do not publish without approval"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

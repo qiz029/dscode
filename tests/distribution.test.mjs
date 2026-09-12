@@ -15,15 +15,16 @@ test('launcher routes management separately, pins install version and preserves 
  assert.deepEqual(commandPlan(['rollback'],release,true).hub,['profile','rollback','--profile','dscode']);
  assert.equal(stateHome({DSCODE_HOME:'/tmp/custom'}),'/tmp/custom');
 });
-test('launcher excludes concurrent runs and recovers a dead process lock',()=>{
+test('management gate excludes concurrent mutations and tolerates stale legacy locks',async ()=>{
  const home=mkdtempSync(join(tmpdir(),'dscode-lock-'));
  try {
-  const unlock=acquireLock(home);
-  assert.throws(()=>acquireLock(home),/already running/);
+  const unlock=await acquireLock(home);
+  await assert.rejects(acquireLock(home,{waitMs:0}),/starting or changing versions/);
   unlock();
   writeFileSync(join(home,'.launcher.lock'),'2147483647');
-  acquireLock(home)();
-  assert(!existsSync(join(home,'.launcher.lock')));
+  (await acquireLock(home))();
+  writeFileSync(join(home,'.launcher.lock'),String(process.pid));
+  await assert.rejects(acquireLock(home),/older DSCODE launcher/);
  } finally {rmSync(home,{recursive:true,force:true});}
 });
 test('version mismatch warns once and still launches without confirmation',()=>{

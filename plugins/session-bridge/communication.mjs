@@ -9,8 +9,13 @@ const eligible = a => a?.session.header.agentPreset === 'dscode' || a?.session.h
 
 export class CommunicationService {
   constructor(ctx, home, bridge) {
-    this.ctx = ctx; this.home = home; this.bridge = bridge; this.store = new Mailbox(home);
-    this.states = new Map(); this.pending = new Set(); this.closed = false;
+    this.ctx = ctx;
+    this.home = home;
+    this.bridge = bridge;
+    this.store = new Mailbox(home);
+    this.states = new Map();
+    this.pending = new Set();
+    this.closed = false;
     this.disposers = [
       ctx.on('agent/session-start', ({ agent }) => this.start(agent)),
       ctx.on('agent/pre-step', (payload, next) => this.preStep(payload, next)),
@@ -46,12 +51,15 @@ export class CommunicationService {
   state(agent) {
     const state = this.states.get(agent.id);
     if (!state || state.agent !== agent) fail('target_unavailable', 'Session communication owner is not ready');
-    this.store.authenticate(state.auth); return state;
+    this.store.authenticate(state.auth);
+    return state;
   }
   async remove(agent) {
-    const state = this.states.get(agent.id); if (!state) return;
+    const state = this.states.get(agent.id);
+    if (!state || state.agent !== agent) return;
     if (agent.cancel === state.cancelWrapper) agent.cancel = state.originalCancel;
-    this.states.delete(agent.id); this.store.unregister(state.auth);
+    this.states.delete(agent.id);
+    this.store.unregister(state.auth);
   }
   observe(session, event) {
     const state = this.states.get(session.id); if (!state) return;
@@ -65,7 +73,8 @@ export class CommunicationService {
       this.background(this.confirm(state));
     }
     if (event.type === 'turn/end') {
-      state.cutoffs.delete(event.data.turn); state.batches.delete(event.data.turn);
+      state.cutoffs.delete(event.data.turn);
+      state.batches.delete(event.data.turn);
     }
   }
   native(row) {
@@ -106,13 +115,20 @@ export class CommunicationService {
     this.store.authenticate(state.auth);
     row = this.store.get(row.id);
     if (!['accepted', 'admitted'].includes(row.delivery)) return;
-    if (row.expires <= Date.now()) { this.store.expire(state.agent.id); return; }
+    if (row.expires <= Date.now()) {
+      this.store.expire(state.agent.id);
+      return;
+    }
     const agent = state.agent;
     const pending = [...agent.inbox.nextTurn, ...agent.inbox.nextStep].some(m => communicationId(m) === row.id);
     const consumed = agent.session.snapshotEvents().some(e => e.type === 'user/message' && communicationId(e.data) === row.id);
     // Claimed in this live driver: never requeue between claim and user/message append.
     const claimed = [...state.batches.values()].some(ids => ids.has(row.id));
-    if (consumed) { state.receipts.set(row.id, agent.session.seq); await this.confirm(state); return; }
+    if (consumed) {
+      state.receipts.set(row.id, agent.session.seq);
+      await this.confirm(state);
+      return;
+    }
     if (!pending && !claimed) {
       const message = this.native(row);
       if (row.mode === 'steer') agent.steer(message); else agent.followup(message);
@@ -165,7 +181,8 @@ export class CommunicationService {
     return { ...decision, messages: accepted };
   }
   async receive(agent, payload) {
-    const state = this.state(agent); await state.ready;
+    const state = this.state(agent);
+    await state.ready;
     this.store.authenticate(state.auth);
     // Reply routing is checked both here and by the shared admission transaction.
     let admission;
@@ -206,12 +223,14 @@ export class CommunicationService {
     return this.store.newTask(this.state(agent).auth).map(c => c.chainId);
   }
   async close() {
-    this.closed = true; this.disposers.forEach(d => d());
+    this.closed = true;
+    this.disposers.forEach(d => d());
     await Promise.allSettled([...this.pending]);
     for (const s of this.states.values()) {
       if (s.agent.cancel === s.cancelWrapper) s.agent.cancel = s.originalCancel;
       this.store.unregister(s.auth);
     }
-    this.states.clear(); this.store.close();
+    this.states.clear();
+    this.store.close();
   }
 }

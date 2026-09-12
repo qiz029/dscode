@@ -26,7 +26,7 @@ dscode rollback
 dscode doctor
 ```
 
-省略 update 版本时使用当前 launcher 推荐的确切版本，不隐式追踪 latest。升级 launcher 用 `npm install -g @toddzheng024/dscode@<版本>`。同时只允许一个 launcher 使用同一数据目录，以防运行中替换依赖。
+省略 update 版本时使用当前 launcher 推荐的确切版本，不隐式追踪 latest。升级 launcher 用 `npm install -g @toddzheng024/dscode@<版本>`。同一数据目录可同时启动多个 launcher/根 session。启动与版本管理通过短期内核锁串行准入，每个运行中的 Host 单独持有版本保护锁；install/update/rollback 必须等这些 Host 退出。启动器意外退出时，runtime 或 Hub 子进程继承锁描述符，避免仍在运行时失去保护。旧版启动器仍存活时，新版会提示先退出旧版。session 写排他继续由 Harness 原生锁负责。
 
 默认状态目录是 `~/.local/share/dscode-hub`，可用 `DSCODE_HOME` 覆盖；它与现有 tar 安装及本仓库 `.runtime` 分开。会话、凭据、审核和费用记录位于数据目录，不在 npm 包内。配置位于该目录 `.env` 与 `config/`，支持 `hooks.local.json`、`mcp.local.yml`、`harness.local.yml`。Profile 位于 `profiles/dscode`。Hub 管理升级和回退目录；会话不会随 profile 回退，但跨未来不兼容的会话格式版本仍需迁移。
 

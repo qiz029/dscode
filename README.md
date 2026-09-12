@@ -112,7 +112,11 @@ dscode
 
 npm 启动器会检查已安装 bundle 和 Harness 依赖的推荐版本组合。版本不匹配或无法核实时，只在启动时集中显示一次 warning，并继续运行，不要求确认，也不会自动降级或修改依赖。源码构建时的补丁匹配检查仍会在补丁无法安全应用时停止构建。
 
-第一次进入后，用 `/model` 配置模型和凭据，也可在启动前设置 `DEEPSEEK_API_KEY`。默认路由是 `deepseek-official/deepseek-flash`。Computer Use 的辅助功能和录屏权限需在 macOS 中单独授予。
+第一次进入后，输入 `/login`，在隐藏输入框中粘贴 DeepSeek API key，按 Enter 保存。密钥保存在本机 `~/.dscode/credentials.yaml`，当前会话立即可用，以后启动自动加载，不同项目和安装版本共用。输入不会进入聊天记录，也不会发送给 agent。按 Esc 取消。
+
+密钥文件以明文保存在本地，文件权限为 `0600`，新建目录权限为 `0700`。已设置的 `DEEPSEEK_API_KEY` 环境变量优先；若要改用 `/login`，先移除 shell 或启动器 `.env` 中的该变量并重启。旧版 profile 中保存的凭据仍可读取，直到你通过 `/login` 保存新的 key。
+
+用 `/model` 选择模型或配置其他提供方，用 `/effort` 调整推理强度。默认路由是 `deepseek-official/deepseek-flash`。Computer Use 的辅助功能和录屏权限需在 macOS 中单独授予。
 
 ```sh
 dscode --continue                     # 继续上次会话
@@ -149,7 +153,7 @@ npm start
 npm start -- --cwd /path/to/project
 ```
 
-首次使用同样通过 `/model` 配置。也可复制 `.env.example` 为 `.env`，仅在本机填写密钥。
+首次使用同样通过 `/login` 保存 DeepSeek API key。也可复制 `.env.example` 为 `.env`，仅在本机填写密钥；此方式会优先于 `/login` 保存的凭据。
 
 ### tar 包安装（现在可用）
 
@@ -169,7 +173,8 @@ dscode
 
 | 命令 | 作用 |
 |---|---|
-| `/model`、`/effort` | 选择模型、配置凭据、调整推理强度；Ultra 在 effort 菜单中 |
+| `/login` | 在隐藏输入框粘贴 DeepSeek API key，保存到 `~/.dscode/`，启动自动加载 |
+| `/model`、`/effort` | 选择模型、配置其他凭据、调整推理强度；Ultra 在 effort 菜单中 |
 | `/mode` | 选择 Agent Preset；新会话默认 `dscode` |
 | `/status`、`/doctor` | 会话状态与运行时诊断 |
 | `/memories` | 全局记忆状态、后台用量、开关与清理 |
@@ -207,7 +212,8 @@ Chrome 默认使用独立临时 profile，不接管日常浏览器登录态。�
 ## 🧩 开发与发布
 
 ```sh
-npm test                              # 单元与契约测试
+npm test                              # 单元与契约测试（隔离上游依赖）
+npm run check                         # 覆盖率、集成、TUI 与打包检查
 npm run doctor                        # 本地确定性 agent 集成检查
 npm run config                        # 查看组合后的配置（请勿分享含密钥的输出）
 
@@ -224,6 +230,10 @@ npm run dist                          # 构建备用 tar 安装包
 | Hub profile `dscode` | 固定 bundle/runtime 版本与完整性哈希 |
 
 Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第三方源码。DSH 依赖统一固定到 `0.1.5-rc.1`；TUI 基于 `dsh-code@1.0.6`，Chrome MCP 为 `1.9.0`，Computer Use 为 `0.3.2`。
+
+日常检查使用 `npm run check`；单独运行可用 `test:unit`、`test:integration`、`test:ui`、`test:package`、`test:coverage`、`test:eval`。覆盖率把未加载的项目源码计为零，并设置 75% 行覆盖率门槛。测试不会修改开发环境的 `node_modules`，集成和 UI 验证使用临时 checkout。首次准备原始上游测试包时，优先读取 npm 缓存，缓存缺失才下载锁文件指定的 tarball。
+
+上下文压缩评测入口是 `npm run eval:compaction`，默认离线运行；样本、策略、评分器、测试和报告均放在 [`eval/`](eval/README.md)。真实模型评测显式使用 `--backend deepseek`。
 
 完整流程见 **[npm + Hub 分发指南](docs/hub-distribution.md)**。先发布 bundle，再上线 Hub release，最后发布 launcher。`artifacts/npm/` 是完整分发产物；旧 `npm run release` 只保留基础配置导出，不能替代完整 bundle。
 

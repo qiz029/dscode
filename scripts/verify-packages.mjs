@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import { readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+
+const root = resolve(import.meta.dirname, '..');
+const home = mkdtempSync(join(tmpdir(), 'dscode-package-check-'));
+try {
+  for (const name of ['launcher', 'bundle']) {
+    const [pack] = JSON.parse(readFileSync(join(root, 'artifacts/npm', `${name}-pack.json`), 'utf8'));
+    const tarball = join(root, 'artifacts/npm', pack.filename);
+    assert.equal('sha512-' + createHash('sha512').update(readFileSync(tarball)).digest('base64'), pack.integrity);
+    const destination = join(home, name); mkdirSync(destination);
+    const unpack = spawnSync('tar', ['-xzf', tarball, '-C', destination, '--strip-components=1'], { encoding: 'utf8' });
+    assert.equal(unpack.status, 0, unpack.stderr);
+    const pkg = JSON.parse(readFileSync(join(destination, 'package.json'), 'utf8'));
+    const entries = name === 'launcher' ? ['cli.mjs', 'manager.mjs', 'locks.mjs', 'session-bridge/client.mjs'] : Object.values(pkg.exports).filter(path => path.endsWith('.mjs') || path.endsWith('.js'));
+    for (const entry of entries) {
+      assert(existsSync(join(destination, entry)), `Missing packaged entry: ${entry}`);
+      const check = spawnSync(process.execPath, ['--check', join(destination, entry)], { encoding: 'utf8' });
+      assert.equal(check.status, 0, check.stderr);
+    }
+    if (name === 'launcher') assert.equal(pkg.dependencies['@deepseek-ai/node-addon-system'], '0.1.2');
+    const walk = directory => readdirSync(directory, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? walk(join(directory, entry.name)) : [join(directory, entry.name)]);
+    for (const file of walk(destination)) {
+      assert(!/\/(?:\.env|credentials\.yaml|hooks\.local\.json)$/.test(file), `Local state leaked into tarball: ${file}`);
+      if (/\.(?:mjs|js|yml)$/.test(file)) assert(!readFileSync(file, 'utf8').includes(root), `Build path leaked into ${file}`);
+    }
+  }
+  console.log('Package checks passed: exact tarball integrity, exports, syntax, launcher lock dependency, and no local state/build paths.');
+} finally { rmSync(home, { recursive: true, force: true }); }

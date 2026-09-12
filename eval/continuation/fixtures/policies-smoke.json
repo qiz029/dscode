@@ -1,0 +1,4 @@
+[
+  { "id": "full", "compact": false },
+  { "id": "controlled-25", "compact": true, "thresholdRatio": 0.25, "retainRatio": 0.064 }
+]

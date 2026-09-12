@@ -6,7 +6,20 @@ import { join } from 'node:path';
 import { MemoryStore } from '../plugins/memory/store.mjs';
 import { rollout, extraction, consolidation, redact } from '../plugins/memory/content.mjs';
 import { runPipeline, defaults } from '../plugins/memory/pipeline.mjs';
-import { apply } from '../plugins/memory/index.mjs';
+import { apply, resolveConfig } from '../plugins/memory/index.mjs';
+
+test('memory rejects fractional counts before work starts, while allowing fractional idle hours', t => {
+  for (const key of ['maxPerRun', 'maxCandidates', 'maxInputChars', 'maxConsolidationChars', 'timeoutMs']) {
+    for (const value of [1.5, NaN, Infinity, '2', -1, Number.MAX_SAFE_INTEGER + 1]) {
+      assert.throws(() => resolveConfig({ [key]: value }), new RegExp(`Invalid memory ${key}`));
+    }
+  }
+  assert.equal(resolveConfig({ minIdleHours: 0.5 }).minIdleHours, 0.5);
+  const f = fixture(t);
+  assert.deepEqual(f.store.candidates(30, resolveConfig({ maxCandidates: 1 }).maxCandidates), []);
+  assert.equal(resolveConfig({ maxCandidates: 256 }).maxCandidates, 256);
+  assert.throws(() => resolveConfig({ maxCandidates: 257 }), /Invalid memory maxCandidates/);
+});
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'dscode-memory-'));

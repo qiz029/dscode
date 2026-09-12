@@ -17,11 +17,20 @@
     "doctor": "node scripts/harness.mjs doctor",
     "config": "node scripts/harness.mjs config",
     "release": "node scripts/release.mjs",
-    "test": "node --test tests/*.test.mjs",
+    "test": "npm run test:unit",
     "build:packages": "node scripts/build-packages.mjs",
     "release:hub": "node scripts/hub-release.mjs",
     "verify:hub": "node scripts/verify-hub.mjs",
-    "publish:hub": "node scripts/publish-hub.mjs"
+    "publish:hub": "node scripts/publish-hub.mjs",
+    "test:unit": "node scripts/checks.mjs unit",
+    "test:integration": "node scripts/checks.mjs integration",
+    "test:ui": "node scripts/checks.mjs ui",
+    "test:package": "node scripts/checks.mjs package",
+    "test:coverage": "node scripts/checks.mjs coverage",
+    "check": "npm run test:coverage && npm run test:integration && npm run test:ui && npm run test:package && npm run test:eval",
+    "test:eval": "node --test eval/compaction/tests/*.test.mjs eval/continuation/tests/*.test.mjs eval/deepswe/tests/*.test.mjs",
+    "eval:compaction": "node eval/compaction/runner.mjs",
+    "eval:continuation": "node eval/continuation/runner.mjs"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.5-rc.1",
@@ -73,7 +82,8 @@
     "@deepseek-ai/dsh-system-prompt": "0.1.5-rc.1",
     "@deepseek-ai/dsh-tools": "0.1.5-rc.1",
     "react": "18.3.1",
-    "@deepseek-ai/schemastery": "3.18.2"
+    "@deepseek-ai/schemastery": "3.18.2",
+    "@deepseek-ai/node-addon-system": "0.1.2"
   },
   "devDependencies": {
     "@dsh-plugin-hub/schemas": "0.2.0",

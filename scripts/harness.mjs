@@ -1,3 +1,4 @@
+import { composePlugins } from './composition.mjs';
 import { spawn } from 'node:child_process';
 import { validateHooks } from '../plugins/tui-tools/hooks.mjs';
 import { patchRuntime } from './patch-runtime.mjs';
@@ -34,9 +35,12 @@ export function provision(home = runtimeHome) {
     name: 'todd-dsh-tui-profile', private: true, type: 'module',
     dependencies: manifest.dependencies, dsh: manifest.dsh,
   }, null, 2) + '\n');
-  const reviewerPatch = `\n- insert:\n    - id: dscode-auto-review\n      name: ${JSON.stringify(join(root, 'plugins/auto-review/index.mjs'))}\n      config:\n        timeoutMs: 30000\n        maxOutputTokens: 768\n        maxReviewsPerTurn: 20\n`;
-  const controlsPatch = `\n- id: agent-presets\n  config:\n    default: dscode\n    roots:\n      - path: ${JSON.stringify(presets)}\n        trust: system\n- insert:\n    - id: dscode-session-metrics\n      name: ${JSON.stringify(join(root, 'plugins/session-metrics/index.mjs'))}\n    - id: dscode-session-cards\n      name: ${JSON.stringify(join(root, 'plugins/session-cards/index.mjs'))}\n    - id: dscode-session-bridge\n      name: ${JSON.stringify(join(root, 'plugins/session-bridge/index.mjs'))}\n    - id: dscode-memory\n      name: ${JSON.stringify(join(root, 'plugins/memory/index.mjs'))}\n    - id: dscode-tui-tools\n      name: ${JSON.stringify(join(root, 'plugins/tui-tools/index.mjs'))}\n    - id: dscode-hooks\n      name: '@deepseek-ai/dsh-hooks-codex'\n      config:\n        configPath: ${JSON.stringify(hooksPath)}\n        defaultTimeoutMs: 10000\n        stderrSummaryMaxChars: 500\n`;
-  writeFileSync(join(profile, 'cordis.patch.yml'), readFileSync(join(root, 'config/cordis.patch.yml'), 'utf8') + '\n' + readFileSync(join(root, 'config/auto-review.patch.yml'), 'utf8') + reviewerPatch + controlsPatch);
+  const plugins = composePlugins({ root, hooks: hooksPath, presets });
+  writeFileSync(join(profile, 'cordis.patch.yml'), [
+    readFileSync(join(root, 'config/cordis.patch.yml'), 'utf8'),
+    readFileSync(join(root, 'config/auto-review.patch.yml'), 'utf8'),
+    plugins,
+  ].join('\n'));
   return profile;
 }
 

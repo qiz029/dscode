@@ -1,14 +1,15 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { runShell } from '../plugins/tui-tools/shell.mjs';
 import { commandPlan } from '../packages/launcher/manager.mjs';
 import { patchInteraction } from '../scripts/patch-interaction.mjs';
-import { patchTui } from '../scripts/patch-tui.mjs';
+import { createTestRuntime } from '../scripts/test-runtime.mjs';
 
-patchTui(new URL('..', import.meta.url).pathname);
-const source = readFileSync(new URL('../node_modules/dsh-code/lib/index.mjs', import.meta.url), 'utf8');
+const fixture = createTestRuntime({ tui: true });
+after(fixture.close);
+const source = readFileSync(`${fixture.root}/node_modules/dsh-code/lib/index.mjs`, 'utf8');
 function extract(name) {
   const start = source.indexOf(`function ${name}(`);
   const end = source.indexOf('\n}', start) + 2;

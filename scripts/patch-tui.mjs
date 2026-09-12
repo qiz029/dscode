@@ -5,6 +5,7 @@ import { patchInteraction } from './patch-interaction.mjs';
 import { patchFooter } from './patch-footer.mjs';
 import { patchSessionBridge } from './patch-session-bridge.mjs';
 import { patchStyle } from './patch-style.mjs';
+import { patchLogin } from './patch-login.mjs';
 
 export function patchText(text) {
   const before = '\t\t\tif (text === "/clear") {\n\t\t\t\trefresh();\n\t\t\t\tclearView();\n\t\t\t\tdismissNotice();\n\t\t\t\treturn;\n\t\t\t}';
@@ -30,5 +31,6 @@ export function patchTui(root) {
   after = patchIme(after);
   after = patchFooter(after, root);
   after = patchStyle(after);
+  after = patchLogin(after);
   if (before !== after) writeFileSync(path, after);
 }

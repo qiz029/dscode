@@ -1,0 +1,4 @@
+[
+  { "id": "full", "compact": false },
+  { "id": "shipped-80", "compact": true, "thresholdRatio": 0.8, "retainRatio": 0.16 }
+]

@@ -1,4 +1,5 @@
-import test from 'node:test';
+import { createTestRuntime } from '../scripts/test-runtime.mjs';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { imePosition, imeWriter, patchIme } from '../scripts/patch-ime.mjs';
 import { readFileSync } from 'node:fs';
@@ -33,6 +34,8 @@ test('non-TTY output is untouched and patch rejects upstream drift', () => {
   const writer = imeWriter(stream, new WeakMap());
   writer.park(10); writer.dispose(); assert.equal(stream.write, original);
   assert.throws(() => patchIme('unknown'), /drift/);
-  const source = readFileSync(new URL('../node_modules/dsh-code/lib/index.mjs', import.meta.url), 'utf8');
+  const fixture = createTestRuntime({ tui: true });
+  after(fixture.close);
+  const source = readFileSync(`${fixture.root}/node_modules/dsh-code/lib/index.mjs`, 'utf8');
   assert.equal(patchIme(source), source);
 });

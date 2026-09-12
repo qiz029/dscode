@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "id": "coding-continuation-starter-v1",
+  "cases": [
+    {
+      "id": "retry-after",
+      "system": "You are a coding agent finishing a small JavaScript task. Inspect the files with tools, edit only the requested source file, run the visible tests, and finish with a short status. Earlier user requirements remain binding unless the latest user message corrects them.",
+      "history": "Implement parseRetryAfter(value, nowMs) in src/retry.mjs. Return a delay in milliseconds. A nonnegative integer Retry-After header is seconds; an HTTP-date header is measured relative to nowMs. Expired dates return 0; invalid or absent headers return null. Never return a negative delay. Do not change the exported function name or visible test file.",
+      "latest": "Correction: surrounding whitespace in a numeric header is allowed, and numeric zero must return 0 rather than null. Continue the implementation and verify it.",
+      "pressureRatio": 0.53,
+      "files": {
+        "src/retry.mjs": "export function parseRetryAfter(value, nowMs) {\n  // TODO: finish this parser.\n  return null;\n}\n",
+        "visible.mjs": "import assert from 'node:assert/strict';\nimport { parseRetryAfter } from './src/retry.mjs';\nassert.equal(parseRetryAfter('2', 0), 2000);\nassert.equal(parseRetryAfter('bad', 0), null);\nconsole.log('visible checks passed');\n"
+      },
+      "writable": ["src/retry.mjs"]
+    },
+    {
+      "id": "page-window",
+      "system": "You are a coding agent finishing a small JavaScript task. Inspect the files with tools, edit only the requested source file, run the visible tests, and finish with a short status. Earlier user requirements remain binding unless the latest user message corrects them.",
+      "history": "Implement pageWindow(total, offset, limit) in src/paging.mjs. Inputs are nonnegative integers. Return {start,end,nextOffset} for a half-open window. Clamp start to total and end to total. nextOffset is the end only if the window advanced and more items remain; otherwise it is null. Do not modify the visible test file.",
+      "latest": "Correction: limit 0 must produce an empty window and nextOffset null, even if more items remain. Finish and verify the implementation.",
+      "pressureRatio": 0.84,
+      "files": {
+        "src/paging.mjs": "export function pageWindow(total, offset, limit) {\n  // TODO: handle clamping and continuation.\n  return { start: offset, end: offset + limit, nextOffset: null };\n}\n",
+        "visible.mjs": "import assert from 'node:assert/strict';\nimport { pageWindow } from './src/paging.mjs';\nassert.deepEqual(pageWindow(10, 2, 3), { start: 2, end: 5, nextOffset: 5 });\nconsole.log('visible checks passed');\n"
+      },
+      "writable": ["src/paging.mjs"]
+    },
+    {
+      "id": "quota-reserve",
+      "system": "You are a coding agent finishing a small JavaScript task. Inspect the files with tools, edit only the requested source file, run the visible tests, and finish with a short status. Earlier user requirements remain binding unless the latest user message corrects them.",
+      "history": "Implement reserve(state, id, amount) in src/quota.mjs. state has a balance and reservations object. Return {ok,state}; never mutate the input state or its reservations. Reject nonpositive or noninteger amounts and insufficient balance with ok false and the original state object. On success decrement balance and add reservations[id]=amount. Repeating an already reserved id was originally specified as idempotent, returning ok true and the original state object.",
+      "latest": "Correction to idempotency: the same id with the same amount is still a successful no-op, but the same id with a different amount must fail without changing state. Finish and verify this latest rule.",
+      "pressureRatio": 0.86,
+      "files": {
+        "src/quota.mjs": "export function reserve(state, id, amount) {\n  // TODO: preserve input identity on no-op and failure.\n  return { ok: false, state };\n}\n",
+        "visible.mjs": "import assert from 'node:assert/strict';\nimport { reserve } from './src/quota.mjs';\nconst state = { balance: 9, reservations: {} };\nassert.deepEqual(reserve(state, 'job-1', 3), { ok: true, state: { balance: 6, reservations: { 'job-1': 3 } } });\nconsole.log('visible checks passed');\n"
+      },
+      "writable": ["src/quota.mjs"]
+    }
+  ]
+}

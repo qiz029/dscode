@@ -1,12 +1,16 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { patchDeepSeek, patchBash, patchPersistent, patchSubagent, patchRuntime } from '../scripts/patch-runtime.mjs';
-import { root } from '../scripts/harness.mjs';
+import { patchDeepSeek, patchBash, patchPersistent, patchSubagent } from '../scripts/patch-runtime.mjs';
+import { createTestRuntime } from '../scripts/test-runtime.mjs';
+import { pathToFileURL } from 'node:url';
+const fixture = createTestRuntime({ runtime: true });
+const root = fixture.root;
+after(fixture.close);
 import { apply } from '../plugins/dscode/index.mjs';
 
-patchRuntime(root);
-const { DeepSeekAdapter, resolveAdapterOptions } = await import('@deepseek-ai/dsh-llm-deepseek');
+
+const { DeepSeekAdapter, resolveAdapterOptions } = await import(pathToFileURL(`${root}/node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js`));
 test('ultra uses native max on the actual wire and adds policy only to agent calls', async () => {
   const original = globalThis.fetch;
   const payloads = [];

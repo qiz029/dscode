@@ -1,9 +1,12 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
-import { patchRuntime } from '../scripts/patch-runtime.mjs';
-import { root } from '../scripts/harness.mjs';
-patchRuntime(root);
-const { apply } = await import('@deepseek-ai/dsh-tool-subagent');
+import { createTestRuntime } from '../scripts/test-runtime.mjs';
+import { pathToFileURL } from 'node:url';
+const fixture = createTestRuntime({ runtime: true });
+const root = fixture.root;
+after(fixture.close);
+
+const { apply } = await import(pathToFileURL(`${root}/node_modules/@deepseek-ai/dsh-tool-subagent/lib/index.js`));
 
 for (const providerName of ['spawn', 'fork']) test(`${providerName}: effort-only schema, validation, inheritance and route isolation`, async () => {
   const registered = new Map(), starts = [], preflights = [];

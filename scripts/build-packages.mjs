@@ -1,3 +1,4 @@
+import { composePlugins } from './composition.mjs';
 import { cpSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -51,6 +52,7 @@ let preset = read('presets/dscode/agent.cordis.yml').replaceAll("'@deepseek-ai/d
 write(bundle, 'presets/dscode/agent.cordis.yml', preset);
 let patch = read('node_modules/@deepseek-ai/dsh-base/cordis.patch.yml') + '\n' + read('node_modules/@anionex/dsh-computer-use/cordis.patch.yml') + '\n' + read('node_modules/dsh-code/cordis.patch.yml').replaceAll("'dsh-code/startup'", `'${name}/startup'`).replaceAll("'dsh-code'", `'${name}/tui'`);
 patch += '\n' + read('config/cordis.patch.yml') + '\n' + read('config/auto-review.patch.yml');
+patch += '\n' + composePlugins({ bundle: name });
 patch += `
 - id: llm-deepseek
   disabled: true
@@ -59,36 +61,6 @@ patch += `
       name: '${name}/deepseek'
     - id: dscode-bootstrap
       name: '${name}/bootstrap'
-    - id: dscode-auto-review
-      name: '${name}/auto-review'
-      config:
-        timeoutMs: 30000
-        maxOutputTokens: 768
-        maxReviewsPerTurn: 20
-    - id: dscode-session-metrics
-      name: '${name}/session-metrics'
-    - id: dscode-memory
-      name: '${name}/memory'
-    - id: dscode-session-bridge
-      name: '${name}/session-bridge'
-    - id: dscode-session-cards
-      name: '${name}/session-cards'
-    - id: dscode-tui-tools
-      name: '${name}/tui-tools'
-    - id: dscode-hooks
-      name: '@deepseek-ai/dsh-hooks-codex'
-      inject: [dscodePaths]
-      config:
-        configPath: !!js ctx.dscodePaths.hooks
-        defaultTimeoutMs: 10000
-        stderrSummaryMaxChars: 500
-- id: agent-presets
-  inject: [dscodePaths]
-  config:
-    default: dscode
-    roots:
-      - path: !!js ctx.dscodePaths.presets
-        trust: system
 - id: mcp-chrome
   inject: [dscodePaths]
   config:
@@ -102,7 +74,7 @@ patch += `
     toolCallTimeoutMs: 60000
 `;
 write(bundle, 'cordis.patch.yml', patch);
-const exports = { './package.json':'./package.json', './cordis.patch.yml':'./cordis.patch.yml', './memory':'./plugins/memory/index.mjs', './session-bridge':'./plugins/session-bridge/index.mjs', './session-cards':'./plugins/session-cards/index.mjs' };
+const exports = { './package.json':'./package.json', './cordis.patch.yml':'./cordis.patch.yml', './credentials':'./plugins/credentials/index.mjs', './memory':'./plugins/memory/index.mjs', './session-bridge':'./plugins/session-bridge/index.mjs', './session-cards':'./plugins/session-cards/index.mjs' };
 for (const [key, file] of Object.entries({subagent:'vendor/subagent/index.js',bootstrap:'bootstrap.mjs',tui:'vendor/tui/index.mjs',startup:'vendor/tui/startup.mjs',deepseek:'vendor/deepseek/index.js',bash:'vendor/bash/index.js',persistent:'vendor/persistent/index.js',policy:'plugins/dscode/index.mjs','auto-review':'plugins/auto-review/index.mjs','session-metrics':'plugins/session-metrics/index.mjs','tui-tools':'plugins/tui-tools/index.mjs'})) exports['./'+key] = './'+file;
 const shared = { version, type:'module', license:'MIT', author:'Todd Zheng', engines:original.engines, publishConfig:{access:'public'}, repository: process.env.DSCODE_REPOSITORY ? {type:'git',url:process.env.DSCODE_REPOSITORY} : original.repository };
 write(bundle, 'package.json', { ...shared, name, description:'DSCODE coding harness: minimal persistent shell, Ultra subagents, auto review, Chrome, computer use and session telemetry.', files:['bootstrap.mjs','cordis.patch.yml','plugins','presets','bin','vendor','THIRD_PARTY_NOTICES.md'], exports, dependencies, dsh:{bundle:{patch:'./cordis.patch.yml'},hub:{schemaVersion:1,displayName:'DSCODE',summary:'A complete DeepSeek coding agent with persistent shell, Ultra collaboration and automatic permission review.',description:'macOS coding TUI with Chrome MCP, Computer Use, skills, compaction, goals, hooks and session telemetry. Requires the DSCODE profile and its pinned DSH runtime.',categories:['community'],keywords:['coding','tui','deepseek-harness'],compatibility:{dsh:'0.1.5-rc.1',node:original.engines.node,platforms:['darwin'],surfaces:['headless'],hmr:'restart'},entryIds:['dscode-bootstrap'],before:[],after:[],channel:'stable'}} });
@@ -114,7 +86,7 @@ copy('packages/launcher', launcher);
 mkdirSync(join(launcher, 'session-bridge'), { recursive: true });
 for (const file of ['client.mjs', 'paths.mjs']) copy('plugins/session-bridge/' + file, join(launcher, 'session-bridge', file));
 write(launcher, 'cli.mjs', read('packages/launcher/cli.mjs').replace('../../plugins/session-bridge/client.mjs', './session-bridge/client.mjs'));
-write(launcher, 'package.json', { ...shared, name:'@toddzheng024/dscode', description:'One-command launcher for the DSCODE Hub coding harness preset.', bin:{dscode:'./cli.mjs'}, files:['cli.mjs','manager.mjs','release.json','tools','session-bridge'], dependencies:{'@dsh-plugin-hub/cli':'0.2.0',pnpm:'10.15.1'}, });
+write(launcher, 'package.json', { ...shared, name:'@toddzheng024/dscode', description:'One-command launcher for the DSCODE Hub coding harness preset.', bin:{dscode:'./cli.mjs'}, files:['cli.mjs','manager.mjs','locks.mjs','release.json','tools','session-bridge'], dependencies:{'@dsh-plugin-hub/cli':'0.2.0','@deepseek-ai/node-addon-system':'0.1.2',pnpm:'10.15.1'}, });
 write(launcher, 'release.json', {slug:'dscode',version,runtime:'0.1.5-rc.1',bundle:name});
 for (const dir of [bundle,launcher]) {
   copy('packages/LICENSE', join(dir,'LICENSE'));

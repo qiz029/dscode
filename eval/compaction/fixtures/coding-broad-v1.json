@@ -1,0 +1,3880 @@
+{
+  "version": 2,
+  "id": "coding-recall-broad-v1",
+  "cases": [
+    {
+      "id": "login-correction",
+      "system": "You are a coding assistant. Follow the latest user corrections. Preserve outstanding work and distinguish local tests from release or publication.",
+      "stages": [
+        {
+          "id": "checkpoint-1",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Correction / current work update: The original failure was at /api/auth/login. We modified src/auth/session.ts. Our chosen approach is to reuse the existing session store. The next unfinished action is to add the expired-session regression test. The current user constraint is: do not change the public response schema. These statements supersede older values for the same facts; other requirements remain in force."
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "endpoint",
+              "category": "recall",
+              "question": "Which exact endpoint originally failed? Return only the exact value, preserving case.",
+              "accept": [
+                "/api/auth/login"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The original failure was at /api/auth/login."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which source file was modified? Return only the exact value, preserving case.",
+              "accept": [
+                "src/auth/session.ts"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "We modified src/auth/session.ts."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What implementation approach was chosen?",
+              "accept": [
+                "reuse the existing session store"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Our chosen approach is to reuse the existing session store."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Reuse the existing session store."
+                ],
+                "forbidden": [
+                  "Replace the existing store with a new store."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "add the expired-session regression test"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The next unfinished action is to add the expired-session regression test."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: add the expired-session regression test. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What public API constraint must remain in force?",
+              "accept": [
+                "do not change the public response schema"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The current user constraint is: do not change the public response schema."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Do not change the public response schema."
+                ],
+                "forbidden": [
+                  "Changing the public response schema is allowed."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-2",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "endpoint",
+              "category": "recall",
+              "question": "Which exact endpoint originally failed? Return only the exact value, preserving case.",
+              "accept": [
+                "/api/auth/login"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The original failure was at /api/auth/login."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which source file was modified? Return only the exact value, preserving case.",
+              "accept": [
+                "src/auth/session.ts"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "We modified src/auth/session.ts."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What implementation approach was chosen?",
+              "accept": [
+                "reuse the existing session store"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Our chosen approach is to reuse the existing session store."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Reuse the existing session store."
+                ],
+                "forbidden": [
+                  "Replace the existing store with a new store."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "add the expired-session regression test"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The next unfinished action is to add the expired-session regression test."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: add the expired-session regression test. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What public API constraint must remain in force?",
+              "accept": [
+                "do not change the public response schema"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The current user constraint is: do not change the public response schema."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Do not change the public response schema."
+                ],
+                "forbidden": [
+                  "Changing the public response schema is allowed."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-3",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Correction / current work update: The next unfinished action is to run the full auth suite. These statements supersede older values for the same facts; other requirements remain in force."
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "endpoint",
+              "category": "recall",
+              "question": "Which exact endpoint originally failed? Return only the exact value, preserving case.",
+              "accept": [
+                "/api/auth/login"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The original failure was at /api/auth/login."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which source file was modified? Return only the exact value, preserving case.",
+              "accept": [
+                "src/auth/session.ts"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "We modified src/auth/session.ts."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What implementation approach was chosen?",
+              "accept": [
+                "reuse the existing session store"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Our chosen approach is to reuse the existing session store."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Reuse the existing session store."
+                ],
+                "forbidden": [
+                  "Replace the existing store with a new store."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "run the full auth suite"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-3",
+                  "message": 0,
+                  "quote": "Correction / current work update: The next unfinished action is to run the full auth suite."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: run the full auth suite. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What public API constraint must remain in force?",
+              "accept": [
+                "do not change the public response schema"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The current user constraint is: do not change the public response schema."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Do not change the public response schema."
+                ],
+                "forbidden": [
+                  "Changing the public response schema is allowed."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-4",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "endpoint",
+              "category": "recall",
+              "question": "Which exact endpoint originally failed? Return only the exact value, preserving case.",
+              "accept": [
+                "/api/auth/login"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The original failure was at /api/auth/login."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which source file was modified? Return only the exact value, preserving case.",
+              "accept": [
+                "src/auth/session.ts"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "We modified src/auth/session.ts."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What implementation approach was chosen?",
+              "accept": [
+                "reuse the existing session store"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Our chosen approach is to reuse the existing session store."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Reuse the existing session store."
+                ],
+                "forbidden": [
+                  "Replace the existing store with a new store."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "run the full auth suite"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-3",
+                  "message": 0,
+                  "quote": "Correction / current work update: The next unfinished action is to run the full auth suite."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: run the full auth suite. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What public API constraint must remain in force?",
+              "accept": [
+                "do not change the public response schema"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The current user constraint is: do not change the public response schema."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Do not change the public response schema."
+                ],
+                "forbidden": [
+                  "Changing the public response schema is allowed."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-5",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Explicit replacement of the earlier API restriction: the previous rule freezing the entire public response schema is revoked. The new rule is to keep the existing error code unchanged; changing the human-readable message is allowed. Other task facts and outstanding work are unchanged."
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "endpoint",
+              "category": "recall",
+              "question": "Which exact endpoint originally failed? Return only the exact value, preserving case.",
+              "accept": [
+                "/api/auth/login"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The original failure was at /api/auth/login."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which source file was modified? Return only the exact value, preserving case.",
+              "accept": [
+                "src/auth/session.ts"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "We modified src/auth/session.ts."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What implementation approach was chosen?",
+              "accept": [
+                "reuse the existing session store"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Our chosen approach is to reuse the existing session store."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Reuse the existing session store."
+                ],
+                "forbidden": [
+                  "Replace the existing store with a new store."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "run the full auth suite"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-3",
+                  "message": 0,
+                  "quote": "Correction / current work update: The next unfinished action is to run the full auth suite."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: run the full auth suite. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "According to the latest explicit replacement of the API rule, what must remain unchanged and what may change? State both parts.",
+              "accept": [
+                "preserve the error code; the message may change"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-5",
+                  "message": 0,
+                  "quote": "The new rule is to keep the existing error code unchanged; changing the human-readable message is allowed."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Keep the existing error code unchanged.",
+                  "Changing the human-readable message is allowed."
+                ],
+                "forbidden": [
+                  "Changing the error code is allowed.",
+                  "The entire response schema or message is still frozen."
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "launcher-evidence",
+      "system": "You are a coding assistant. Follow the latest user corrections. Preserve outstanding work and distinguish local tests from release or publication.",
+      "stages": [
+        {
+          "id": "checkpoint-1",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Correction / current work update: The original error code was EADDRINUSE. The lock implementation changed in packages/launcher/locks.mjs. We decided to use kernel locks instead of PID-only ownership. The remaining verification is to test recovery after SIGKILL. The user explicitly instructed: do not kill other running sessions. These statements supersede older values for the same facts; other requirements remain in force."
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "What exact original error code was observed? Return only the exact value, preserving case.",
+              "accept": [
+                "EADDRINUSE"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The original error code was EADDRINUSE."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which file contains the lock change? Return only the exact value, preserving case.",
+              "accept": [
+                "packages/launcher/locks.mjs"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The lock implementation changed in packages/launcher/locks.mjs."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which lock design was selected?",
+              "accept": [
+                "use kernel locks instead of PID-only ownership"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "We decided to use kernel locks instead of PID-only ownership."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Use kernel/OS-backed locks for ownership. The concise phrase kernel locks suffices; restating the rejected PID-only alternative is not required."
+                ],
+                "forbidden": [
+                  "Use PID-only checks as the ownership mechanism."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "test recovery after SIGKILL"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The remaining verification is to test recovery after SIGKILL."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: test recovery after SIGKILL. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "Which restriction applies to other sessions?",
+              "accept": [
+                "do not kill other running sessions"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The user explicitly instructed: do not kill other running sessions."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Other running sessions must not be killed."
+                ],
+                "forbidden": [
+                  "Other running sessions may be killed."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-2",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "What exact original error code was observed? Return only the exact value, preserving case.",
+              "accept": [
+                "EADDRINUSE"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The original error code was EADDRINUSE."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which file contains the lock change? Return only the exact value, preserving case.",
+              "accept": [
+                "packages/launcher/locks.mjs"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The lock implementation changed in packages/launcher/locks.mjs."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which lock design was selected?",
+              "accept": [
+                "use kernel locks instead of PID-only ownership"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "We decided to use kernel locks instead of PID-only ownership."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Use kernel/OS-backed locks for ownership. The concise phrase kernel locks suffices; restating the rejected PID-only alternative is not required."
+                ],
+                "forbidden": [
+                  "Use PID-only checks as the ownership mechanism."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "test recovery after SIGKILL"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The remaining verification is to test recovery after SIGKILL."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: test recovery after SIGKILL. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "Which restriction applies to other sessions?",
+              "accept": [
+                "do not kill other running sessions"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The user explicitly instructed: do not kill other running sessions."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Other running sessions must not be killed."
+                ],
+                "forbidden": [
+                  "Other running sessions may be killed."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-3",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Correction / current work update: The remaining verification is to verify clean successor startup. These statements supersede older values for the same facts; other requirements remain in force."
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "What exact original error code was observed? Return only the exact value, preserving case.",
+              "accept": [
+                "EADDRINUSE"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The original error code was EADDRINUSE."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which file contains the lock change? Return only the exact value, preserving case.",
+              "accept": [
+                "packages/launcher/locks.mjs"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The lock implementation changed in packages/launcher/locks.mjs."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which lock design was selected?",
+              "accept": [
+                "use kernel locks instead of PID-only ownership"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "We decided to use kernel locks instead of PID-only ownership."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Use kernel/OS-backed locks for ownership. The concise phrase kernel locks suffices; restating the rejected PID-only alternative is not required."
+                ],
+                "forbidden": [
+                  "Use PID-only checks as the ownership mechanism."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "verify clean successor startup"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-3",
+                  "message": 0,
+                  "quote": "Correction / current work update: The remaining verification is to verify clean successor startup."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: verify clean successor startup. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "Which restriction applies to other sessions?",
+              "accept": [
+                "do not kill other running sessions"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The user explicitly instructed: do not kill other running sessions."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Other running sessions must not be killed."
+                ],
+                "forbidden": [
+                  "Other running sessions may be killed."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-4",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "What exact original error code was observed? Return only the exact value, preserving case.",
+              "accept": [
+                "EADDRINUSE"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The original error code was EADDRINUSE."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which file contains the lock change? Return only the exact value, preserving case.",
+              "accept": [
+                "packages/launcher/locks.mjs"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The lock implementation changed in packages/launcher/locks.mjs."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which lock design was selected?",
+              "accept": [
+                "use kernel locks instead of PID-only ownership"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "We decided to use kernel locks instead of PID-only ownership."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Use kernel/OS-backed locks for ownership. The concise phrase kernel locks suffices; restating the rejected PID-only alternative is not required."
+                ],
+                "forbidden": [
+                  "Use PID-only checks as the ownership mechanism."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "verify clean successor startup"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-3",
+                  "message": 0,
+                  "quote": "Correction / current work update: The remaining verification is to verify clean successor startup."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: verify clean successor startup. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "Which restriction applies to other sessions?",
+              "accept": [
+                "do not kill other running sessions"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The user explicitly instructed: do not kill other running sessions."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Other running sessions must not be killed."
+                ],
+                "forbidden": [
+                  "Other running sessions may be killed."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-5",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Correction / current work update: The remaining verification is to publish the local verification report. These statements supersede older values for the same facts; other requirements remain in force."
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "What exact original error code was observed? Return only the exact value, preserving case.",
+              "accept": [
+                "EADDRINUSE"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The original error code was EADDRINUSE."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Which file contains the lock change? Return only the exact value, preserving case.",
+              "accept": [
+                "packages/launcher/locks.mjs"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The lock implementation changed in packages/launcher/locks.mjs."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which lock design was selected?",
+              "accept": [
+                "use kernel locks instead of PID-only ownership"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "We decided to use kernel locks instead of PID-only ownership."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Use kernel/OS-backed locks for ownership. The concise phrase kernel locks suffices; restating the rejected PID-only alternative is not required."
+                ],
+                "forbidden": [
+                  "Use PID-only checks as the ownership mechanism."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "publish the local verification report"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-5",
+                  "message": 0,
+                  "quote": "Correction / current work update: The remaining verification is to publish the local verification report."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: publish the local verification report. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "Which restriction applies to other sessions?",
+              "accept": [
+                "do not kill other running sessions"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The user explicitly instructed: do not kill other running sessions."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Other running sessions must not be killed."
+                ],
+                "forbidden": [
+                  "Other running sessions may be killed."
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "release-boundary",
+      "system": "You are a coding assistant. Follow the latest user corrections. Preserve outstanding work and distinguish local tests from release or publication.",
+      "stages": [
+        {
+          "id": "checkpoint-1",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Correction / current work update: The exact release version is 0.2.0-beta. The package manifest was written to dist/manifest.json. The release decision is to keep the release marked beta. The outstanding work is to verify the tarball in a fresh checkout. The publication constraint is: do not publish without approval. These statements supersede older values for the same facts; other requirements remain in force."
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "version",
+              "category": "recall",
+              "question": "What is the exact release version? Return only the exact value, preserving case.",
+              "accept": [
+                "0.2.0-beta"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The exact release version is 0.2.0-beta."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Where was the package manifest written? Return only the exact value, preserving case.",
+              "accept": [
+                "dist/manifest.json"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The package manifest was written to dist/manifest.json."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What release status was chosen?",
+              "accept": [
+                "keep the release marked beta"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The release decision is to keep the release marked beta."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "The release is beta/prerelease, not stable. A one-word beta answer is sufficient."
+                ],
+                "forbidden": [
+                  "The release is stable or generally available."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "verify the tarball in a fresh checkout"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The outstanding work is to verify the tarball in a fresh checkout."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: verify the tarball in a fresh checkout. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What publication restriction remains?",
+              "accept": [
+                "do not publish without approval"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The publication constraint is: do not publish without approval."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Publication requires prior user approval."
+                ],
+                "forbidden": [
+                  "Publishing before approval is allowed."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-2",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "version",
+              "category": "recall",
+              "question": "What is the exact release version? Return only the exact value, preserving case.",
+              "accept": [
+                "0.2.0-beta"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The exact release version is 0.2.0-beta."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Where was the package manifest written? Return only the exact value, preserving case.",
+              "accept": [
+                "dist/manifest.json"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The package manifest was written to dist/manifest.json."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What release status was chosen?",
+              "accept": [
+                "keep the release marked beta"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The release decision is to keep the release marked beta."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "The release is beta/prerelease, not stable. A one-word beta answer is sufficient."
+                ],
+                "forbidden": [
+                  "The release is stable or generally available."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "verify the tarball in a fresh checkout"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The outstanding work is to verify the tarball in a fresh checkout."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: verify the tarball in a fresh checkout. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What publication restriction remains?",
+              "accept": [
+                "do not publish without approval"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The publication constraint is: do not publish without approval."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Publication requires prior user approval."
+                ],
+                "forbidden": [
+                  "Publishing before approval is allowed."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-3",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Correction / current work update: The outstanding work is to run a real provider-backed session. These statements supersede older values for the same facts; other requirements remain in force."
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "version",
+              "category": "recall",
+              "question": "What is the exact release version? Return only the exact value, preserving case.",
+              "accept": [
+                "0.2.0-beta"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The exact release version is 0.2.0-beta."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Where was the package manifest written? Return only the exact value, preserving case.",
+              "accept": [
+                "dist/manifest.json"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The package manifest was written to dist/manifest.json."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What release status was chosen?",
+              "accept": [
+                "keep the release marked beta"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The release decision is to keep the release marked beta."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "The release is beta/prerelease, not stable. A one-word beta answer is sufficient."
+                ],
+                "forbidden": [
+                  "The release is stable or generally available."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "run a real provider-backed session"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-3",
+                  "message": 0,
+                  "quote": "Correction / current work update: The outstanding work is to run a real provider-backed session."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: run a real provider-backed session. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What publication restriction remains?",
+              "accept": [
+                "do not publish without approval"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The publication constraint is: do not publish without approval."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Publication requires prior user approval."
+                ],
+                "forbidden": [
+                  "Publishing before approval is allowed."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-4",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "version",
+              "category": "recall",
+              "question": "What is the exact release version? Return only the exact value, preserving case.",
+              "accept": [
+                "0.2.0-beta"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The exact release version is 0.2.0-beta."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Where was the package manifest written? Return only the exact value, preserving case.",
+              "accept": [
+                "dist/manifest.json"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The package manifest was written to dist/manifest.json."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What release status was chosen?",
+              "accept": [
+                "keep the release marked beta"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The release decision is to keep the release marked beta."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "The release is beta/prerelease, not stable. A one-word beta answer is sufficient."
+                ],
+                "forbidden": [
+                  "The release is stable or generally available."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "run a real provider-backed session"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-3",
+                  "message": 0,
+                  "quote": "Correction / current work update: The outstanding work is to run a real provider-backed session."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: run a real provider-backed session. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What publication restriction remains?",
+              "accept": [
+                "do not publish without approval"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The publication constraint is: do not publish without approval."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Publication requires prior user approval."
+                ],
+                "forbidden": [
+                  "Publishing before approval is allowed."
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-5",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Correction / current work update: The outstanding work is to request approval with the finished release artifacts. These statements supersede older values for the same facts; other requirements remain in force."
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "assistant",
+              "text": "Reviewed an unrelated generated module; no edits needed. Retrieve it again if needed.\n",
+              "repeat": 12
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "Inspection completed. No new decision or verification result."
+            }
+          ],
+          "probes": [
+            {
+              "id": "version",
+              "category": "recall",
+              "question": "What is the exact release version? Return only the exact value, preserving case.",
+              "accept": [
+                "0.2.0-beta"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Correction / current work update: The exact release version is 0.2.0-beta."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "Where was the package manifest written? Return only the exact value, preserving case.",
+              "accept": [
+                "dist/manifest.json"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The package manifest was written to dist/manifest.json."
+                }
+              ],
+              "grading": {
+                "kind": "exact"
+              }
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "What release status was chosen?",
+              "accept": [
+                "keep the release marked beta"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The release decision is to keep the release marked beta."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "The release is beta/prerelease, not stable. A one-word beta answer is sufficient."
+                ],
+                "forbidden": [
+                  "The release is stable or generally available."
+                ]
+              }
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest remaining action, after applying all work updates so far? Give the action and its target; do not list earlier completed or superseded work.",
+              "accept": [
+                "request approval with the finished release artifacts"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-5",
+                  "message": 0,
+                  "quote": "Correction / current work update: The outstanding work is to request approval with the finished release artifacts."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Identify this still-pending action: request approval with the finished release artifacts. Equivalent noun phrases are acceptable; no imperative verb is required."
+                ],
+                "forbidden": [
+                  "Claim the pending action is already completed, or replace it with a different/superseded task."
+                ]
+              }
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What publication restriction remains?",
+              "accept": [
+                "do not publish without approval"
+              ],
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The publication constraint is: do not publish without approval."
+                }
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Publication requires prior user approval."
+                ],
+                "forbidden": [
+                  "Publishing before approval is allowed."
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "incident-tool-pruning",
+      "system": "You are a coding assistant. Follow the latest explicit corrections and distinguish pending work from completed work.",
+      "stages": [
+        {
+          "id": "checkpoint-1",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Incident INC-4281. Recovery decision: promote the healthy standby before restarting read replicas. The next unfinished action is to compare WAL offsets. Keep the production snapshot until verification is complete. The exact rollback manifest filename appears only in the restore inventory tool output."
+            },
+            {
+              "role": "assistant",
+              "text": "Inspected another archival segment; checksum and line count are routine. No recovery decision or verification result changed.\n",
+              "repeat": 38
+            },
+            {
+              "role": "tool",
+              "name": "restore_inventory",
+              "text": "[pre 000] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 001] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 002] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 003] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 004] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 005] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 006] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 007] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 008] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 009] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 010] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 011] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 012] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 013] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 014] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 015] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 016] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 017] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 018] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 019] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 020] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 021] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 022] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 023] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 024] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 025] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 026] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 027] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 028] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 029] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 030] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 031] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 032] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 033] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 034] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 035] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 036] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 037] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 038] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 039] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 040] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 041] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 042] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 043] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 044] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 045] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 046] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 047] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 048] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 049] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 050] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 051] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 052] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 053] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 054] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 055] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 056] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 057] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 058] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 059] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 060] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 061] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 062] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 063] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 064] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 065] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 066] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 067] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 068] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 069] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 070] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 071] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 072] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 073] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 074] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 075] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 076] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 077] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 078] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 079] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 080] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 081] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 082] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 083] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 084] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 085] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 086] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 087] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 088] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 089] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 090] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 091] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 092] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 093] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 094] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 095] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 096] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 097] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 098] Archive segment checksum verified; no policy decision or action update in this line.\n[pre 099] Archive segment checksum verified; no policy decision or action update in this line.\nRestore inventory entry: filename rollback-manifest-4827.json.\n[post 000] Archive segment checksum verified; no policy decision or action update in this line.\n[post 001] Archive segment checksum verified; no policy decision or action update in this line.\n[post 002] Archive segment checksum verified; no policy decision or action update in this line.\n[post 003] Archive segment checksum verified; no policy decision or action update in this line.\n[post 004] Archive segment checksum verified; no policy decision or action update in this line.\n[post 005] Archive segment checksum verified; no policy decision or action update in this line.\n[post 006] Archive segment checksum verified; no policy decision or action update in this line.\n[post 007] Archive segment checksum verified; no policy decision or action update in this line.\n[post 008] Archive segment checksum verified; no policy decision or action update in this line.\n[post 009] Archive segment checksum verified; no policy decision or action update in this line.\n[post 010] Archive segment checksum verified; no policy decision or action update in this line.\n[post 011] Archive segment checksum verified; no policy decision or action update in this line.\n[post 012] Archive segment checksum verified; no policy decision or action update in this line.\n[post 013] Archive segment checksum verified; no policy decision or action update in this line.\n[post 014] Archive segment checksum verified; no policy decision or action update in this line.\n[post 015] Archive segment checksum verified; no policy decision or action update in this line.\n[post 016] Archive segment checksum verified; no policy decision or action update in this line.\n[post 017] Archive segment checksum verified; no policy decision or action update in this line.\n[post 018] Archive segment checksum verified; no policy decision or action update in this line.\n[post 019] Archive segment checksum verified; no policy decision or action update in this line.\n[post 020] Archive segment checksum verified; no policy decision or action update in this line.\n[post 021] Archive segment checksum verified; no policy decision or action update in this line.\n[post 022] Archive segment checksum verified; no policy decision or action update in this line.\n[post 023] Archive segment checksum verified; no policy decision or action update in this line.\n[post 024] Archive segment checksum verified; no policy decision or action update in this line.\n[post 025] Archive segment checksum verified; no policy decision or action update in this line.\n[post 026] Archive segment checksum verified; no policy decision or action update in this line.\n[post 027] Archive segment checksum verified; no policy decision or action update in this line.\n[post 028] Archive segment checksum verified; no policy decision or action update in this line.\n[post 029] Archive segment checksum verified; no policy decision or action update in this line.\n[post 030] Archive segment checksum verified; no policy decision or action update in this line.\n[post 031] Archive segment checksum verified; no policy decision or action update in this line.\n[post 032] Archive segment checksum verified; no policy decision or action update in this line.\n[post 033] Archive segment checksum verified; no policy decision or action update in this line.\n[post 034] Archive segment checksum verified; no policy decision or action update in this line.\n[post 035] Archive segment checksum verified; no policy decision or action update in this line.\n[post 036] Archive segment checksum verified; no policy decision or action update in this line.\n[post 037] Archive segment checksum verified; no policy decision or action update in this line.\n[post 038] Archive segment checksum verified; no policy decision or action update in this line.\n[post 039] Archive segment checksum verified; no policy decision or action update in this line.\n[post 040] Archive segment checksum verified; no policy decision or action update in this line.\n[post 041] Archive segment checksum verified; no policy decision or action update in this line.\n[post 042] Archive segment checksum verified; no policy decision or action update in this line.\n[post 043] Archive segment checksum verified; no policy decision or action update in this line.\n[post 044] Archive segment checksum verified; no policy decision or action update in this line.\n[post 045] Archive segment checksum verified; no policy decision or action update in this line.\n[post 046] Archive segment checksum verified; no policy decision or action update in this line.\n[post 047] Archive segment checksum verified; no policy decision or action update in this line.\n[post 048] Archive segment checksum verified; no policy decision or action update in this line.\n[post 049] Archive segment checksum verified; no policy decision or action update in this line.\n[post 050] Archive segment checksum verified; no policy decision or action update in this line.\n[post 051] Archive segment checksum verified; no policy decision or action update in this line.\n[post 052] Archive segment checksum verified; no policy decision or action update in this line.\n[post 053] Archive segment checksum verified; no policy decision or action update in this line.\n[post 054] Archive segment checksum verified; no policy decision or action update in this line.\n[post 055] Archive segment checksum verified; no policy decision or action update in this line.\n[post 056] Archive segment checksum verified; no policy decision or action update in this line.\n[post 057] Archive segment checksum verified; no policy decision or action update in this line.\n[post 058] Archive segment checksum verified; no policy decision or action update in this line.\n[post 059] Archive segment checksum verified; no policy decision or action update in this line.\n[post 060] Archive segment checksum verified; no policy decision or action update in this line.\n[post 061] Archive segment checksum verified; no policy decision or action update in this line.\n[post 062] Archive segment checksum verified; no policy decision or action update in this line.\n[post 063] Archive segment checksum verified; no policy decision or action update in this line.\n[post 064] Archive segment checksum verified; no policy decision or action update in this line.\n[post 065] Archive segment checksum verified; no policy decision or action update in this line.\n[post 066] Archive segment checksum verified; no policy decision or action update in this line.\n[post 067] Archive segment checksum verified; no policy decision or action update in this line.\n[post 068] Archive segment checksum verified; no policy decision or action update in this line.\n[post 069] Archive segment checksum verified; no policy decision or action update in this line.\n[post 070] Archive segment checksum verified; no policy decision or action update in this line.\n[post 071] Archive segment checksum verified; no policy decision or action update in this line.\n[post 072] Archive segment checksum verified; no policy decision or action update in this line.\n[post 073] Archive segment checksum verified; no policy decision or action update in this line.\n[post 074] Archive segment checksum verified; no policy decision or action update in this line.\n[post 075] Archive segment checksum verified; no policy decision or action update in this line.\n[post 076] Archive segment checksum verified; no policy decision or action update in this line.\n[post 077] Archive segment checksum verified; no policy decision or action update in this line.\n[post 078] Archive segment checksum verified; no policy decision or action update in this line.\n[post 079] Archive segment checksum verified; no policy decision or action update in this line.\n[post 080] Archive segment checksum verified; no policy decision or action update in this line.\n[post 081] Archive segment checksum verified; no policy decision or action update in this line.\n[post 082] Archive segment checksum verified; no policy decision or action update in this line.\n[post 083] Archive segment checksum verified; no policy decision or action update in this line.\n[post 084] Archive segment checksum verified; no policy decision or action update in this line.\n[post 085] Archive segment checksum verified; no policy decision or action update in this line.\n[post 086] Archive segment checksum verified; no policy decision or action update in this line.\n[post 087] Archive segment checksum verified; no policy decision or action update in this line.\n[post 088] Archive segment checksum verified; no policy decision or action update in this line.\n[post 089] Archive segment checksum verified; no policy decision or action update in this line.\n[post 090] Archive segment checksum verified; no policy decision or action update in this line.\n[post 091] Archive segment checksum verified; no policy decision or action update in this line.\n[post 092] Archive segment checksum verified; no policy decision or action update in this line.\n[post 093] Archive segment checksum verified; no policy decision or action update in this line.\n[post 094] Archive segment checksum verified; no policy decision or action update in this line.\n[post 095] Archive segment checksum verified; no policy decision or action update in this line.\n[post 096] Archive segment checksum verified; no policy decision or action update in this line.\n[post 097] Archive segment checksum verified; no policy decision or action update in this line.\n[post 098] Archive segment checksum verified; no policy decision or action update in this line.\n[post 099] Archive segment checksum verified; no policy decision or action update in this line.\n"
+            }
+          ],
+          "probes": [
+            {
+              "id": "incident",
+              "category": "recall",
+              "question": "What is the exact incident ID? Return only the ID.",
+              "accept": [
+                "INC-4281"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Incident INC-4281."
+                }
+              ]
+            },
+            {
+              "id": "manifest",
+              "category": "artifact",
+              "question": "What is the exact rollback manifest filename in the restore inventory? Return only the filename.",
+              "accept": [
+                "rollback-manifest-4827.json"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 2,
+                  "quote": "Restore inventory entry: filename rollback-manifest-4827.json."
+                }
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which recovery order was chosen?",
+              "accept": [
+                "promote the healthy standby before restarting read replicas"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Promote the healthy standby first, then restart read replicas."
+                ],
+                "forbidden": [
+                  "Restart read replicas before promoting the standby."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Recovery decision: promote the healthy standby before restarting read replicas."
+                }
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest unfinished action? Give its target.",
+              "accept": [
+                "compare WAL offsets"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Compare WAL offsets is still pending."
+                ],
+                "forbidden": [
+                  "Claim it is complete or substitute an earlier task."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The next unfinished action is to compare WAL offsets."
+                }
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "When may the production snapshot be discarded?",
+              "accept": [
+                "retain the production snapshot until verification is complete"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Keep the production snapshot until verification is complete."
+                ],
+                "forbidden": [
+                  "Delete the snapshot before verification completes."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Keep the production snapshot until verification is complete."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-2",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Inspected another archival segment; checksum and line count are routine. No recovery decision or verification result changed.\n",
+              "repeat": 38
+            },
+            {
+              "role": "tool",
+              "name": "status",
+              "text": "Archival scan complete; no new decision."
+            }
+          ],
+          "probes": [
+            {
+              "id": "incident",
+              "category": "recall",
+              "question": "What is the exact incident ID? Return only the ID.",
+              "accept": [
+                "INC-4281"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Incident INC-4281."
+                }
+              ]
+            },
+            {
+              "id": "manifest",
+              "category": "artifact",
+              "question": "What is the exact rollback manifest filename in the restore inventory? Return only the filename.",
+              "accept": [
+                "rollback-manifest-4827.json"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 2,
+                  "quote": "Restore inventory entry: filename rollback-manifest-4827.json."
+                }
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which recovery order was chosen?",
+              "accept": [
+                "promote the healthy standby before restarting read replicas"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Promote the healthy standby first, then restart read replicas."
+                ],
+                "forbidden": [
+                  "Restart read replicas before promoting the standby."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Recovery decision: promote the healthy standby before restarting read replicas."
+                }
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest unfinished action? Give its target.",
+              "accept": [
+                "compare WAL offsets"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Compare WAL offsets is still pending."
+                ],
+                "forbidden": [
+                  "Claim it is complete or substitute an earlier task."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "The next unfinished action is to compare WAL offsets."
+                }
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "When may the production snapshot be discarded?",
+              "accept": [
+                "retain the production snapshot until verification is complete"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Keep the production snapshot until verification is complete."
+                ],
+                "forbidden": [
+                  "Delete the snapshot before verification completes."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Keep the production snapshot until verification is complete."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-3",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Update: WAL offsets have been compared and that task is complete. The next unfinished action is to run the rollback drill."
+            },
+            {
+              "role": "assistant",
+              "text": "Inspected another archival segment; checksum and line count are routine. No recovery decision or verification result changed.\n",
+              "repeat": 38
+            }
+          ],
+          "probes": [
+            {
+              "id": "incident",
+              "category": "recall",
+              "question": "What is the exact incident ID? Return only the ID.",
+              "accept": [
+                "INC-4281"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Incident INC-4281."
+                }
+              ]
+            },
+            {
+              "id": "manifest",
+              "category": "artifact",
+              "question": "What is the exact rollback manifest filename in the restore inventory? Return only the filename.",
+              "accept": [
+                "rollback-manifest-4827.json"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 2,
+                  "quote": "Restore inventory entry: filename rollback-manifest-4827.json."
+                }
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which recovery order was chosen?",
+              "accept": [
+                "promote the healthy standby before restarting read replicas"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Promote the healthy standby first, then restart read replicas."
+                ],
+                "forbidden": [
+                  "Restart read replicas before promoting the standby."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Recovery decision: promote the healthy standby before restarting read replicas."
+                }
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest unfinished action? Give its target.",
+              "accept": [
+                "run the rollback drill"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Run the rollback drill is still pending."
+                ],
+                "forbidden": [
+                  "Claim it is complete or substitute an earlier task."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-3",
+                  "message": 0,
+                  "quote": "The next unfinished action is to run the rollback drill."
+                }
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "When may the production snapshot be discarded?",
+              "accept": [
+                "retain the production snapshot until verification is complete"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Keep the production snapshot until verification is complete."
+                ],
+                "forbidden": [
+                  "Delete the snapshot before verification completes."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Keep the production snapshot until verification is complete."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-4",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Inspected another archival segment; checksum and line count are routine. No recovery decision or verification result changed.\n",
+              "repeat": 38
+            },
+            {
+              "role": "tool",
+              "name": "status",
+              "text": "Inspection only; no state update."
+            }
+          ],
+          "probes": [
+            {
+              "id": "incident",
+              "category": "recall",
+              "question": "What is the exact incident ID? Return only the ID.",
+              "accept": [
+                "INC-4281"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Incident INC-4281."
+                }
+              ]
+            },
+            {
+              "id": "manifest",
+              "category": "artifact",
+              "question": "What is the exact rollback manifest filename in the restore inventory? Return only the filename.",
+              "accept": [
+                "rollback-manifest-4827.json"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 2,
+                  "quote": "Restore inventory entry: filename rollback-manifest-4827.json."
+                }
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which recovery order was chosen?",
+              "accept": [
+                "promote the healthy standby before restarting read replicas"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Promote the healthy standby first, then restart read replicas."
+                ],
+                "forbidden": [
+                  "Restart read replicas before promoting the standby."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Recovery decision: promote the healthy standby before restarting read replicas."
+                }
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest unfinished action? Give its target.",
+              "accept": [
+                "run the rollback drill"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Run the rollback drill is still pending."
+                ],
+                "forbidden": [
+                  "Claim it is complete or substitute an earlier task."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-3",
+                  "message": 0,
+                  "quote": "The next unfinished action is to run the rollback drill."
+                }
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "When may the production snapshot be discarded?",
+              "accept": [
+                "retain the production snapshot until verification is complete"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Keep the production snapshot until verification is complete."
+                ],
+                "forbidden": [
+                  "Delete the snapshot before verification completes."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Keep the production snapshot until verification is complete."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-5",
+          "messages": [
+            {
+              "role": "user",
+              "text": "Update: the rollback drill is complete. The next unfinished action is to write the incident handoff note. The old snapshot rule is replaced: keep the production snapshot until the handoff is signed off; deletion is allowed after signoff, never before."
+            },
+            {
+              "role": "assistant",
+              "text": "Inspected another archival segment; checksum and line count are routine. No recovery decision or verification result changed.\n",
+              "repeat": 38
+            }
+          ],
+          "probes": [
+            {
+              "id": "incident",
+              "category": "recall",
+              "question": "What is the exact incident ID? Return only the ID.",
+              "accept": [
+                "INC-4281"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Incident INC-4281."
+                }
+              ]
+            },
+            {
+              "id": "manifest",
+              "category": "artifact",
+              "question": "What is the exact rollback manifest filename in the restore inventory? Return only the filename.",
+              "accept": [
+                "rollback-manifest-4827.json"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 2,
+                  "quote": "Restore inventory entry: filename rollback-manifest-4827.json."
+                }
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "Which recovery order was chosen?",
+              "accept": [
+                "promote the healthy standby before restarting read replicas"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Promote the healthy standby first, then restart read replicas."
+                ],
+                "forbidden": [
+                  "Restart read replicas before promoting the standby."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "Recovery decision: promote the healthy standby before restarting read replicas."
+                }
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "What is the latest unfinished action? Give its target.",
+              "accept": [
+                "write the incident handoff note"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Write the incident handoff note is still pending."
+                ],
+                "forbidden": [
+                  "Claim it is complete or substitute an earlier task."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-5",
+                  "message": 0,
+                  "quote": "The next unfinished action is to write the incident handoff note."
+                }
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "What is the latest snapshot retention rule, including when deletion becomes allowed?",
+              "accept": [
+                "retain the production snapshot until handoff signoff; deletion is allowed after signoff"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "Keep the production snapshot until handoff signoff.",
+                  "Deletion is allowed after signoff."
+                ],
+                "forbidden": [
+                  "Delete before handoff signoff.",
+                  "The old until-verification rule remains the latest restriction."
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-5",
+                  "message": 0,
+                  "quote": "The old snapshot rule is replaced: keep the production snapshot until the handoff is signed off; deletion is allowed after signoff, never before."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chinese-quota-corrections",
+      "system": "你是编码助手。遵守用户的最新纠正，区分已完成的工作和当前待办。",
+      "stages": [
+        {
+          "id": "checkpoint-1",
+          "messages": [
+            {
+              "role": "user",
+              "text": "原始错误码是 QTA-017。改动文件是 src/billing/quota.ts。当前决定是将配额缓存 TTL 设为 30 秒，不能设为 5 分钟。下一步尚未完成：补并发扣减测试。用户限制：不得读取生产租户数据。"
+            },
+            {
+              "role": "assistant",
+              "text": "Routine generated-file and test-log review; no change to quota decisions, user constraints, or pending tasks. This line records formatting only.\n",
+              "repeat": 70
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "无关生成文件检查完成；没有新的业务信息。"
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "原始错误码是什么？只返回准确值。",
+              "accept": [
+                "QTA-017"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "原始错误码是 QTA-017。"
+                }
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "改动的是哪个文件？只返回准确路径。",
+              "accept": [
+                "src/billing/quota.ts"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "改动文件是 src/billing/quota.ts。"
+                }
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "最新的配额缓存 TTL 决定是多少？",
+              "accept": [
+                "30 秒"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "当前 TTL 是 30 秒。"
+                ],
+                "forbidden": [
+                  "当前 TTL 是 5 分钟。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "当前决定是将配额缓存 TTL 设为 30 秒，不能设为 5 分钟。"
+                }
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "最新尚未完成的任务是什么？",
+              "accept": [
+                "补并发扣减测试"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "补并发扣减测试仍待完成。"
+                ],
+                "forbidden": [
+                  "把任务说成已经完成，或返回已被替代的旧任务。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "下一步尚未完成：补并发扣减测试。"
+                }
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "生产租户数据有什么限制？",
+              "accept": [
+                "不得读取生产租户数据"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "不得读取生产租户数据。"
+                ],
+                "forbidden": [
+                  "允许读取生产租户数据。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "用户限制：不得读取生产租户数据。"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-2",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Routine generated-file and test-log review; no change to quota decisions, user constraints, or pending tasks. This line records formatting only.\n",
+              "repeat": 70
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "日志检查完成；没有新的业务信息。"
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "原始错误码是什么？只返回准确值。",
+              "accept": [
+                "QTA-017"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "原始错误码是 QTA-017。"
+                }
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "改动的是哪个文件？只返回准确路径。",
+              "accept": [
+                "src/billing/quota.ts"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "改动文件是 src/billing/quota.ts。"
+                }
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "最新的配额缓存 TTL 决定是多少？",
+              "accept": [
+                "30 秒"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "当前 TTL 是 30 秒。"
+                ],
+                "forbidden": [
+                  "当前 TTL 是 5 分钟。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "当前决定是将配额缓存 TTL 设为 30 秒，不能设为 5 分钟。"
+                }
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "最新尚未完成的任务是什么？",
+              "accept": [
+                "补并发扣减测试"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "补并发扣减测试仍待完成。"
+                ],
+                "forbidden": [
+                  "把任务说成已经完成，或返回已被替代的旧任务。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "下一步尚未完成：补并发扣减测试。"
+                }
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "生产租户数据有什么限制？",
+              "accept": [
+                "不得读取生产租户数据"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "不得读取生产租户数据。"
+                ],
+                "forbidden": [
+                  "允许读取生产租户数据。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "用户限制：不得读取生产租户数据。"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-3",
+          "messages": [
+            {
+              "role": "user",
+              "text": "进度更新：并发扣减测试已经完成。下一步尚未完成：运行余额回滚测试。其他决定和限制仍然有效。"
+            },
+            {
+              "role": "assistant",
+              "text": "Routine generated-file and test-log review; no change to quota decisions, user constraints, or pending tasks. This line records formatting only.\n",
+              "repeat": 70
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "原始错误码是什么？只返回准确值。",
+              "accept": [
+                "QTA-017"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "原始错误码是 QTA-017。"
+                }
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "改动的是哪个文件？只返回准确路径。",
+              "accept": [
+                "src/billing/quota.ts"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "改动文件是 src/billing/quota.ts。"
+                }
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "最新的配额缓存 TTL 决定是多少？",
+              "accept": [
+                "30 秒"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "当前 TTL 是 30 秒。"
+                ],
+                "forbidden": [
+                  "当前 TTL 是 5 分钟。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "当前决定是将配额缓存 TTL 设为 30 秒，不能设为 5 分钟。"
+                }
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "最新尚未完成的任务是什么？",
+              "accept": [
+                "运行余额回滚测试"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "运行余额回滚测试仍待完成。"
+                ],
+                "forbidden": [
+                  "把任务说成已经完成，或返回已被替代的旧任务。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-3",
+                  "message": 0,
+                  "quote": "下一步尚未完成：运行余额回滚测试。"
+                }
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "生产租户数据有什么限制？",
+              "accept": [
+                "不得读取生产租户数据"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "不得读取生产租户数据。"
+                ],
+                "forbidden": [
+                  "允许读取生产租户数据。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "用户限制：不得读取生产租户数据。"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-4",
+          "messages": [
+            {
+              "role": "assistant",
+              "text": "Routine generated-file and test-log review; no change to quota decisions, user constraints, or pending tasks. This line records formatting only.\n",
+              "repeat": 70
+            },
+            {
+              "role": "tool",
+              "name": "read_file",
+              "text": "配置文件格式正确；没有修改。"
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "原始错误码是什么？只返回准确值。",
+              "accept": [
+                "QTA-017"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "原始错误码是 QTA-017。"
+                }
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "改动的是哪个文件？只返回准确路径。",
+              "accept": [
+                "src/billing/quota.ts"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "改动文件是 src/billing/quota.ts。"
+                }
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "最新的配额缓存 TTL 决定是多少？",
+              "accept": [
+                "30 秒"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "当前 TTL 是 30 秒。"
+                ],
+                "forbidden": [
+                  "当前 TTL 是 5 分钟。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "当前决定是将配额缓存 TTL 设为 30 秒，不能设为 5 分钟。"
+                }
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "最新尚未完成的任务是什么？",
+              "accept": [
+                "运行余额回滚测试"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "运行余额回滚测试仍待完成。"
+                ],
+                "forbidden": [
+                  "把任务说成已经完成，或返回已被替代的旧任务。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-3",
+                  "message": 0,
+                  "quote": "下一步尚未完成：运行余额回滚测试。"
+                }
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "生产租户数据有什么限制？",
+              "accept": [
+                "不得读取生产租户数据"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "不得读取生产租户数据。"
+                ],
+                "forbidden": [
+                  "允许读取生产租户数据。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "用户限制：不得读取生产租户数据。"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "checkpoint-5",
+          "messages": [
+            {
+              "role": "user",
+              "text": "最新纠正：原先 30 秒 TTL 的决定作废，改为 45 秒；5 分钟仍不采用。余额回滚测试已完成。下一步尚未完成：整理回滚测试报告。生产租户数据限制仍然有效。"
+            },
+            {
+              "role": "assistant",
+              "text": "Routine generated-file and test-log review; no change to quota decisions, user constraints, or pending tasks. This line records formatting only.\n",
+              "repeat": 70
+            }
+          ],
+          "probes": [
+            {
+              "id": "error",
+              "category": "recall",
+              "question": "原始错误码是什么？只返回准确值。",
+              "accept": [
+                "QTA-017"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "原始错误码是 QTA-017。"
+                }
+              ]
+            },
+            {
+              "id": "file",
+              "category": "artifact",
+              "question": "改动的是哪个文件？只返回准确路径。",
+              "accept": [
+                "src/billing/quota.ts"
+              ],
+              "grading": {
+                "kind": "exact"
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "改动文件是 src/billing/quota.ts。"
+                }
+              ]
+            },
+            {
+              "id": "decision",
+              "category": "decision",
+              "question": "最新的配额缓存 TTL 决定是多少？",
+              "accept": [
+                "45 秒"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "当前 TTL 是 45 秒。"
+                ],
+                "forbidden": [
+                  "仍使用已撤销的 30 秒或 5 分钟。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-5",
+                  "message": 0,
+                  "quote": "原先 30 秒 TTL 的决定作废，改为 45 秒；5 分钟仍不采用。"
+                }
+              ]
+            },
+            {
+              "id": "next",
+              "category": "continuation",
+              "question": "最新尚未完成的任务是什么？",
+              "accept": [
+                "整理回滚测试报告"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "整理回滚测试报告仍待完成。"
+                ],
+                "forbidden": [
+                  "把任务说成已经完成，或返回已被替代的旧任务。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-5",
+                  "message": 0,
+                  "quote": "下一步尚未完成：整理回滚测试报告。"
+                }
+              ]
+            },
+            {
+              "id": "constraint",
+              "category": "constraint",
+              "question": "生产租户数据有什么限制？",
+              "accept": [
+                "不得读取生产租户数据"
+              ],
+              "grading": {
+                "kind": "semantic",
+                "required": [
+                  "不得读取生产租户数据。"
+                ],
+                "forbidden": [
+                  "允许读取生产租户数据。"
+                ]
+              },
+              "evidence": [
+                {
+                  "stage": "checkpoint-1",
+                  "message": 0,
+                  "quote": "用户限制：不得读取生产租户数据。"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
