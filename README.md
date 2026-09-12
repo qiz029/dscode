@@ -1,6 +1,6 @@
 # 🐋 DSCODE
 
-**在终端里，用 DeepSeek 完成从读代码到验证修改的整个过程。**
+**在终端里写代码，让脚本接入当前会话，让 agent 之间交接任务。**
 
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111827?logo=apple)
 ![Node.js](https://img.shields.io/badge/Node.js-22.19%2B%20%7C%2024%2B-43853D?logo=node.js&logoColor=white)
@@ -8,30 +8,84 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![npm](https://img.shields.io/npm/v/@toddzheng024/dscode)](https://www.npmjs.com/package/@toddzheng024/dscode)
 
-DSCODE 是基于 DeepSeek Harness 的 coding agent preset：以极简模式的持久 Shell 为核心，配上 TUI、自动权限审核、子 agent、Chrome MCP、Computer Use、skills 和上下文压缩。
+DSCODE 是基于 DeepSeek Harness 的终端编码 agent。持久 Shell 负责读写代码和执行测试；TUI、CLI 与脚本共用同一个会话运行时。0.2.0 加入 session 间通信、描述性名片和跨会话记忆，让已有的上下文和工作经验能够接着用。
 
-[安装](#-安装) · [常用命令](#-常用命令) · [权限与配置](#-权限与配置) · [开发与发布](#-开发与发布)
+[0.2.0 亮点](#-020-亮点) · [安装](#-安装) · [常用命令](#-常用命令) · [权限与配置](#-权限与配置) · [开发与发布](#-开发与发布)
 
-## ✨ 能做什么
+## ✨ 0.2.0 亮点
+
+### 一个 session，接入终端、脚本和外部工具
+
+在 TUI 中开始任务后，可以从另一个终端补充要求、读取输出或订阅进展。不同来源的输入进入同一个运行时，共用上下文；读取和订阅不需要取得 session 写锁。
+
+```sh
+# TUI 保持打开，在另一个终端执行
+# 先找到当前 session，再用实际 ID 替换下面的 SESSION_ID
+dscode sessions
+dscode send SESSION_ID --steer "补充：保持现有 API 兼容"
+dscode watch SESSION_ID
+```
+
+外部消息进入会话后，TUI 会显示内容和来源。`watch` 订阅会话事件，不是逐 token 文本流。[多来源接入 →](docs/session-bridge.md)
+
+### 把任务交给另一个 session，也可以只留一条便签
+
+Agent 内置 `list_sessions`、`read_session`、`send_session` 和 `reply_session`，能查找目标会话、读取上下文、请求协作并返回结果。发送方式由任务决定：
+
+| 投递方式 | 适合什么场景 | 行为 |
+|---|---|---|
+| `queue` | 交给对方下一轮处理 | 空闲时唤醒；忙碌时排队 |
+| `steer` | 给当前任务补充信息 | 空闲时唤醒；忙碌时在下一个安全步骤加入 |
+| `defer` | 留一条下次再看的便签 | 不唤醒，等下一轮自然开始时领取 |
+
+持久化邮箱、重试去重、关联回复和有限通信预算，约束消息丢失、重复处理及互相唤醒的循环。当前通信面向同一状态目录中已加载的根 session；离线会话需要先恢复。[Session 通信 →](docs/session-communication.md)
+
+### 看名片，就知道该找哪个会话
+
+每个 session 提供**项目、工作区、最近 5 个用户请求 topic**。查找协作对象时，可以先按仓库、worktree 和近期话题定位。名片描述用户让它做过什么，不放任务结论或 agent 推测的完成状态。
+
+项目从本地 Git 信息识别，topic 在达到输入阈值后后台更新，并保留原始用户消息引用。[会话名片 →](docs/session-cards.md)
+
+### 换一个会话，仍能找到过去的经验
+
+全局 memory 在后台从历史会话提取、整理可复用经验。新会话获得精简记忆，需要细节时再检索对应条目、工作区和来源消息；项目约定、用户修正和操作经验都有可追溯的出处。
+
+同一状态目录默认共享记忆，支持按 session 或全局关闭。Memory 和 topic 提取会产生额外模型用量，分别提供用量记录；它们不会占用前台 agent 的执行轮次。[记忆与开关 →](docs/memory.md)
+
+### 推理强度按任务分配，执行过程看得清
+
+Ultra 使用 DeepSeek 原生 `max` 推理，并引导 agent 按任务需要决定调查、委派和验证的范围。父 agent 可以给每个子 agent 单独选择 effort：例如让边界清楚的测试任务用 `low`，复杂排查用 `high`，同时保留自己的 Ultra 设置。[持久 Shell 与 Ultra →](docs/dscode-ultra.md)
+
+TUI 默认聚焦用户与 agent 的输出，隐藏 thinking 和工具调用历史；输入区上方显示当前工具、描述和本轮耗时。子 agent 概览区分 running / idle / done，`/agents` 可查看任务与当前活动。支持 `!` Shell、Shift+Enter 换行、中文输入光标定位，以及 `dscode resume` 接续会话。
+
+界面示意：
+
+```text
+  DSCODE · my-project / main
+  会话消息投递
+
+  已完成队列投递，正在验证中断后的恢复行为。
+
+  ⠋ 正在执行 · shell · 验证会话恢复 · 本轮 24s
+  agents 1 running · 1 idle · /agents
+
+  › 接下来把取消行为也检查一下
+
+  deepseek-flash · ultra                         auto
+                              ctx 43% · ~$0.0030
+```
+
+底栏展示上下文占用、session 费用估算与缓存命中率，窄窗口自动精简。费用包含已记录的子 agent、压缩和 auto 审核调用；后台 memory 与 topic 提取另行统计。[统计口径 →](docs/session-metrics.md)
+
+### 编码所需的基础能力也已配好
 
 | 能力 | 说明 |
 |---|---|
-| 🛠️ 编码 | 持久 Bash 保留 cwd 和环境；通过 Shell 读写文件、搜索、应用补丁与运行测试 |
-| 🧠 Ultra | DeepSeek `max` 推理 + 有明确收益的子 agent 协作；支持父子消息与任务控制 |
-| 🛡️ Auto 权限 | 普通操作按本地策略执行；需要升级权限的适用请求交给独立模型审核 |
-| 🌐 浏览器与桌面 | Chrome DevTools MCP 与 macOS 原生 Computer Use，按需使用 |
-| 📚 长任务 | 项目指令、skills、plan、goal、hooks、自动压缩和会话恢复 |
-| 🗂️ 全局记忆 | 后台提取和整理跨会话经验，短摘要自动注入、详细来源按需检索；[使用与配置](docs/memory.md) |
-| 🔌 多来源会话 | TUI、CLI 和脚本连接同一个运行时，支持 queue/steer、快照读取和事件订阅；[使用方式](docs/session-bridge.md) |
-| ✉️ Session 通信 | agent 内置发送/回复工具，queue / steer / defer，持久化邮箱与防循环预算；[使用方式](docs/session-communication.md) |
-| 🪪 会话名片 | 项目、工作区、最近 5 个用户请求 topic；后台低 effort 提取，不包含结论；[使用与配置](docs/session-cards.md) |
-| 📊 会话统计 | 右下角显示上下文占用、session 美元估算、输入 token 缓存命中率 |
-
-```text
-                              ctx 43% · ~$0.0030 · cache 90.0%
-```
-
-费用包含已记录的子 agent、压缩和 auto 审核调用；统计本身不额外请求模型。[统计口径 →](docs/session-metrics.md)
+| 持久 Shell | 同一 agent 的 Bash 保留 cwd、环境和后台任务，支持读写文件、搜索、应用补丁与测试 |
+| Auto 权限 | 普通操作按本地策略执行；适用的审批请求交给独立模型审核，支持切换人工审批 |
+| 浏览器与桌面 | Chrome DevTools MCP 与 macOS 原生 Computer Use，按需使用 |
+| 长任务 | 项目指令、skills、plan、goal、hooks、上下文压缩与会话恢复 |
+| 安装与升级 | npm 一条命令安装；固定推荐 Harness 组合，版本偏离只提示 warning；支持 profile 升级与回退 |
 
 ## 🚀 安装
 
@@ -39,7 +93,7 @@ DSCODE 是基于 DeepSeek Harness 的 coding agent preset：以极简模式的�
 
 ### npm + Plugin Hub
 
-> **v0.2.0。** [npm 启动器](https://www.npmjs.com/package/@toddzheng024/dscode) · [Hub preset](https://dshpluginhub.ai/profiles/dscode) · [GitHub Releases](https://github.com/qiz029/dscode/releases)
+> **v0.2.0 已发布。** [npm 启动器](https://www.npmjs.com/package/@toddzheng024/dscode) · [Hub preset](https://dshpluginhub.ai/profiles/dscode) · [GitHub Releases](https://github.com/qiz029/dscode/releases)
 
 ```sh
 npm install -g @toddzheng024/dscode
@@ -118,20 +172,21 @@ dscode
 | `/model`、`/effort` | 选择模型、配置凭据、调整推理强度；Ultra 在 effort 菜单中 |
 | `/mode` | 选择 Agent Preset；新会话默认 `dscode` |
 | `/status`、`/doctor` | 会话状态与运行时诊断 |
-| `/memories` | 全局记忆状态、后台用量、开关与清理（源码版） |
-| `/session` | 当前 session ID 与外部发送、读取、订阅入口（源码版） |
+| `/memories` | 全局记忆状态、后台用量、开关与清理 |
+| `/session` | 当前 session ID、名片与外部接入入口 |
 | `/permission auto`、`/permission ask` | 切换自动审核或人工审批 |
 | `/review-usage` | 查看自动审核的额外 token 与耗时 |
 | `/shell`、`/shell reset` | 检查或重置持久终端 |
 | `/mcp`、`/skills`、`/hooks` | 管理 MCP、检查 skill 来源、查看或重载 hooks |
 | `/plan`、`/goal` | 计划与持续任务 |
-| `/agents` | 查看子 agent |
+| `/agents` | 查看子 agent 的任务、状态与当前活动 |
+| `/mailbox` | 查看 session 消息和 deferred 便签 |
 | `/compact` | 压缩历史上下文 |
 | `/diff`、`/review` | 查看和审查代码修改 |
 | `/clear` | 开始新的空上下文会话，旧会话仍可恢复 |
 | `/resume`、`/fork` | 恢复或分叉会话 |
 
-`Ctrl+L` 只清屏，`Esc` 中断当前操作。完整命令以 TUI `/help` 为准。[命令与 hooks 说明 →](docs/tui-commands.md)
+`Shift+Enter` 换行，`!命令` 运行本地 Shell 命令，`Ctrl+L` 只清屏，`Esc` 中断当前操作。退出后用 `dscode resume [SESSION_ID]` 恢复会话。完整命令以 TUI `/help` 为准。[命令与 hooks 说明 →](docs/tui-commands.md)
 
 ## 🔧 权限与配置
 
