@@ -26,6 +26,14 @@ try {
     else {
       assert.match(readFileSync(join(destination, 'vendor/terminal/index.js'), 'utf8'), /dscode-no-history-expansion-v1/);
       assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /dscode-bundle\/terminal/);
+      assert.equal(pkg.exports['./code-review'], './plugins/code-review/index.mjs');
+      assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/code-review'/);
+      assert.match(readFileSync(join(destination, 'vendor/tui/index.mjs'), 'utf8'), /dscode-review-command-v1/);
+      assert.match(readFileSync(join(destination, 'vendor/subagent/index.js'), 'utf8'), /dscode-child-worktree-v3/);
+      assert.match(readFileSync(join(destination, 'vendor/subagent-core/index.js'), 'utf8'), /workspaceCwd/);
+      assert.match(readFileSync(join(destination, 'vendor/subagent-driver/index.js'), 'utf8'), /request\.workspaceCwd/);
+      assert.match(readFileSync(join(destination, 'cordis.patch.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/subagent-core'/);
+      assert(existsSync(join(destination, 'plugins/worktree-subagent/worktree.mjs')));
       assert(existsSync(join(destination, 'plugins/session-metrics/rate.mjs')));
       assert(existsSync(join(destination, 'plugins/tui-tools/doctor.mjs')));
       assert(existsSync(join(destination, 'plugins/tui-tools/doctor-cli.mjs')));

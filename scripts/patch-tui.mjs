@@ -10,6 +10,14 @@ import { patchViewport } from './patch-viewport.mjs';
 import { patchWelcome } from './patch-welcome.mjs';
 import { patchEffort } from './patch-effort.mjs';
 import { patchEmail } from './patch-email.mjs';
+import { patchInterrupt } from './patch-interrupt.mjs';
+import { patchScroll } from './patch-scroll.mjs';
+import { patchTurnDivider } from './patch-turn-divider.mjs';
+import { patchUserBackground } from './patch-user-background.mjs';
+import { patchLargePaste } from './patch-large-paste.mjs';
+import { patchImageMarker } from './patch-image-marker.mjs';
+import { patchClipboardImage } from './patch-clipboard-image.mjs';
+import { patchReview } from './patch-review.mjs';
 
 export function patchText(text) {
   const before = '\t\t\tif (text === "/clear") {\n\t\t\t\trefresh();\n\t\t\t\tclearView();\n\t\t\t\tdismissNotice();\n\t\t\t\treturn;\n\t\t\t}';
@@ -40,6 +48,14 @@ export function patchTui(root) {
   after = patchWelcome(after, JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version);
   after = patchEffort(after);
   after = patchEmail(after);
+  after = patchInterrupt(after);
+  after = patchScroll(after);
+  after = patchTurnDivider(after);
+  after = patchUserBackground(after);
+  after = patchLargePaste(after);
+  after = patchImageMarker(after);
+  after = patchClipboardImage(after, root);
+  after = patchReview(after);
   cpSync(new URL('../plugins/email/', import.meta.url), join(dir, 'lib/dscode-email'), { recursive: true });
   if (before !== after) writeFileSync(path, after);
 }

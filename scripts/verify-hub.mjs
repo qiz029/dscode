@@ -82,9 +82,10 @@ try {
   const installedRuntime=join(profile,'node_modules/@deepseek-ai/dsh/lib/bin.js');
   const result=await exec(installedRuntime,['--profile','dscode','--patch',overlay],{DSH_TUI_PROBE_REPORT:join(home,'probe.json')});
   assert(result.includes('HARNESS_PROBE_PASSED'),result);
-  console.log('PASS installed bundle agent loop, shell, auto review, subagents, compaction and telemetry');
-  // The shell probe above deliberately exercises a non-repository workspace.
-  // Only the card probes below require a project identity.
+  assert.match(read(join(home,'probe.json')).dscode.childWorktree, /spawn foreground and fork background cwd/);
+  console.log('PASS installed bundle agent loop, shell, subagent worktrees, auto review, compaction and telemetry');
+  // The child worktree probe creates its own clean Git repository. The card
+  // probes below use the install home for their separate project identity.
   const project=spawnSync('git',['init','--quiet',home],{encoding:'utf8'});
   if(project.status!==0) throw Error(project.stderr);
   const basePatch = '- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- id: mcp-chrome\n  disabled: true\n';

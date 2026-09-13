@@ -19,10 +19,14 @@ Restart `dscode` to load these commands. Most commands run locally; `/doctor` ma
 | `/skills conflicts` | Duplicate names in the configured filesystem roots, with the runtime's effective source. Hidden candidates from runtime/remote providers are not enumerable. |
 | `/hooks` | Hook configuration location and supported events. |
 | `/hooks reload|enable|disable` | Reload installation-owned hook configuration, or switch hooks for this process while all agents are idle. |
+| `/review [--staged\|--base REF\|--commit REF] [--path RELATIVE_PATH]` | Independently review the selected Git diff in a read-only, tool-free model request. Default includes tracked and untracked uncommitted changes; empty scopes do not call the model. Narrow large or unrelated diffs with `--path`. |
 | `/clear` | Start a fresh session and clear the screen after successful activation; the previous session remains available through `/resume`. Stop a running turn first. |
 | Ctrl+L | Clear the screen only, keeping the conversation context. |
+| Ctrl+C | While an agent runs, cancel it immediately; a second press exits the TUI without waiting for the busy display to settle. With an idle draft, the first press clears it and the second exits. |
 
 Command results use the standard collapsible TUI result presentation.
+
+The agent also has a `review` tool backed by the same service. Its prompt asks for one review after code changes and relevant checks, before the final response; a material fix can be reviewed again. It skips read-only turns, and unchanged diff+task+model requests reuse the previous report. The reviewer sees the latest direct user task and at most 160 KiB of selected diff, with common secret formats redacted; it cannot inspect surrounding files, run tests or edit code. Treat a timeout, oversized diff, or missing model route as an incomplete review, never as a clean result. `/review` requires an idle agent turn.
 
 `dscode doctor` runs the same diagnostic collector and model analysis without opening the TUI. It checks the current working directory's recent sessions, including subagents, and reads the owner-only `diagnostics/runtime.jsonl` warning/error journal under `DSH_HOME`. `--local` skips the model; `--preview` shows the exact evidence payload. A model call is limited to 45 seconds; missing credentials or model failure leave a local trace summary. These commands diagnose existing evidence and do not execute tools or repair state. `npm run doctor` remains the separate deterministic integration fixture.
 
@@ -69,10 +73,14 @@ The launcher applies an idempotent, version-checked patch to the pinned `dsh-cod
 
 - `!命令`：在当前会话目录用 `$SHELL`（默认 `/bin/sh`）执行用户输入的命令，展示 stdout、stderr 和退出码，不启动模型回合。支持多行命令；每次启动独立 shell，`cd` 和环境变量不跨命令保留。非交互执行，120 秒超时，显示最多 64 KiB 输出；退出或切换会话会取消未完成命令。
 - `Shift+Enter`：换行；`Enter`：发送。支持 CSI-u 和 xterm modifyOtherKeys 的 Shift+Enter 序列。不发送修饰键的终端可使用 `Ctrl+J` 换行。
+- 粘贴超过 200 字符的文本时，输入框暂以 `[Pasted Content N chars]` 占位，便于继续编辑前后的文字；发送后聊天记录展开显示完整内容，模型收到的也是完整内容。占位符可作为整体删除。以 `/` 或 `!` 开头的命令文本保持可见。
+- 粘贴或拖入图片文件路径时，输入框以 `[Image 1]`、`[Image 2]` 等占位；图片作为附件发送。macOS 上按 `Ctrl+V` 可直接从系统剪贴板附加截图或复制的图片；在能将图片粘贴成临时路径的终端中，`Cmd+V` 也走文件路径入口。首次使用 `Ctrl+V` 会编译本机的图片读取小工具，需要 Xcode Command Line Tools。
 - `dscode resume`：继续最近会话；`dscode resume SESSION_ID`：恢复指定会话。可追加 `--cwd DIRECTORY`。退出并成功保存后会打印当前会话的恢复命令。
 - 主聊天区隐藏 thinking、工具参数、工具结果和已完成的工具调用；动态区域只显示正在执行的工具名。用户消息、agent 正文、用户 shell 命令结果和必要的错误/审批提示仍显示。完整记录保留在会话中，可通过历史详情或导出查看。
+- 每轮 agent 结束时，聊天区在该轮最后一条可见记录后显示一行浅色分割线；下一轮从新行开始。恢复会话时也保留轮次分隔，导出内容不包含分割线。
+- 已发送的用户消息在主聊天区使用独立的浅灰背景块；长消息换行后背景连续，深色和浅色主题分别适配。会话导出仍是纯文本。
 - 中文输入法定位：每帧渲染后将终端真实光标同步到输入框的当前字符位置（包含中文宽度、换行和输入框内部滚动），重绘前恢复渲染位置。修改后需要重启 TUI；macOS 候选框显示仍需在实际使用的终端中验证。
-- 启动时清屏；界面按终端高度显示最近的会话内容，输入栏和状态栏固定在底部。Ctrl+O 可查看完整会话记录，`/export` 可导出；终端滚屏区不再持续追加已完成消息。
+- 启动时清屏；界面按终端高度显示最近的会话内容，输入栏和状态栏固定在底部。鼠标滚轮或 PageUp/PageDown 可在主聊天区浏览较早消息，滚回底部后继续自动跟随新消息；Ctrl+O 可查看完整会话记录，`/export` 可导出。终端滚屏区不再持续追加已完成消息。
 - `/effort` 和 `/model` 的 effort 步骤会在底部替代输入框。支持四档的模型显示横向 `low → high → max → ultra` bar；方向键移动，Enter 应用，Esc 取消并恢复输入框，`o` 可直接切到 off。光标移到 ultra 时，蓝色光效从中央向两侧展开；按 Enter 应用后，输入框播放短暂的中央扩散涟漪。关闭动画时不播放光效。其他模型仍显示各自提供的档位列表。
 ## DSCODE 界面布局
 

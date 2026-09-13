@@ -261,9 +261,11 @@
 
     - id: tool-workflow
       name: '@deepseek-ai/dsh-tool-workflow'
+      disabled: true
 
     - id: tool-ralph
       name: '@deepseek-ai/dsh-tool-ralph'
+      disabled: true
       config:
         subagentProvider: spawn
         maxRounds: 64
@@ -285,6 +287,9 @@
   config:
     fetch: true
     searchTimeoutMs: 60000
+
+- id: code-review
+  name: DSCODE_REVIEW_PLUGIN
 
 - id: present
   name: '@deepseek-ai/dsh-tool-present'

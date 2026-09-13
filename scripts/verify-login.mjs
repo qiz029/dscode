@@ -10,13 +10,14 @@ patchTui(root.pathname);
 const source = readFileSync(new URL('node_modules/dsh-code/lib/index.mjs', root), 'utf8');
 assert.equal(patchLogin(source), source);
 // Exercise the real command interception, including commands with attachments.
-const start = source.indexOf('const text = submissionPayload(liveValue);');
+const start = source.indexOf('const expandedValue = expandLargePastes(liveValue, pendingPastesRef.current);');
+assert(start >= 0, 'submission expansion anchor missing');
 const end = source.indexOf('if (draftImagesRef.current.length > 0', start);
 for (const [value, busy, expected] of [['/login', false, 'open'], ['/login', true, 'notice'], ['/login synthetic-inline-key', false, 'notice']]) {
   const calls = [];
   const noop = () => {};
   const handler = vm.runInNewContext(`() => { ${source.slice(start, end)} throw Error('fell through to transcript'); }`, {
-    liveValue: value, trimmed: value, submissionPayload: v => v, busy,
+    liveValue: value, expandLargePastes: v => v, pendingPastesRef: { current: new Map() }, submissionPayload: v => v, busy,
     valueRef: {}, cursorRef: {}, recall: {}, recallSpace: {}, beginRecall: noop,
     setValue: noop, setCursor: noop, setCompletionIndex: noop, setDismissedMenuValue: noop,
     notify: message => { assert(!message.includes('synthetic-inline-key')); calls.push('notice'); }, openLogin: () => calls.push('open'),

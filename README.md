@@ -8,13 +8,13 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![npm](https://img.shields.io/npm/v/@toddzheng024/dscode)](https://www.npmjs.com/package/@toddzheng024/dscode)
 
-DSCODE 是基于 DeepSeek Harness 的终端编码 agent。持久 Shell 负责读写代码和执行测试；TUI、CLI 与脚本共用同一个会话运行时。0.4.0 加入共享邮件收件箱、邮件上下文注入、Gmail 发送与联系人别名。
+DSCODE 是基于 DeepSeek Harness 的终端编码 agent。持久 Shell 负责读写代码和执行测试；TUI、CLI 与脚本共用同一个会话运行时。0.5.0 加入可选子 agent worktree、独立代码审查，以及更顺手的中断、滚动和粘贴体验。
 
-[0.4.0 亮点](#-040-亮点) · [安装](#-安装) · [常用命令](#-常用命令) · [权限与配置](#-权限与配置) · [开发与发布](#-开发与发布)
+[0.5.0 亮点](#-050-亮点) · [安装](#-安装) · [常用命令](#-常用命令) · [权限与配置](#-权限与配置) · [开发与发布](#-开发与发布)
 
-## ✨ 0.4.0 亮点
+## ✨ 0.5.0 亮点
 
-新增 `/email`：连接 Gmail 后收取 `[ToAgent]` 邮件，选中后直接注入当前 session 作为补充上下文。Agent 可以发送邮件、保存和使用联系人别名；收件箱和联系人跨 session 共用。[邮件使用说明 →](#-agent-邮件)
+Ultra 主 agent 可按任务给子 agent 指定 `worktree: true`，在独立 Git checkout 中并行编辑；默认仍共享工作区。`/review` 和 agent 的 `review` tool 使用独立、只读模型检查 Git diff。TUI 支持向上滚动、Ctrl+C 快速中断、大段文本粘贴折叠、图片粘贴标记、用户消息背景和轮次分割线。[0.5.0 更新说明 →](docs/releases/0.5.0.md)
 
 ### 一个 session，接入终端、脚本和外部工具
 
@@ -95,7 +95,7 @@ TUI 启动时清屏，顶部欢迎框显示 DSCODE、模型、effort、版本和
 
 ### npm + Plugin Hub
 
-> **v0.4.0 已发布。** [npm 启动器](https://www.npmjs.com/package/@toddzheng024/dscode) · [Hub preset](https://dshpluginhub.ai/profiles/dscode) · [GitHub Releases](https://github.com/qiz029/dscode/releases)
+> **v0.5.0 已发布。** [npm 启动器](https://www.npmjs.com/package/@toddzheng024/dscode) · [Hub preset](https://dshpluginhub.ai/profiles/dscode) · [GitHub Releases](https://github.com/qiz029/dscode/releases)
 
 ```sh
 npm install -g @toddzheng024/dscode
@@ -106,7 +106,7 @@ dscode
 如果 npm 包名查询暂时返回 404，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.4.0.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.5.0.tgz
 dscode
 ```
 
@@ -125,7 +125,7 @@ dscode --continue                     # 继续上次会话
 dscode --resume SESSION_ID            # 恢复指定会话
 dscode --cwd /another/project         # 在指定目录工作
 
-dscode update 0.4.0                   # 升级到 0.4.0
+dscode update 0.5.0                   # 升级到 0.5.0
 dscode history                        # 查看保留的版本记录
 dscode rollback                       # 回到上个 preset 版本
 dscode doctor                         # 分析近期运行日志和 session trace
@@ -134,11 +134,11 @@ dscode doctor                         # 分析近期运行日志和 session trac
 从旧版本升级时，先更新启动器，再更新已安装的 profile：
 
 ```sh
-npm install -g @toddzheng024/dscode@0.4.0
-dscode update 0.4.0
+npm install -g @toddzheng024/dscode@0.5.0
+dscode update 0.5.0
 ```
 
-源码/tar 安装与 npm/Hub 使用不同的数据目录。升级不会自动迁移它们之间的会话和凭据。[0.4.0 更新说明](docs/releases/0.4.0.md)
+源码/tar 安装与 npm/Hub 使用不同的数据目录。升级不会自动迁移它们之间的会话和凭据。[0.5.0 更新说明](docs/releases/0.5.0.md)
 
 ### 从源码运行（现在可用）
 
@@ -159,11 +159,11 @@ npm start -- --cwd /path/to/project
 
 ### tar 包安装（现在可用）
 
-从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.4.0.tar.gz`，然后执行：
+从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.5.0.tar.gz`，然后执行：
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.4.0.tar.gz -C dscode-install
+tar -xzf dscode-0.5.0.tar.gz -C dscode-install
 sh dscode-install/install.sh
 cd /path/to/project
 dscode
@@ -190,7 +190,7 @@ dscode
 | `/mailbox` | 查看 session 消息和 deferred 便签 |
 | `/email` | `i` 配置 IMAP 邮箱与应用密码；浏览 `[ToAgent]` 邮件，Enter 直接 steer 进当前 session。Gmail 配置后可让 agent 用 `send_email` 发送。[收发说明](docs/email.md) |
 | `/compact` | 压缩历史上下文 |
-| `/diff`、`/review` | 查看和审查代码修改 |
+| `/diff`、`/review` | 查看代码修改；`/review` 用独立、只读模型请求审查 Git diff，支持未提交、暂存、基准分支、单次提交与路径范围 |
 | `/clear` | 开始新的空上下文会话，旧会话仍可恢复 |
 | `/resume`、`/fork` | 恢复或分叉会话 |
 
@@ -241,6 +241,10 @@ dscode email alias remove congkai
 Skills 会发现目标项目的 `.agents/skills`、`.dsh/skills`，以及隔离的用户 skill 目录。使用 `/skills conflicts` 排查同名覆盖。
 
 Chrome 随 `dscode` agent preset 初始化：空白启动先显示输入框，首次创建会话时连接 MCP 并等待工具注册；带初始消息或恢复会话的启动仍需完成这一步。Chrome 使用独立临时 profile，不接管日常浏览器登录态。桌面工具通过 skill 渐进加载；截图理解需要支持图片的模型。当前 MCP bridge 提供 tools，不提供 resources/prompts。[持久 Shell 与 Ultra →](docs/dscode-ultra.md)
+
+代码修改完成并通过相关检查后，dscode agent 会在结束本轮前调用 `review` tool 审查当前 Git diff；若发现具体问题，先修复，再对有实质变化的 diff 复查。纯问答或无代码改动时跳过。`/review` 可手动触发同一审查器，例如 `/review --staged`、`/review --base main` 或 `/review --path src/app.ts`。审查器只看到当前任务和选定 diff，不会运行测试或修改文件；同一份 diff 的重复请求复用结果。[命令说明 →](docs/tui-commands.md)
+
+Ultra 中主 agent 可以在 `subagent` 或 `subagent_fork` 调用里指定 `worktree: true`，让并行编辑的子 agent 使用独立 Git checkout；只读任务默认共享目录。隔离 worktree 从干净的 `HEAD` 建立，主工作区有未提交改动时会拒绝创建，避免子 agent 漏看当前修改。主 agent 收到路径后负责检查、整合改动，再删除 worktree。[细节 →](docs/dscode-ultra.md)
 
 ## 🧩 开发与发布
 

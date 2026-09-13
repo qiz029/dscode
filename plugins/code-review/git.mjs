@@ -1,0 +1,95 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { lstat, readFile } from 'node:fs/promises';
+import { join, posix } from 'node:path';
+
+const exec = promisify(execFile);
+const maxBytes = 2 * 1024 * 1024;
+
+export function reviewSpec(scope = 'working', ref = '', path = '') {
+  if (!['working', 'staged', 'base', 'commit'].includes(scope)) throw Error('Scope must be working, staged, base, or commit.');
+  if (['base', 'commit'].includes(scope) !== Boolean(ref)) throw Error(`${scope} review ${['base', 'commit'].includes(scope) ? 'requires' : 'does not accept'} a ref.`);
+  if (ref && (!/^[A-Za-z0-9][A-Za-z0-9._/~^]*$/.test(ref) || ref.includes('..') || ref.includes('@{'))) throw Error('Unsafe Git ref.');
+  if (path && (path.startsWith('/') || path.startsWith(':') || path.includes('\\') || path.split('/').includes('..') || /[\r\n\0]/.test(path))) throw Error('Path must stay inside the workspace.');
+  return { scope, ref, path: path ? posix.normalize(path).replace(/^\.$/, '') : '' };
+}
+
+export function parseReviewCommand(raw = '') {
+  const words = raw.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return reviewSpec();
+  let scope = 'working', ref = '', path = '';
+  if (words[0] === '--staged') { scope = 'staged'; words.shift(); }
+  else if (words[0] === '--base' || words[0] === '--commit') {
+    scope = words.shift().slice(2);
+    ref = words.shift() ?? '';
+  }
+  if (words[0] === '--path') { words.shift(); path = words.shift() ?? ''; if (!path) throw Error('Usage: /review [--staged|--base REF|--commit REF] [--path RELATIVE_PATH]'); }
+  if (words.length) throw Error('Usage: /review [--staged|--base REF|--commit REF] [--path RELATIVE_PATH]');
+  return reviewSpec(scope, ref, path);
+}
+
+async function git(cwd, args, signal, encoding = 'utf8') {
+  const { stdout } = await exec('git', ['-c', 'core.quotePath=false', ...args], {
+    cwd, signal, encoding, maxBuffer: maxBytes, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+  });
+  return stdout;
+}
+
+const matchesPath = (file, path) => !path || file === path || file.startsWith(`${path.replace(/\/$/, '')}/`);
+const safeLabel = value => JSON.stringify(value);
+const sensitiveFile = file => /^(?:\.env(?:\..*)?|\.npmrc|\.pypirc|id_(?:rsa|ed25519))$|\.(?:pem|p12|pfx|key)$/i.test(posix.basename(file));
+
+async function untracked(cwd, path, signal) {
+  const args = ['ls-files', '--others', '--exclude-standard', '-z', '--', ...(path ? [path] : [])];
+  const names = (await git(cwd, args, signal)).split('\0').filter(Boolean).filter(file => matchesPath(file, path));
+  const chunks = [], omitted = [];
+  for (const file of names) {
+    signal?.throwIfAborted();
+    if (sensitiveFile(file) || /[\r\n]/.test(file)) {
+      omitted.push(file);
+      chunks.push(`Untracked file omitted from review: ${safeLabel(file)} (sensitive or unsupported path)\n`);
+      continue;
+    }
+    const full = join(cwd, file);
+    const info = await lstat(full);
+    if (!info.isFile() || info.size > 128 * 1024) {
+      omitted.push(file);
+      chunks.push(`Untracked file omitted from review: ${safeLabel(file)} (not a small regular file)\n`);
+      continue;
+    }
+    const data = await readFile(full);
+    if (data.includes(0)) {
+      omitted.push(file);
+      chunks.push(`Untracked binary file omitted from review: ${safeLabel(file)}\n`);
+      continue;
+    }
+    const lines = data.toString('utf8').replace(/\n$/, '').split('\n');
+    chunks.push(`diff --git a/${file} b/${file}\nnew file mode 100644\n--- /dev/null\n+++ b/${file}\n@@ -0,0 +1,${lines.length} @@\n${lines.map(line => `+${line}`).join('\n')}\n`);
+  }
+  return { text: chunks.join(''), omitted };
+}
+
+export async function collectReviewDiff(cwd, options = {}, signal) {
+  const { scope, ref, path } = reviewSpec(options.scope, options.ref, options.path);
+  const pathArgs = ['--', ...(path ? [path] : [])];
+  let diff, omitted = [];
+  if (scope === 'working') {
+    try { diff = await git(cwd, ['diff', '--no-ext-diff', '--no-textconv', 'HEAD', ...pathArgs], signal); }
+    catch (error) {
+      if (signal?.aborted) throw error;
+      let hasHead = false;
+      try { await git(cwd, ['rev-parse', '--verify', 'HEAD'], signal); hasHead = true; } catch { /* unborn branch */ }
+      if (hasHead) throw error;
+      await git(cwd, ['rev-parse', '--is-inside-work-tree'], signal);
+      diff = (await git(cwd, ['diff', '--no-ext-diff', '--no-textconv', '--cached', ...pathArgs], signal)) +
+        (await git(cwd, ['diff', '--no-ext-diff', '--no-textconv', ...pathArgs], signal));
+    }
+    const extra = await untracked(cwd, path, signal);
+    diff += extra.text; omitted = extra.omitted;
+  } else if (scope === 'staged') diff = await git(cwd, ['diff', '--no-ext-diff', '--no-textconv', '--cached', ...pathArgs], signal);
+  else if (scope === 'base') diff = await git(cwd, ['diff', '--no-ext-diff', '--no-textconv', `${ref}...HEAD`, ...pathArgs], signal);
+  else diff = await git(cwd, ['show', '--format=', '--no-ext-diff', '--no-textconv', ref, ...pathArgs], signal);
+  if (Buffer.byteLength(diff) > 160 * 1024) throw Error('Review diff exceeds 160 KiB. Use --path to review a smaller part.');
+  if (/^Binary files .* differ$/m.test(diff)) omitted.push('tracked binary diff');
+  return { scope, ref, path, diff, omitted, label: scope === 'working' ? 'uncommitted changes (tracked and untracked)' : scope === 'staged' ? 'staged changes' : `${scope} ${ref}` };
+}

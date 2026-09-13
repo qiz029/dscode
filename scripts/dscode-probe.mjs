@@ -1,14 +1,24 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { discardCleanChildWorktree } from '../plugins/worktree-subagent/worktree.mjs';
 import { auditStore } from '../plugins/auto-review/audit.mjs';
 import { installModelSelection } from '@deepseek-ai/dsh-agent';
 import { LlmAdapter, createUserMessage } from '@deepseek-ai/dsh-llm';
 
 export async function probeDscode(ctx) {
-  const cwd = join(process.env.DSH_HOME, 'persistent-probe');
+  const cwd = join(process.env.DSH_HOME, 'persistent-probe', randomUUID());
   mkdirSync(join(cwd, 'nested'), { recursive: true });
+  const git = (...args) => {
+    const result = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+  };
+  git('init', '-q');
+  writeFileSync(join(cwd, 'head.txt'), 'HEAD fixture\n');
+  git('add', 'head.txt');
+  git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'initial');
   const setup = async (agentCtx, agent) => {
     await ctx.agentPresets.mount(agentCtx, 'dscode');
     installModelSelection(agentCtx, { get current() { const config = agent.session.requestHeader()?.config ?? agent.options; return { provider: config.provider, model: config.model, reasoningEffort: config.reasoningEffort }; }, assembled: undefined });
@@ -32,7 +42,7 @@ export async function probeDscode(ctx) {
       seen.push(options);
       if (options.sessionId && options.sessionId !== sessionId && !options.purpose && !childShells.has(options.sessionId)) {
         childShells.add(options.sessionId);
-        nextTool = { name: 'bash', args: { command: 'printf "CHILD_ENV=%s" "${DSCODE_FIXTURE_VAR-unset}"' } };
+        nextTool = { name: 'bash', args: { command: 'printf "CHILD_PWD=%s CHILD_ENV=%s" "$PWD" "${DSCODE_FIXTURE_VAR-unset}"' } };
       }
       if (nextTool) {
         const tool = nextTool; nextTool = undefined;
@@ -60,6 +70,24 @@ export async function probeDscode(ctx) {
     const result = await ctx.tools.execute({ name, arguments: args, agent, callId: `probe-${randomUUID()}`, signal });
     return JSON.stringify(result);
   };
+  const beforeWorktree = seen.length;
+  const isolated = JSON.parse(await run('subagent', { description: 'Verify child worktree', prompt: 'Run the child workspace fixture and finish.', worktree: true, run_in_background: false }));
+  assert(!isolated.isError, JSON.stringify(isolated));
+  const childPath = isolated.content.map(block => block.text ?? '').join('').match(/Worktree: ([^\n]+)/)?.[1];
+  assert(childPath?.startsWith(join(realpathSync(cwd), '.dscode-worktrees/')), JSON.stringify(isolated));
+  assert(seen.slice(beforeWorktree).some(o => JSON.stringify(o.messages).includes(`CHILD_PWD=${childPath}`)), 'Child shell did not start in its worktree');
+  assert.equal(await discardCleanChildWorktree({ cwd: childPath, parentCwd: cwd }), true);
+  const beforeForkWorktree = seen.length;
+  const isolatedFork = JSON.parse(await run('subagent_fork', { description: 'Verify fork worktree', prompt: 'Run the child workspace fixture and finish.', worktree: true, run_in_background: true }));
+  assert(!isolatedFork.isError, JSON.stringify(isolatedFork));
+  const forkText = isolatedFork.content.map(block => block.text ?? '').join('');
+  const forkPath = forkText.match(/Worktree: ([^\n]+)/)?.[1];
+  const forkId = forkText.match(/started subagent ([^\s]+)/)?.[1];
+  assert(forkPath?.startsWith(join(realpathSync(cwd), '.dscode-worktrees/')) && forkId, JSON.stringify(isolatedFork));
+  const forkAgent = ctx.agents.get(forkId);
+  assert.equal(forkAgent?.session.header.cwd, forkPath);
+  await forkAgent.whenIdle();
+  assert(seen.slice(beforeForkWorktree).some(o => JSON.stringify(o.messages).includes(`CHILD_PWD=${forkPath}`)), 'Background fork shell did not start in its worktree');
   const first = await run('bash', { command: "cd nested; export DSCODE_FIXTURE_VAR=survives; printf before > sample.txt" });
   assert(!first.includes('isError":true'), first);
   const second = await run('bash', { command: 'printf "%s\\n" "$PWD" "$DSCODE_FIXTURE_VAR"; cat sample.txt' });
@@ -68,6 +96,8 @@ export async function probeDscode(ctx) {
   assert(bang.includes('BANG_OK') && !bang.includes('timed out'), bang);
   const patched = await run('bash', { command: "apply_patch <<'PATCH'\ndiff --git a/sample.txt b/sample.txt\n--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-before\n\\ No newline at end of file\n+after\n\\ No newline at end of file\nPATCH" });
   assert.equal(readFileSync(join(cwd, 'nested/sample.txt'), 'utf8'), 'after', patched);
+  const dirtyWorktree = await run('subagent', { description: 'Reject stale worktree', prompt: 'Must not execute.', worktree: true, run_in_background: false });
+  assert(dirtyWorktree.includes('uncommitted changes'), dirtyWorktree);
   const fresh = await run('shell_retry', { command: 'printf "%s\\n" "$PWD" "${DSCODE_FIXTURE_VAR-unset}"', workdir: cwd, description: 'Verify fresh retry shell state' });
   assert(fresh.includes('unset'), fresh);
   const reset = await ctx.commands.execute(agent, '/shell reset', [], new AbortController().signal);
@@ -112,6 +142,7 @@ export async function probeDscode(ctx) {
   assert(childShells.size > 0, 'No real child agent ran');
   assert(seen.some(o => o.sessionId !== sessionId && JSON.stringify(o.messages).includes('CHILD_ENV=unset')), 'Child inherited parent shell state');
   assert(seen.filter(o => childShells.has(o.sessionId) && !o.purpose).every(o => o.reasoningEffort === 'ultra'), 'Child lost ultra selection');
+  assert(seen.filter(o => childShells.has(o.sessionId) && !o.purpose).every(o => !o.tools?.some(t => ['subagent', 'subagent_fork', 'workflow', 'ralph'].includes(t.name))), 'Child was offered delegation tools');
   for (const [tool, effort] of [['subagent', 'low'], ['subagent_fork', 'high']]) {
     const before = seen.length;
     const result = await run(tool, { description: 'Verify child effort', prompt: 'Finish the local fixture.', reasoning_effort: effort, run_in_background: false });
@@ -149,5 +180,6 @@ export async function probeDscode(ctx) {
   await resumed.agent.whenIdle();
   assert.equal(seen.at(-1).reasoningEffort, 'ultra');
   await resumed.dispose();
-  return { tools, persistentCwdAndEnv: 'passed', patchViaShell: 'passed', resetAndCancellation: 'passed', freshRetryAndApprovalDenial: 'passed', ultraSessionResume: 'passed', childShellIsolation: 'passed', childEffortSelection: 'spawn low, fork high, inheritance and invalid effort passed', manualCompaction: 'passed' };
+  assert.equal(await discardCleanChildWorktree({ cwd: forkPath, parentCwd: cwd }), true);
+  return { tools, persistentCwdAndEnv: 'passed', patchViaShell: 'passed', resetAndCancellation: 'passed', freshRetryAndApprovalDenial: 'passed', ultraSessionResume: 'passed', childShellIsolation: 'passed', childWorktree: 'spawn foreground and fork background cwd, clean integration and dirty-parent rejection passed', childEffortSelection: 'spawn low, fork high, inheritance and invalid effort passed', manualCompaction: 'passed' };
 }

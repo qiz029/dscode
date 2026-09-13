@@ -19,6 +19,7 @@ export const inject = ['agents', 'agentPresets', 'tools', 'skills', 'sessions', 
 class FixtureAdapter extends LlmAdapter {
   cursor = 0;
   constructor(file) { super(); this.file = file; }
+  async resolveModel(provider, model) { return { provider, id: model, name: model, reasoning: { efforts: [{ id: 'low', name: 'Low' }], defaultEffort: 'low' }, context: { contextWindow: 100000 } }; }
   async *stream(options) {
     options.signal?.throwIfAborted();
     if (options.messages.at(-1)?.source?.plugin === 'dscode-doctor') {

@@ -16,7 +16,7 @@ const source = readFileSync(new URL('node_modules/dsh-code/lib/index.mjs', root)
 assert.equal(patchStyle(source), source);
 const entry = new URL(`node_modules/dsh-code/lib/.dscode-style-probe-${process.pid}.mjs`, root);
 // Use the actual bundled Ink renderer and theme, with a captured terminal.
-writeFileSync(entry, source + '\nexport { Header, DscodeActivityLine, AgentsLine, StatusLine, Box, Text, render, import_react as react, setTheme, visibleColumns, dscodeActivity, dscodeTpsTone, dscodeTelemetryParts, dscodeTelemetryNodes, DEFAULT_STATUSLINE_ITEMS };\n');
+writeFileSync(entry, source + '\nexport { Header, DscodeActivityLine, AgentsLine, StatusLine, StyledRows, dscodeChatLines, Box, Text, render, import_react as react, setTheme, visibleColumns, dscodeActivity, dscodeTpsTone, dscodeTelemetryParts, dscodeTelemetryNodes, DEFAULT_STATUSLINE_ITEMS };\n');
 const out = new URL('artifacts/local/tui-style/', root);
 mkdirSync(out, { recursive: true });
 const now = Date.now();
@@ -61,6 +61,10 @@ try {
   ];
   for (const theme of ['dark', 'light']) for (const columns of [32, 48, 60, 64, 80, 120]) {
     ui.setTheme(theme);
+    const userRows = ui.dscodeChatLines({ kind: 'user', text: '请检查这段用户输入的背景。\n第二行继续。', notice: false }, columns - 2);
+    assert(userRows.length >= 2);
+    assert(userRows.every(row => row.background === 'user' && row.segments.reduce((width, segment) => width + ui.visibleColumns(segment.text), 0) === columns - 2));
+    assert.equal(ui.dscodeChatLines({ kind: 'user', text: 'system notice', notice: true }, columns - 2)[0].background, undefined);
     const stdout = new PassThrough();
     Object.assign(stdout, { columns, rows: 30, isTTY: true });
     const frames = [];
@@ -71,6 +75,7 @@ try {
     stderr.on('data', data => errors.push(data.toString()));
     const app = h(ui.Box, { flexDirection: 'column' },
       h(ui.Header, { cwd: '/workspace/dsh-code', model: 'deepseek-official/deepseek-flash', effort: 'ultra' }),
+      h(ui.StyledRows, { lines: userRows }),
       h(ui.Box, { paddingX: 2, marginBottom: 1 }, h(ui.Text, null, '已完成队列投递，正在验证中断后的恢复行为。')),
       h(ui.DscodeActivityLine, { entries: tools, since: Date.now() - 24000, animated: false }),
       h(ui.AgentsLine, { rows: agents, total: 3 }),
@@ -83,6 +88,8 @@ try {
       assert(frame, `No rendered frame: ${theme} ${columns}: ${errors.join('')}`);
       const plain = stripVTControlCharacters(frame);
       assert.match(plain, /DSCODE/);
+      assert(plain.includes('请检查'));
+      assert.match(frame, new RegExp(`\\x1b\\[48;2;${theme === 'light' ? '229;231;235' : '46;48;52'}m`));
       assert(plain.includes(`v${version}`));
       assert.match(plain, /deepseek-flash/);
       assert.match(plain, /\/workspace\/dsh-code/);

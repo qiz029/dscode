@@ -6,6 +6,8 @@ export function provisionPreset(root, home) {
   mkdirSync(target, { recursive: true });
   const source = join(root, 'presets/dscode');
   writeFileSync(join(target, 'preset.yml'), readFileSync(join(source, 'preset.yml')));
-  writeFileSync(join(target, 'agent.cordis.yml'), readFileSync(join(source, 'agent.cordis.yml'), 'utf8').replace('DSCODE_POLICY_PLUGIN', JSON.stringify(join(root, 'plugins/dscode/index.mjs'))));
+  writeFileSync(join(target, 'agent.cordis.yml'), readFileSync(join(source, 'agent.cordis.yml'), 'utf8')
+    .replace('DSCODE_POLICY_PLUGIN', JSON.stringify(join(root, 'plugins/dscode/index.mjs')))
+    .replace('DSCODE_REVIEW_PLUGIN', JSON.stringify(join(root, 'plugins/code-review/index.mjs'))));
   return presets;
 }

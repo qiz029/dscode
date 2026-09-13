@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ULTRA_POLICY, ultraRequest } from '../plugins/ultra/policy.mjs';
+import { ULTRA_POLICY, ultraRequest, FLASH_POLICY, flashRequest } from '../plugins/ultra/policy.mjs';
 
 export function replaceOnce(text, from, to) {
   if (text.split(from).length !== 2) throw new Error('Pinned runtime patch drift: ' + from.slice(0, 90));
@@ -8,15 +8,20 @@ export function replaceOnce(text, from, to) {
 }
 export function patchDeepSeek(text) {
   const marker = '// dscode-ultra-v1';
-  const prefix = marker + '\nconst ULTRA_POLICY = ' + JSON.stringify(ULTRA_POLICY) + ';\n' + ultraRequest.toString() + '\n';
+  const prefix = marker + '\nconst ULTRA_POLICY = ' + JSON.stringify(ULTRA_POLICY) + ';\n' + ultraRequest.toString() + '\nconst FLASH_POLICY = ' + JSON.stringify(FLASH_POLICY) + ';\n' + flashRequest.toString() + '\n';
+  const filterTools = body => replaceOnce(body, 'const tools = options.tools?.map((tool) => ({', 'const tools = options.tools?.filter((tool) => options.reasoningEffort === "ultra" ? tool.name !== "workflow" && tool.name !== "ralph" : !["subagent", "subagent_fork", "workflow", "ralph"].includes(tool.name)).map((tool) => ({');
+  const addFlash = body => replaceOnce(body, 'messages = ultraRequest(options, messages);', 'messages = flashRequest(options, messages);\n\tmessages = ultraRequest(options, messages);');
   if (text.startsWith(marker)) {
     const start = text.indexOf('\nimport ');
     if (start < 0) throw new Error('Malformed patched DeepSeek module');
-    return prefix + text.slice(start + 1);
+    const body = text.slice(start + 1);
+    const filtered = body.includes('options.tools?.filter((tool) => options.reasoningEffort === "ultra"') ? body : filterTools(body);
+    return prefix + (filtered.includes('messages = flashRequest(options, messages);') ? filtered : addFlash(filtered));
   }
   text = replaceOnce(text, 'function reasoningEffort(effort) {', 'function reasoningEffort(effort) {\n\tif (effort === "ultra") return "max";');
   text = replaceOnce(text, 'const REASONING_EFFORTS = [', 'const REASONING_EFFORTS = [\n{ id: ReasoningEffortId("ultra"), name: "Ultra", description: "DSCODE: max reasoning plus deliberate subagent collaboration; higher total token use." },');
-  text = replaceOnce(text, 'function requestWithMessages(options, messages, defaults) {', 'function requestWithMessages(options, messages, defaults) {\n\tmessages = ultraRequest(options, messages);');
+  text = replaceOnce(text, 'function requestWithMessages(options, messages, defaults) {', 'function requestWithMessages(options, messages, defaults) {\n\tmessages = flashRequest(options, messages);\n\tmessages = ultraRequest(options, messages);');
+  text = filterTools(text);
   return prefix + text;
 }
 export function patchBash(text) {
@@ -45,19 +50,60 @@ export function patchTerminalBash(text) {
   );
 }
 export function patchSubagent(text) {
-  if (text.includes('// dscode-child-effort-v1')) return text;
-  text = replaceOnce(text, 'const choiceDescription = !modelSelectionEnabled ? "" :', 'const choiceDescription = !modelSelectionEnabled ? (subagentProvider.capabilities.agentOptions ? " Optionally set reasoning_effort for this child without changing its provider/model. Omit to inherit. Choose low for bounded tasks, high for difficult work, and max only when needed; use an effort supported by the current model." : "") :');
-  text = replaceOnce(text, '...backgroundEnabled ? { run_in_background:', `...!modelSelectionEnabled && subagentProvider.capabilities.agentOptions ? { reasoning_effort: {
+  if (!text.includes('// dscode-child-effort-v1')) {
+    text = replaceOnce(text, 'const choiceDescription = !modelSelectionEnabled ? "" :', 'const choiceDescription = !modelSelectionEnabled ? (subagentProvider.capabilities.agentOptions ? " Optionally set reasoning_effort for this child without changing its provider/model. Omit to inherit. Choose low for bounded tasks, high for difficult work, and max only when needed; use an effort supported by the current model." : "") :');
+    text = replaceOnce(text, '...backgroundEnabled ? { run_in_background:', `...!modelSelectionEnabled && subagentProvider.capabilities.agentOptions ? { reasoning_effort: {
               type: "string",
               description: "Reasoning effort for this child only, validated against its model. Omit to inherit. Prefer low for bounded tasks, high for difficult work, max for exceptional uncertainty. Provider/model remain unchanged."
             } } : {},
             ...backgroundEnabled ? { run_in_background:`);
-  text = replaceOnce(text, '} : config.agentOptions, modelRequest, modelSelectionEnabled);', '} : config.agentOptions, modelRequest, modelSelectionEnabled || subagentProvider.capabilities.agentOptions && modelRequest.provider === void 0 && modelRequest.model === void 0);');
-  text = replaceOnce(text, 'assertAllowedModelSelection(modelSelectionPolicy, parentOptions, requestedChildAgentOptions, modelRequest);', 'if (modelRequest.provider !== void 0 || modelRequest.model !== void 0) assertAllowedModelSelection(modelSelectionPolicy, parentOptions, requestedChildAgentOptions, modelRequest);');
-  return '// dscode-child-effort-v1\n' + text;
+    text = replaceOnce(text, '} : config.agentOptions, modelRequest, modelSelectionEnabled);', '} : config.agentOptions, modelRequest, modelSelectionEnabled || subagentProvider.capabilities.agentOptions && modelRequest.provider === void 0 && modelRequest.model === void 0);');
+    text = replaceOnce(text, 'assertAllowedModelSelection(modelSelectionPolicy, parentOptions, requestedChildAgentOptions, modelRequest);', 'if (modelRequest.provider !== void 0 || modelRequest.model !== void 0) assertAllowedModelSelection(modelSelectionPolicy, parentOptions, requestedChildAgentOptions, modelRequest);');
+    text = '// dscode-child-effort-v1\n' + text;
+  }
+  if (text.includes('// dscode-child-worktree-v3')) return text;
+  if (text.includes('// dscode-child-worktree-v1')) {
+    text = replaceOnce(text, 'const childWorktree = args.worktree === true ?', 'if (args.worktree === true && !(continuable && (config.provider === "spawn" || config.provider === "fork"))) throw new Error("worktree is unavailable for this subagent provider");\n\t\t\t\t\t\tconst childWorktree = args.worktree === true ?').replace('// dscode-child-worktree-v1', '// dscode-child-worktree-v2');
+  }
+  if (text.includes('// dscode-child-worktree-v2')) {
+    text = replaceOnce(text, '? createChildWorktree(parent.session.header.cwd)', '? await createChildWorktree(parent.session.header.cwd, exec.signal)');
+    text = replaceOnce(text, '!discardCleanChildWorktree(childWorktree)', '!await discardCleanChildWorktree(childWorktree)');
+    return text.replace('// dscode-child-worktree-v2', '// dscode-child-worktree-v3');
+  }
+  text = replaceOnce(text, 'import z from "@deepseek-ai/schemastery";', 'import { createChildWorktree, discardCleanChildWorktree } from "../../../../plugins/worktree-subagent/worktree.mjs";\nimport z from "@deepseek-ai/schemastery";');
+  text = replaceOnce(text, '+ choiceDescription,', '+ choiceDescription + (continuable && (config.provider === "spawn" || config.provider === "fork") ? " Set worktree: true for an isolated Git checkout when agents edit in parallel. It starts at HEAD and refuses a dirty parent workspace; omit for read-only tasks or when the child needs uncommitted parent edits. You must inspect and integrate its changes; the worktree remains after completion." : ""),');
+  text = replaceOnce(text, '...backgroundEnabled ? { run_in_background: {', `...continuable && (config.provider === "spawn" || config.provider === "fork") ? { worktree: {
+              type: "boolean",
+              description: "Create an isolated Git worktree for this child at clean HEAD. Choose for parallel editing; omit or set false for read-only work or tasks requiring uncommitted parent changes. Parent must integrate the result."
+            } } : {},
+            ...backgroundEnabled ? { run_in_background: {`);
+  text = replaceOnce(text, 'jobId: {\n', 'worktree: { type: "string" },\n\t\t\t\t\tjobId: {\n');
+  text = replaceOnce(text, 'subagentId: {\n', 'worktree: { type: "string" },\n\t\t\t\t\tsubagentId: {\n');
+  text = replaceOnce(text, 'runId: {\n', 'worktree: { type: "string" },\n\t\t\t\t\trunId: {\n');
+  text = replaceOnce(text, ': outputValueText(value.output)\n', ': outputValueText(value.output)) + (value.worktree ? `\nWorktree: ${value.worktree}\nInspect and integrate its changes before removing it.` : "")\n');
+  text = replaceOnce(text, 'text: value.kind === "background" ?', 'text: (value.kind === "background" ?');
+  text = replaceOnce(text, 'const maxDepth = typeof config.maxDepth === "number" ? config.maxDepth : void 0;', 'if (args.worktree === true && !(continuable && (config.provider === "spawn" || config.provider === "fork"))) throw new Error("worktree is unavailable for this subagent provider");\n\t\t\t\t\t\tconst childWorktree = args.worktree === true ? await createChildWorktree(parent.session.header.cwd, exec.signal) : void 0;\n\t\t\t\t\t\tconst maxDepth = typeof config.maxDepth === "number" ? config.maxDepth : void 0;');
+  text = replaceOnce(text, 'label: args.description,\n\t\t\t\t\t\t\tprompt:', 'label: args.description,\n\t\t\t\t\t\t\t...childWorktree ? { workspaceCwd: childWorktree.cwd } : {},\n\t\t\t\t\t\t\tprompt:');
+  text = replaceOnce(text, 'if (resolveDelegationRun(args, {', 'try {\n\t\t\t\t\t\tif (resolveDelegationRun(args, {');
+  text = replaceOnce(text, ')).childId\n', ')).childId,\n\t\t\t\t\t\t\t\t\t...childWorktree ? { worktree: childWorktree.cwd } : {}\n');
+  text = replaceOnce(text, 'return settleForegroundRun(await runtimeCtx.subagents.start(config.provider, {', 'return { ...await settleForegroundRun(await runtimeCtx.subagents.start(config.provider, {');
+  text = replaceOnce(text, 'signal: exec.signal\n\t\t\t\t\t\t}));\n\t\t\t\t\t}', 'signal: exec.signal\n\t\t\t\t\t\t})), ...childWorktree ? { worktree: childWorktree.cwd } : {} };\n\t\t\t\t\t\t} catch (error) {\n\t\t\t\t\t\t\tif (childWorktree && !await discardCleanChildWorktree(childWorktree)) throw new Error(`${String(error)}; child worktree retained at ${childWorktree.cwd}`, { cause: error });\n\t\t\t\t\t\t\tthrow error;\n\t\t\t\t\t\t}\n\t\t\t\t\t}');
+  return '// dscode-child-worktree-v3\n' + text;
+}
+export function patchSubagentCore(text) {
+  if (text.includes('// dscode-child-cwd-v1')) return text;
+  text = replaceOnce(text, 'function childSessionMeta(parent, childDepth, isSeeded) {', 'function childSessionMeta(parent, childDepth, isSeeded, workspaceCwd) {');
+  text = replaceOnce(text, '...parentHeader.cwd !== void 0 ? { cwd: parentHeader.cwd } : {},', '...workspaceCwd !== void 0 ? { cwd: workspaceCwd } : parentHeader.cwd !== void 0 ? { cwd: parentHeader.cwd } : {},');
+  text = replaceOnce(text, 'meta: childSessionMeta(parent, childDepth, prepared.seed !== void 0),', 'meta: childSessionMeta(parent, childDepth, prepared.seed !== void 0, request.workspaceCwd),');
+  text = replaceOnce(text, 'The parent shares your workspace but does not automatically receive your transcript', 'The parent may use a different workspace and does not automatically receive your transcript');
+  return '// dscode-child-cwd-v1\n' + text;
+}
+export function patchSubagentDriver(text) {
+  if (text.includes('// dscode-child-cwd-v1')) return text;
+  return '// dscode-child-cwd-v1\n' + replaceOnce(text, 'meta: childSessionMeta(parent, childDepth, seed !== void 0),', 'meta: childSessionMeta(parent, childDepth, seed !== void 0, request.workspaceCwd),');
 }
 export function patchRuntime(root) {
-  for (const [pkg, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash]]) {
+  for (const [pkg, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-subagent-in-process-driver', patchSubagentDriver], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash]]) {
     const dir = join(root, 'node_modules/@deepseek-ai', pkg);
     if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== '0.1.5-rc.1') throw new Error('Revalidate runtime patches before upgrading ' + pkg);
     const path = join(dir, 'lib/index.js');

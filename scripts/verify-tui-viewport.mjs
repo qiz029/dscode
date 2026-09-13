@@ -11,7 +11,7 @@ const source = readFileSync(new URL('node_modules/dsh-code/lib/index.mjs', root)
 assert(source.includes('height: Math.max(1, terminalRows - 1)'));
 assert(source.includes('process.stdout.isTTY === true) process.stdout.write("\\x1B[r\\x1B[0m\\x1B[H\\x1B[2J\\x1B[3J\\x1B[H")'));
 const entry = new URL(`node_modules/dsh-code/lib/.dscode-viewport-probe-${process.pid}.mjs`, root);
-writeFileSync(entry, source + '\nexport { App, Box, render, import_react as react, visibleSettledLines, welcomePath };\n');
+writeFileSync(entry, source + '\nexport { App, Box, render, import_react as react, visibleSettledLines, welcomePath, createSplitStdin };\n');
 try {
   const ui = await import(entry.href);
   const rows = ui.visibleSettledLines(['a', 'b', 'c'], 3, 2, 80, false, value => [{ segments: [{ text: value }] }]);
@@ -71,7 +71,7 @@ try {
   }
   const artworkRows = [];
   for (const count of [0, 8, 11, 30]) {
-    view.entries = Array.from({ length: count }, (_, index) => ({ kind: 'assistant', text: `Reply number ${index + 1}`, reasoning: '' }));
+    view.entries = Array.from({ length: count }, (_, index) => ({ kind: 'assistant', text: `Reply number ${index + 1}`, reasoning: '', turnEnded: count === 8 && index === count - 1 }));
     view.busy = false;
     view.streaming = '';
     const stdout = new PassThrough();
@@ -87,10 +87,52 @@ try {
       const frame = stripVTControlCharacters(frames.filter(chunk => chunk.includes('type a message')).at(-1) ?? '');
       assert(frame.includes('type a message'), `Missing composer with ${count} replies`);
       if (count) assert(frame.includes(`Reply number ${count}`), `Newest reply missing with ${count} replies`);
+      if (count === 8) assert(frame.includes('─'.repeat(8)), 'Completed turn divider missing from the rendered frame');
       artworkRows.push(frame.split('\n').filter(line => /[█▄▀╭╰]/.test(line)).length);
     } finally { mounted.unmount(); mounted.cleanup(); stdout.destroy(); stderr.destroy(); stdin.destroy(); }
   }
   assert(artworkRows[0] > artworkRows[1] && artworkRows[1] > artworkRows[2] && artworkRows[2] > artworkRows[3], `Welcome did not scroll upward row by row: ${artworkRows}`);
   assert.equal(artworkRows[3], 0);
-  console.log('TUI viewport passed: welcome scrolls off with conversation, bounded history and bottom composer at 8/12/16/21/22/24/40 rows.');
+  view.entries = Array.from({ length: 40 }, (_, index) => ({ kind: 'assistant', text: `Reply number ${index + 1}`, reasoning: '' }));
+  const sourceInput = new PassThrough();
+  Object.assign(sourceInput, { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
+  const split = ui.createSplitStdin(sourceInput);
+  const stdout = new PassThrough();
+  Object.assign(stdout, { columns: 80, rows: 24, isTTY: true });
+  const stderr = new PassThrough();
+  const frames = [];
+  stdout.on('data', data => frames.push(stripVTControlCharacters(data.toString())));
+  const mounted = ui.render(ui.react.createElement(ui.App, props), { stdout, stderr, stdin: split.stdin, debug: true, patchConsole: false, exitOnCtrlC: false });
+  try {
+    const frame = () => frames.filter(chunk => chunk.includes('type a message')).at(-1) ?? '';
+    const settle = () => new Promise(resolve => setTimeout(resolve, 70));
+    await settle();
+    assert(frame().includes('Reply number 40'), 'initial viewport must show latest reply');
+    sourceInput.write('\x1b[5~');
+    await settle();
+    assert(!frame().includes('Reply number 40'), 'PageUp must reveal older replies');
+    sourceInput.write('\x1b[6~');
+    await settle();
+    assert(frame().includes('Reply number 40'), 'PageDown must return to latest reply');
+    sourceInput.write('\x1b[<64;20;12M');
+    await settle();
+    assert(!frame().includes('Reply number 40'), 'mouse wheel up must reveal older replies');
+    const browsing = frame().match(/Reply number \d+/g);
+    view.entries = [...view.entries, { kind: 'assistant', text: 'Reply number 41', reasoning: '' }];
+    mounted.rerender(ui.react.createElement(ui.App, { ...props }));
+    await settle();
+    assert.deepEqual(frame().match(/Reply number \d+/g), browsing, 'new replies must not shift the reading position');
+    sourceInput.write('\x1b[<65;20;12M');
+    sourceInput.write('\x1b[<65;20;12M');
+    await settle();
+    assert(frame().includes('Reply number 41'), 'mouse wheel down must return to latest reply');
+    view.entries = [...view.entries, { kind: 'assistant', text: 'Reply number 42', reasoning: '' }];
+    mounted.rerender(ui.react.createElement(ui.App, { ...props }));
+    await settle();
+    assert(frame().includes('Reply number 42'), 'viewport must follow new replies after returning to bottom');
+    assert(frame().includes('type a message'), 'mouse report must not enter composer');
+  } finally {
+    mounted.unmount(); mounted.cleanup(); split.dispose(); sourceInput.destroy(); stdout.destroy(); stderr.destroy();
+  }
+  console.log('TUI viewport passed: welcome, bounded history, PageUp/PageDown, mouse wheel and bottom composer at 8/12/16/21/22/24/40 rows.');
 } finally { rmSync(entry, { force: true }); }
