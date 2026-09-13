@@ -8,13 +8,13 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![npm](https://img.shields.io/npm/v/@toddzheng024/dscode)](https://www.npmjs.com/package/@toddzheng024/dscode)
 
-DSCODE 是基于 DeepSeek Harness 的终端编码 agent。持久 Shell 负责读写代码和执行测试；TUI、CLI 与脚本共用同一个会话运行时。0.3.0 加入本地密钥登录、横向 effort 选择条和固定底部输入区，并完善启动、会话并发与补丁工具。
+DSCODE 是基于 DeepSeek Harness 的终端编码 agent。持久 Shell 负责读写代码和执行测试；TUI、CLI 与脚本共用同一个会话运行时。0.4.0 加入共享邮件收件箱、邮件上下文注入、Gmail 发送与联系人别名。
 
-[0.3.0 亮点](#-030-亮点) · [安装](#-安装) · [常用命令](#-常用命令) · [权限与配置](#-权限与配置) · [开发与发布](#-开发与发布)
+[0.4.0 亮点](#-040-亮点) · [安装](#-安装) · [常用命令](#-常用命令) · [权限与配置](#-权限与配置) · [开发与发布](#-开发与发布)
 
-## ✨ 0.3.0 亮点
+## ✨ 0.4.0 亮点
 
-新增 `/login` 本地密钥保存；effort 选择条支持 Ultra 光效。欢迎界面和屏内对话视口让输入区保持在底部，Chrome MCP 延后到创建 agent 会话时连接。修复子目录中的 `apply_patch`，并加强并发启动、版本切换锁和消息处理。以下协作与记忆能力继续保留。
+新增 `/email`：连接 Gmail 后收取 `[ToAgent]` 邮件，选中后直接注入当前 session 作为补充上下文。Agent 可以发送邮件、保存和使用联系人别名；收件箱和联系人跨 session 共用。[邮件使用说明 →](#-agent-邮件)
 
 ### 一个 session，接入终端、脚本和外部工具
 
@@ -95,7 +95,7 @@ TUI 启动时清屏，顶部欢迎框显示 DSCODE、模型、effort、版本和
 
 ### npm + Plugin Hub
 
-> **v0.3.0 已发布。** [npm 启动器](https://www.npmjs.com/package/@toddzheng024/dscode) · [Hub preset](https://dshpluginhub.ai/profiles/dscode) · [GitHub Releases](https://github.com/qiz029/dscode/releases)
+> **v0.4.0 已发布。** [npm 启动器](https://www.npmjs.com/package/@toddzheng024/dscode) · [Hub preset](https://dshpluginhub.ai/profiles/dscode) · [GitHub Releases](https://github.com/qiz029/dscode/releases)
 
 ```sh
 npm install -g @toddzheng024/dscode
@@ -106,7 +106,7 @@ dscode
 如果 npm 包名查询暂时返回 404，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.3.0.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.4.0.tgz
 dscode
 ```
 
@@ -125,7 +125,7 @@ dscode --continue                     # 继续上次会话
 dscode --resume SESSION_ID            # 恢复指定会话
 dscode --cwd /another/project         # 在指定目录工作
 
-dscode update 0.3.0                   # 升级到 0.3.0
+dscode update 0.4.0                   # 升级到 0.4.0
 dscode history                        # 查看保留的版本记录
 dscode rollback                       # 回到上个 preset 版本
 dscode doctor                         # 检查 Hub 安装状态
@@ -134,11 +134,11 @@ dscode doctor                         # 检查 Hub 安装状态
 从旧版本升级时，先更新启动器，再更新已安装的 profile：
 
 ```sh
-npm install -g @toddzheng024/dscode@0.3.0
-dscode update 0.3.0
+npm install -g @toddzheng024/dscode@0.4.0
+dscode update 0.4.0
 ```
 
-源码/tar 安装与 npm/Hub 使用不同的数据目录。升级不会自动迁移它们之间的会话和凭据。[0.3.0 更新说明](docs/releases/0.3.0.md)
+源码/tar 安装与 npm/Hub 使用不同的数据目录。升级不会自动迁移它们之间的会话和凭据。[0.4.0 更新说明](docs/releases/0.4.0.md)
 
 ### 从源码运行（现在可用）
 
@@ -159,11 +159,11 @@ npm start -- --cwd /path/to/project
 
 ### tar 包安装（现在可用）
 
-从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.3.0.tar.gz`，然后执行：
+从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.4.0.tar.gz`，然后执行：
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.3.0.tar.gz -C dscode-install
+tar -xzf dscode-0.4.0.tar.gz -C dscode-install
 sh dscode-install/install.sh
 cd /path/to/project
 dscode

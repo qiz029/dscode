@@ -14,8 +14,14 @@ export function welcomePath(path, width) {
 }
 
 export function patchWelcome(text, version) {
-  if (text.includes('// dscode-welcome-v1')) return text;
   if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version)) throw Error('Invalid DSCODE version for welcome box');
+  if (text.includes('// dscode-welcome-v1')) {
+    const start = text.indexOf('function Header({ cwd = "", model = "", effort = "" }) {');
+    const end = text.indexOf('\n}', start) + 2;
+    if (start < 0 || end <= start) throw Error('Patched TUI welcome header drift');
+    const header = text.slice(start, end).replace(/"(  )?v\d+\.\d+\.\d+(?:-[\w.-]+)?"/g, (_, pad = '') => `"${pad}v${version}"`);
+    return text.slice(0, start) + header + text.slice(end);
+  }
   const start = text.indexOf('function Header({ resumed, cwd = "", branch = "", title = "" }) {');
   const end = text.indexOf('\n}', start) + 2;
   if (start < 0 || end <= start) throw Error('Pinned TUI welcome header drift');
