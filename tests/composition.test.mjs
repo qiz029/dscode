@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parse } from 'yaml';
+import { readFileSync } from 'node:fs';
 import { composePlugins } from '../scripts/composition.mjs';
 
 const decode = text => parse(text, { customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: value => value }] });
@@ -19,4 +20,14 @@ test('source and package compositions share plugins and settings after path reso
   assert.equal(new Set(entries.map(e => e.id)).size, entries.length);
   assert(entries.some(e => e.id === 'credentials'));
   assert.deepEqual(entries.find(e => e.id === 'dscode-auto-review').config, { timeoutMs: 30000, maxOutputTokens: 768, maxReviewsPerTurn: 20 });
+});
+
+test('Chrome MCP mounts with the first DSCODE agent, not the prompt-free host', () => {
+  const host = decode(readFileSync(new URL('../config/cordis.patch.yml', import.meta.url), 'utf8'));
+  const preset = decode(readFileSync(new URL('../presets/dscode/agent.cordis.yml', import.meta.url), 'utf8'));
+  assert(!host.flatMap(row => row.insert ?? [row]).some(row => row.id === 'mcp-chrome'));
+  const chrome = preset.find(row => row.id === 'mcp-chrome');
+  assert.equal(chrome?.name, '@deepseek-ai/dsh-mcp-client');
+  assert.equal(chrome.config.serverName, 'chrome');
+  assert.equal(chrome.config.failOnStartupError, true);
 });

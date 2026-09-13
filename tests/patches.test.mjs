@@ -6,6 +6,19 @@ import { createTestRuntime, upstreamPackages } from '../scripts/test-runtime.mjs
 import { patchTui } from '../scripts/patch-tui.mjs';
 import { patchRuntime } from '../scripts/patch-runtime.mjs';
 import { patchStyle } from '../scripts/patch-style.mjs';
+import { visibleSettledLines } from '../scripts/patch-viewport.mjs';
+
+test('transcript viewport keeps the newest settled lines within its row budget', () => {
+  const entries = [['old'], [], ['a', 'b', 'c'], ['streaming']];
+  const render = (entry, width, reasoning) => {
+    assert.equal(width, 10);
+    assert.equal(reasoning, false);
+    return entry;
+  };
+  assert.deepEqual(visibleSettledLines(entries, 3, 2, 8, false, render), ['b', 'c']);
+  assert.deepEqual(visibleSettledLines(entries, 3, 5, 8, false, render), ['old', 'a', 'b', 'c']);
+  assert.deepEqual(visibleSettledLines(entries, 3, 0, 8, false, () => assert.fail('hidden viewport must not render')), []);
+});
 
 test('pristine locked upstream accepts all patches once, remains valid JS, and is idempotent', t => {
   const fixture = createTestRuntime({ tui: true, runtime: true, patched: false });

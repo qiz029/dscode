@@ -12,7 +12,7 @@ Restart `dscode` to load these commands. Commands run locally and do not call th
 | `/doctor` | Read-only plugin, skill, MCP tool-discovery and Computer Use health. Does not test remote credentials or execute tools. |
 | `/mcp` | List MCP entry IDs, loader state and transport; credentials, headers and environment values are not printed. |
 | `/mcp tools <id>` | List registered tools for a server. |
-| `/mcp enable|disable|reconnect <id>` | Change a server for this process. All agents must be idle. Reconnect disposes and remounts the server. Persist desired startup configuration in `config/mcp.local.yml`. IDs may be full loader IDs or an unambiguous short ID such as `mcp-chrome`. |
+| `/mcp enable|disable|reconnect <id>` | Change a server for this process. All agents must be idle. Reconnect disposes and remounts the server. Host servers are configured in `config/mcp.local.yml`; preset servers, including DSCODE's Chrome, are configured in that preset's composition. IDs may be full loader IDs or an unambiguous short ID such as `mcp-chrome`. |
 | `/skills` | Effective skill catalog, source, provider and invocation permissions. |
 | `/skills <name>` | Description and effective file path, without injecting its instructions into the model. |
 | `/skills conflicts` | Duplicate names in the configured filesystem roots, with the runtime's effective source. Hidden candidates from runtime/remote providers are not enumerable. |
@@ -69,9 +69,11 @@ The launcher applies an idempotent, version-checked patch to the pinned `dsh-cod
 - `dscode resume`：继续最近会话；`dscode resume SESSION_ID`：恢复指定会话。可追加 `--cwd DIRECTORY`。退出并成功保存后会打印当前会话的恢复命令。
 - 主聊天区隐藏 thinking、工具参数、工具结果和已完成的工具调用；动态区域只显示正在执行的工具名。用户消息、agent 正文、用户 shell 命令结果和必要的错误/审批提示仍显示。完整记录保留在会话中，可通过历史详情或导出查看。
 - 中文输入法定位：每帧渲染后将终端真实光标同步到输入框的当前字符位置（包含中文宽度、换行和输入框内部滚动），重绘前恢复渲染位置。修改后需要重启 TUI；macOS 候选框显示仍需在实际使用的终端中验证。
+- 启动时清屏；界面按终端高度显示最近的会话内容，输入栏和状态栏固定在底部。Ctrl+O 可查看完整会话记录，`/export` 可导出；终端滚屏区不再持续追加已完成消息。
+- `/effort` 和 `/model` 的 effort 步骤会在底部替代输入框。支持四档的模型显示横向 `low → high → max → ultra` bar；方向键移动，Enter 应用，Esc 取消并恢复输入框，`o` 可直接切到 off。光标移到 ultra 时，蓝色光效从中央向两侧展开；按 Enter 应用后，输入框播放短暂的中央扩散涟漪。关闭动画时不播放光效。其他模型仍显示各自提供的档位列表。
 ## DSCODE 界面布局
 
-启动头部使用两行 DSCODE、项目/分支和初始 session 标题；运行中变化的标题继续显示在底部。正文保留用户和 agent 输出，thinking 与工具调用历史仍隐藏。
+启动头部是紧凑欢迎框，左侧十行雪花标识用蓝色冰枝和同色实心晶核构成；右侧以加粗 DSCODE 字样和细分隔线标示品牌，并列出当前模型、effort、本地版本和项目路径。窄窗口或矮终端压缩为带 ❄ 的三行布局，较长路径保留末尾目录。运行中变化的 session 标题仍显示在底部。正文保留用户和 agent 输出，thinking 与工具调用历史仍隐藏。
 
 输入区上方统一显示思考、回复或当前工具及其描述，计时为本轮总耗时。只有运行标记动画，输入区不播放波浪。子 agent 概览区分 running / idle / done，输入 `/agents` 查看任务和当前活动。
 

@@ -67,7 +67,7 @@ async function main() {
   }
   const groups = {
     integration: ['verify-session-bridge', 'verify-session-messaging', 'verify-runtime-foundations', 'verify-session-cards', 'verify-memory', 'verify-login-runtime'],
-    ui: ['verify-login', 'verify-tui-style'],
+    ui: ['verify-login', 'verify-tui-style', 'verify-tui-viewport', 'verify-effort-bar'],
     package: ['build-packages', 'verify-packages'],
   };
   if (!groups[suite]) throw Error('Unknown check suite: ' + suite);

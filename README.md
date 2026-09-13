@@ -1,4 +1,4 @@
-# 🐋 DSCODE
+# ❄ DSCODE
 
 **在终端里写代码，让脚本接入当前会话，让 agent 之间交接任务。**
 
@@ -8,11 +8,13 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![npm](https://img.shields.io/npm/v/@toddzheng024/dscode)](https://www.npmjs.com/package/@toddzheng024/dscode)
 
-DSCODE 是基于 DeepSeek Harness 的终端编码 agent。持久 Shell 负责读写代码和执行测试；TUI、CLI 与脚本共用同一个会话运行时。0.2.0 加入 session 间通信、描述性名片和跨会话记忆，让已有的上下文和工作经验能够接着用。
+DSCODE 是基于 DeepSeek Harness 的终端编码 agent。持久 Shell 负责读写代码和执行测试；TUI、CLI 与脚本共用同一个会话运行时。0.3.0 加入本地密钥登录、横向 effort 选择条和固定底部输入区，并完善启动、会话并发与补丁工具。
 
-[0.2.0 亮点](#-020-亮点) · [安装](#-安装) · [常用命令](#-常用命令) · [权限与配置](#-权限与配置) · [开发与发布](#-开发与发布)
+[0.3.0 亮点](#-030-亮点) · [安装](#-安装) · [常用命令](#-常用命令) · [权限与配置](#-权限与配置) · [开发与发布](#-开发与发布)
 
-## ✨ 0.2.0 亮点
+## ✨ 0.3.0 亮点
+
+新增 `/login` 本地密钥保存；effort 选择条支持 Ultra 光效。欢迎界面和屏内对话视口让输入区保持在底部，Chrome MCP 延后到创建 agent 会话时连接。修复子目录中的 `apply_patch`，并加强并发启动、版本切换锁和消息处理。以下协作与记忆能力继续保留。
 
 ### 一个 session，接入终端、脚本和外部工具
 
@@ -56,7 +58,7 @@ Agent 内置 `list_sessions`、`read_session`、`send_session` 和 `reply_sessio
 
 Ultra 使用 DeepSeek 原生 `max` 推理，并引导 agent 按任务需要决定调查、委派和验证的范围。父 agent 可以给每个子 agent 单独选择 effort：例如让边界清楚的测试任务用 `low`，复杂排查用 `high`，同时保留自己的 Ultra 设置。[持久 Shell 与 Ultra →](docs/dscode-ultra.md)
 
-TUI 默认聚焦用户与 agent 的输出，隐藏 thinking 和工具调用历史；输入区上方显示当前工具、描述和本轮耗时。子 agent 概览区分 running / idle / done，`/agents` 可查看任务与当前活动。支持 `!` Shell、Shift+Enter 换行、中文输入光标定位，以及 `dscode resume` 接续会话。
+TUI 启动时清屏，顶部欢迎框显示 DSCODE、模型、effort、版本和项目路径，输入区固定在终端底部；长对话在屏内显示最近内容，完整会话可用 Ctrl+O 查看或 `/export` 导出。默认聚焦用户与 agent 的输出，隐藏 thinking 和工具调用历史；输入区上方显示当前工具、描述和本轮耗时。子 agent 概览区分 running / idle / done，`/agents` 可查看任务与当前活动。支持 `!` Shell、Shift+Enter 换行、中文输入光标定位，以及 `dscode resume` 接续会话。
 
 界面示意：
 
@@ -93,7 +95,7 @@ TUI 默认聚焦用户与 agent 的输出，隐藏 thinking 和工具调用历�
 
 ### npm + Plugin Hub
 
-> **v0.2.0 已发布。** [npm 启动器](https://www.npmjs.com/package/@toddzheng024/dscode) · [Hub preset](https://dshpluginhub.ai/profiles/dscode) · [GitHub Releases](https://github.com/qiz029/dscode/releases)
+> **v0.3.0 已发布。** [npm 启动器](https://www.npmjs.com/package/@toddzheng024/dscode) · [Hub preset](https://dshpluginhub.ai/profiles/dscode) · [GitHub Releases](https://github.com/qiz029/dscode/releases)
 
 ```sh
 npm install -g @toddzheng024/dscode
@@ -104,7 +106,7 @@ dscode
 如果 npm 包名查询暂时返回 404，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.2.0.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.3.0.tgz
 dscode
 ```
 
@@ -116,27 +118,27 @@ npm 启动器会检查已安装 bundle 和 Harness 依赖的推荐版本组合�
 
 密钥文件以明文保存在本地，文件权限为 `0600`，新建目录权限为 `0700`。已设置的 `DEEPSEEK_API_KEY` 环境变量优先；若要改用 `/login`，先移除 shell 或启动器 `.env` 中的该变量并重启。旧版 profile 中保存的凭据仍可读取，直到你通过 `/login` 保存新的 key。
 
-用 `/model` 选择模型或配置其他提供方，用 `/effort` 调整推理强度。默认路由是 `deepseek-official/deepseek-flash`。Computer Use 的辅助功能和录屏权限需在 macOS 中单独授予。
+用 `/model` 选择模型或配置其他提供方，用 `/effort` 调整推理强度。effort 选择器会替代底部输入框；支持四档的模型显示 `low → high → max → ultra` 横向 bar，方向键移动、Enter 应用、Esc 取消，`o` 可切到 off。光标移到 ultra 时，蓝色光效会从中央向两侧展开；按 Enter 后，输入框也会播放短暂的中央扩散涟漪。默认路由是 `deepseek-official/deepseek-flash`。Computer Use 的辅助功能和录屏权限需在 macOS 中单独授予。
 
 ```sh
 dscode --continue                     # 继续上次会话
 dscode --resume SESSION_ID            # 恢复指定会话
 dscode --cwd /another/project         # 在指定目录工作
 
-dscode update 0.2.0                   # 升级到 0.2.0
+dscode update 0.3.0                   # 升级到 0.3.0
 dscode history                        # 查看保留的版本记录
 dscode rollback                       # 回到上个 preset 版本
 dscode doctor                         # 检查 Hub 安装状态
 ```
 
-从 0.1.0 升级时，先更新启动器，再更新已安装的 profile：
+从旧版本升级时，先更新启动器，再更新已安装的 profile：
 
 ```sh
-npm install -g @toddzheng024/dscode@0.2.0
-dscode update 0.2.0
+npm install -g @toddzheng024/dscode@0.3.0
+dscode update 0.3.0
 ```
 
-源码/tar 安装与 npm/Hub 使用不同的数据目录。升级不会自动迁移它们之间的会话和凭据。[0.2.0 更新说明](docs/releases/0.2.0.md)
+源码/tar 安装与 npm/Hub 使用不同的数据目录。升级不会自动迁移它们之间的会话和凭据。[0.3.0 更新说明](docs/releases/0.3.0.md)
 
 ### 从源码运行（现在可用）
 
@@ -157,11 +159,11 @@ npm start -- --cwd /path/to/project
 
 ### tar 包安装（现在可用）
 
-从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.2.0.tar.gz`，然后执行：
+从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.3.0.tar.gz`，然后执行：
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.2.0.tar.gz -C dscode-install
+tar -xzf dscode-0.3.0.tar.gz -C dscode-install
 sh dscode-install/install.sh
 cd /path/to/project
 dscode
@@ -174,7 +176,7 @@ dscode
 | 命令 | 作用 |
 |---|---|
 | `/login` | 在隐藏输入框粘贴 DeepSeek API key，保存到 `~/.dscode/`，启动自动加载 |
-| `/model`、`/effort` | 选择模型、配置其他凭据、调整推理强度；Ultra 在 effort 菜单中 |
+| `/model`、`/effort` | 选择模型、配置其他凭据；支持四档的模型用横向 bar 调整 effort |
 | `/mode` | 选择 Agent Preset；新会话默认 `dscode` |
 | `/status`、`/doctor` | 会话状态与运行时诊断 |
 | `/memories` | 全局记忆状态、后台用量、开关与清理 |
@@ -207,7 +209,7 @@ dscode
 
 Skills 会发现目标项目的 `.agents/skills`、`.dsh/skills`，以及隔离的用户 skill 目录。使用 `/skills conflicts` 排查同名覆盖。
 
-Chrome 默认使用独立临时 profile，不接管日常浏览器登录态。桌面工具通过 skill 渐进加载；截图理解需要支持图片的模型。当前 MCP bridge 提供 tools，不提供 resources/prompts。[持久 Shell 与 Ultra →](docs/dscode-ultra.md)
+Chrome 随 `dscode` agent preset 初始化：空白启动先显示输入框，首次创建会话时连接 MCP 并等待工具注册；带初始消息或恢复会话的启动仍需完成这一步。Chrome 使用独立临时 profile，不接管日常浏览器登录态。桌面工具通过 skill 渐进加载；截图理解需要支持图片的模型。当前 MCP bridge 提供 tools，不提供 resources/prompts。[持久 Shell 与 Ultra →](docs/dscode-ultra.md)
 
 ## 🧩 开发与发布
 

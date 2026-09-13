@@ -6,6 +6,9 @@ import { patchFooter } from './patch-footer.mjs';
 import { patchSessionBridge } from './patch-session-bridge.mjs';
 import { patchStyle } from './patch-style.mjs';
 import { patchLogin } from './patch-login.mjs';
+import { patchViewport } from './patch-viewport.mjs';
+import { patchWelcome } from './patch-welcome.mjs';
+import { patchEffort } from './patch-effort.mjs';
 
 export function patchText(text) {
   const before = '\t\t\tif (text === "/clear") {\n\t\t\t\trefresh();\n\t\t\t\tclearView();\n\t\t\t\tdismissNotice();\n\t\t\t\treturn;\n\t\t\t}';
@@ -32,5 +35,8 @@ export function patchTui(root) {
   after = patchFooter(after, root);
   after = patchStyle(after);
   after = patchLogin(after);
+  after = patchViewport(after);
+  after = patchWelcome(after, JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version);
+  after = patchEffort(after);
   if (before !== after) writeFileSync(path, after);
 }

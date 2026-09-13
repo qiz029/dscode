@@ -1,4 +1,9 @@
 #!/bin/sh
 # Accept a standard unified diff on stdin. Works without a Git repository.
 # git apply checks all hunks before writing; --check performs a dry run.
+prefix=$(git rev-parse --show-prefix 2>/dev/null) || prefix=
+if [ -n "$prefix" ]; then
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 1
+  exec git -C "$root" apply --directory="$prefix" --whitespace=nowarn "$@"
+fi
 exec git apply --whitespace=nowarn "$@"

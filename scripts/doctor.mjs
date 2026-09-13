@@ -38,7 +38,7 @@ if (code !== 0 || !output.includes('HARNESS_PROBE_PASSED')) {
   throw new Error(`Harness probe failed (${code}); see artifacts/local/doctor.log`);
 }
 const result = JSON.parse(readFileSync(report, 'utf8'));
-console.log(`PASS: real profile boot, standard preset, ${result.tools.length} tools, Chrome MCP discovery, skill activation, file editing, shell execution, compaction provider and nonempty session resume`);
+console.log(`PASS: real profile boot, standard and dscode presets, ${result.tools.length} standard tools, scoped Chrome MCP discovery, skill activation, file editing, shell execution, compaction provider and nonempty session resume`);
 console.log(`Computer Use health: ${JSON.stringify(result.computer)}`);
 console.log('Agent loop used a deterministic local adapter. Not exercised: remote model requests, browser actions, desktop actions, remote-model compaction.');
 console.log(`Report: ${report}`);

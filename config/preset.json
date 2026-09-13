@@ -1,7 +1,7 @@
 {
   "slug": "todd-coding-tui",
   "name": "Todd Coding TUI",
-  "version": "0.2.0",
-  "createdAt": "2026-09-12T06:30:00.000Z",
+  "version": "0.3.0",
+  "createdAt": "2026-09-13T03:31:40.867Z",
   "description": "macOS coding harness with DSH-Code TUI, standard coding Agent Preset, native skills/compaction/planning/subagents, Chrome DevTools MCP, and Accessibility-first Computer Use. The repository lockfile is the validated installation path; Hub imports require local activation checks."
 }

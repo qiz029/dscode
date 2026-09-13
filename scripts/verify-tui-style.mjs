@@ -6,6 +6,7 @@ import { patchTui } from './patch-tui.mjs';
 import { patchStyle } from './patch-style.mjs';
 
 const root = new URL('../', import.meta.url);
+const version = JSON.parse(readFileSync(new URL('package.json', root), 'utf8')).version;
 patchTui(root.pathname);
 const source = readFileSync(new URL('node_modules/dsh-code/lib/index.mjs', root), 'utf8');
 assert.equal(patchStyle(source), source);
@@ -27,7 +28,7 @@ try {
     { label: '检查取消行为', state: 'idle', activity: 'waiting', updatedAt: 4 },
     { label: '检查写锁', state: 'done', activity: 'finished', updatedAt: 2 },
   ];
-  for (const theme of ['dark', 'light']) for (const columns of [32, 48, 80, 120]) {
+  for (const theme of ['dark', 'light']) for (const columns of [32, 48, 60, 64, 80, 120]) {
     ui.setTheme(theme);
     const stdout = new PassThrough();
     Object.assign(stdout, { columns, rows: 30, isTTY: true });
@@ -38,7 +39,7 @@ try {
     const errors = [];
     stderr.on('data', data => errors.push(data.toString()));
     const app = h(ui.Box, { flexDirection: 'column' },
-      h(ui.Header, { cwd: '/workspace/dsh-code', branch: 'main', title: 'Session 间消息投递' }),
+      h(ui.Header, { cwd: '/workspace/dsh-code', model: 'deepseek-official/deepseek-flash', effort: 'ultra' }),
       h(ui.Box, { paddingX: 2, marginBottom: 1 }, h(ui.Text, null, '已完成队列投递，正在验证中断后的恢复行为。')),
       h(ui.DscodeActivityLine, { entries: tools, since: Date.now() - 24000, animated: false }),
       h(ui.AgentsLine, { rows: agents, total: 3 }),
@@ -51,6 +52,17 @@ try {
       assert(frame, `No rendered frame: ${theme} ${columns}: ${errors.join('')}`);
       const plain = stripVTControlCharacters(frame);
       assert.match(plain, /DSCODE/);
+      assert(plain.includes(`v${version}`));
+      assert.match(plain, /deepseek-flash/);
+      assert.match(plain, /\/workspace\/dsh-code/);
+      if (columns >= 64) {
+        assert.match(plain, /────────────/);
+        assert.match(plain, /█▄▄█  █▄█▄█  █▄▄█/);
+        assert.match(plain, /          ▄███▄/);
+        assert.match(plain, /          ▀███▀/);
+        assert(plain.indexOf('          ▄███▄') < plain.indexOf('          ▀███▀'));
+        assert.match(plain, /█▀▀█  █▀█▀█  █▀▀█/);
+      } else assert.match(plain, /❄ DSCODE/);
       assert(!plain.includes('Deep diving'));
       assert(!plain.includes('secret command'));
       assert.match(plain, /ultra/);
@@ -64,5 +76,5 @@ try {
       writeFileSync(new URL(`${theme}-${columns}.txt`, out), plain);
     } finally { mounted.unmount(); mounted.cleanup(); stdout.destroy(); stdin.destroy(); stderr.destroy(); }
   }
-  console.log('TUI render passed: dark/light × 32/48/80/120 columns; real Ink frames in artifacts/local/tui-style.');
+  console.log('TUI render passed: dark/light × 32/48/60/64/80/120 columns; real Ink frames in artifacts/local/tui-style.');
 } finally { rmSync(entry, { force: true }); }

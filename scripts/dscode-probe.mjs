@@ -52,6 +52,7 @@ export async function probeDscode(ctx) {
   const handle = await ctx.agents.create({ sessionId, meta: { cwd, agentPreset: 'dscode' }, agentOptions: { provider: 'dscode-fixture', model: 'fixture', reasoningEffort: 'ultra' }, setup });
   const agent = handle.agent;
   const tools = ctx.tools.schemas(agent).map(t => t.name);
+  assert(tools.some(name => name.startsWith('mcp__chrome__')), 'First DSCODE agent did not mount Chrome MCP');
   for (const required of ['bash', 'shell_retry', 'skill', 'subagent', 'subagent_fork', 'create_goal']) assert(tools.includes(required), `Missing ${required}`);
   for (const removed of ['read', 'write', 'edit', 'grep', 'glob']) assert(!tools.includes(removed), `Unexpected standalone file tool ${removed}`);
   for (const command of ['compact', 'goal', 'shell']) assert(ctx.commands.find(agent, command), `Missing /${command}`);
@@ -127,6 +128,15 @@ export async function probeDscode(ctx) {
   assert((await run('bash', { command: 'printf "%s" "$DSCODE_FIXTURE_VAR"' })).includes('parent_only'));
   const compacted = await ctx.commands.execute(agent, '/compact', [], new AbortController().signal);
   assert.equal(compacted.result.kind, 'success', compacted.result.text);
+  const chromeTools = await ctx.commands.execute(agent, '/mcp tools mcp-chrome', [], new AbortController().signal);
+  assert.equal(chromeTools.result.kind, 'success', chromeTools.result.text);
+  assert(chromeTools.result.text.includes('mcp__chrome__'), 'Chrome tools are missing from /mcp');
+  for (const action of ['disable', 'enable', 'reconnect']) {
+    const result = await ctx.commands.execute(agent, `/mcp ${action} mcp-chrome`, [], new AbortController().signal);
+    assert.equal(result.result.kind, 'success', result.result.text);
+    const count = ctx.tools.schemas(agent).filter(tool => tool.name.startsWith('mcp__chrome__')).length;
+    assert.equal(count > 0, action !== 'disable', `/mcp ${action} did not update the Chrome tool catalog`);
+  }
   assert.equal(agent.session.requestHeader().config.reasoningEffort, 'ultra');
   await ctx.sessions.flush(agent.session);
   await handle.dispose();

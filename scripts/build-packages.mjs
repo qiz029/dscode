@@ -3,7 +3,7 @@ import { cpSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, ex
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { patchTui } from './patch-tui.mjs';
-import { patchRuntime } from './patch-runtime.mjs';
+import { patchRuntime, replaceOnce } from './patch-runtime.mjs';
 const root = resolve(import.meta.dirname, '..');
 const read = path => readFileSync(join(root, path), 'utf8');
 const original = JSON.parse(read('package.json'));
@@ -49,10 +49,22 @@ const tui = join(bundle, 'vendor/tui/index.mjs');
 writeFileSync(tui, readFileSync(tui, 'utf8').replace('new URL("../package.json", import.meta.url)', 'new URL("../../package.json", import.meta.url)').replace(/import \{ footerFor as dscodeFooterFor \} from [^\n]+;/, 'import { footerFor as dscodeFooterFor } from "../../plugins/session-metrics/view.mjs";'));
 rmSync(stage, { recursive: true, force: true });
 let preset = read('presets/dscode/agent.cordis.yml').replaceAll("'@deepseek-ai/dsh-tool-subagent'", `'${name}/subagent'`).replace('DSCODE_POLICY_PLUGIN', `'${name}/policy'`).replaceAll("'@deepseek-ai/dsh-tool-bash'", `'${name}/bash'`).replaceAll("'@deepseek-ai/dsh-tool-bash-persistent'", `'${name}/persistent'`);
+preset = replaceOnce(preset,
+  "  name: '@deepseek-ai/dsh-mcp-client'\n  config:\n    serverName: chrome",
+  "  name: '@deepseek-ai/dsh-mcp-client'\n  inject: [dscodePaths]\n  config:\n    serverName: chrome");
+preset = replaceOnce(preset,
+  `command: !!js "process.env.DSH_TUI_CHROME_ENTRY ? process.execPath : 'npx'"`,
+  'command: !!js process.execPath');
+preset = replaceOnce(preset,
+  `args: !!js "[...(process.env.DSH_TUI_CHROME_ENTRY ? [process.env.DSH_TUI_CHROME_ENTRY] : ['--yes', 'chrome-devtools-mcp@1.9.0']), '--isolated', '--no-usage-statistics', '--no-performance-crux']"`,
+  `args: !!js "[ctx.dscodePaths.chrome, '--isolated', '--no-usage-statistics', '--no-performance-crux']"`);
 write(bundle, 'presets/dscode/agent.cordis.yml', preset);
 let patch = read('node_modules/@deepseek-ai/dsh-base/cordis.patch.yml') + '\n' + read('node_modules/@anionex/dsh-computer-use/cordis.patch.yml') + '\n' + read('node_modules/dsh-code/cordis.patch.yml').replaceAll("'dsh-code/startup'", `'${name}/startup'`).replaceAll("'dsh-code'", `'${name}/tui'`);
 patch += '\n' + read('config/cordis.patch.yml') + '\n' + read('config/auto-review.patch.yml');
 patch += '\n' + composePlugins({ bundle: name });
+// Hub can compose the bundle repeatedly; the inserted provider must already
+// use its final name so the next pass does not conflict with the override.
+patch = replaceOnce(patch, "name: '@deepseek-ai/dsh-credentials-local'", `name: '${name}/credentials'`);
 patch += `
 - id: llm-deepseek
   disabled: true
@@ -61,17 +73,6 @@ patch += `
       name: '${name}/deepseek'
     - id: dscode-bootstrap
       name: '${name}/bootstrap'
-- id: mcp-chrome
-  inject: [dscodePaths]
-  config:
-    serverName: chrome
-    transport: stdio
-    command: !!js process.execPath
-    args: !!js "[ctx.dscodePaths.chrome, '--isolated', '--no-usage-statistics', '--no-performance-crux']"
-    env:
-      CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS: '1'
-    failOnStartupError: true
-    toolCallTimeoutMs: 60000
 `;
 write(bundle, 'cordis.patch.yml', patch);
 const exports = { './package.json':'./package.json', './cordis.patch.yml':'./cordis.patch.yml', './credentials':'./plugins/credentials/index.mjs', './memory':'./plugins/memory/index.mjs', './session-bridge':'./plugins/session-bridge/index.mjs', './session-cards':'./plugins/session-cards/index.mjs' };

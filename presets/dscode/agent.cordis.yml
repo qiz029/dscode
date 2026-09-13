@@ -288,3 +288,18 @@
 
 - id: present
   name: '@deepseek-ai/dsh-tool-present'
+
+# The TUI composes this standing preset on the first message. Connecting Chrome
+# here keeps the prompt-free welcome screen off the MCP startup path; the first
+# agent request still waits for the tool catalog before reaching the model.
+- id: mcp-chrome
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: chrome
+    transport: stdio
+    command: !!js "process.env.DSH_TUI_CHROME_ENTRY ? process.execPath : 'npx'"
+    args: !!js "[...(process.env.DSH_TUI_CHROME_ENTRY ? [process.env.DSH_TUI_CHROME_ENTRY] : ['--yes', 'chrome-devtools-mcp@1.9.0']), '--isolated', '--no-usage-statistics', '--no-performance-crux']"
+    env:
+      CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS: '1'
+    failOnStartupError: true
+    toolCallTimeoutMs: 60000

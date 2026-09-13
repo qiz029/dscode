@@ -92,7 +92,6 @@ async function probe(ctx) {
   const commands = ctx.commands.list(agent).map(command => command.name);
   assert(tools.includes('skill'), 'Skill tool did not mount');
   assert(tools.includes('computer_use_activate'), 'Computer Use consumer did not mount');
-  assert(tools.some(name => name.startsWith('mcp__chrome__')), 'Chrome MCP tools did not register');
   assert(commands.includes('compact'), 'Compact command did not mount');
   for (const name of ['status', 'doctor', 'mcp', 'skills', 'hooks']) {
     assert(commands.includes(name), `${name} command did not mount`);
@@ -100,18 +99,11 @@ async function probe(ctx) {
     assert.equal(execution.result.kind, 'success', `${name}: ${execution.result.text}`);
     assert(execution.result.text.length > 0);
   }
-  for (const line of ['/mcp tools mcp-chrome', '/skills conflicts', '/hooks reload']) {
+  for (const line of ['/skills conflicts', '/hooks reload']) {
     const execution = await ctx.commands.execute(agent, line, [], new AbortController().signal);
     assert.equal(execution.result.kind, 'success', `${line}: ${execution.result.text}`);
   }
 
-  for (const action of ['disable', 'enable', 'reconnect']) {
-    const execution = await ctx.commands.execute(agent, `/mcp ${action} mcp-chrome`, [], new AbortController().signal);
-    assert.equal(execution.result.kind, 'success', execution.result.text);
-    await ctx.get('loader').await();
-    const chromeTools = ctx.tools.schemas(agent).filter(t => t.name.startsWith('mcp__chrome__'));
-    assert.equal(chromeTools.length > 0, action !== 'disable', `MCP ${action} did not change tool registration`);
-  }
   agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Run the local harness fixture.' }], source: { kind: 'user' } }));
   await agent.whenIdle();
   assert.equal(readFileSync(fixtureFile, 'utf8'), 'harness smoke: after\n');

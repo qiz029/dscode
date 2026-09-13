@@ -2,6 +2,7 @@ import { runShell } from './shell.mjs';
 import { readFile, readdir, access } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
+import { standingMountFor } from '@deepseek-ai/dsh-agent-presets';
 import { hookEvents, validateHooks } from './hooks.mjs';
 import { redact } from '../auto-review/policy.mjs';
 
@@ -59,8 +60,11 @@ export async function findConflicts(cwd, configs, winners, env = process.env) {
 }
 
 export function apply(ctx) {
-  const entries = () => [...(ctx.get('loader')?.entries() ?? [])].filter(e => e.options.group !== true);
-  const mcps = () => entries().filter(e => e.options.name === '@deepseek-ai/dsh-mcp-client');
+  const entries = agent => [
+    ...(ctx.get('loader')?.entries() ?? []),
+    ...(agent?.ctx ? standingMountFor(agent.ctx)?.tree.entries() ?? [] : []),
+  ].filter(e => e.options.group !== true);
+  const mcps = agent => entries(agent).filter(e => e.options.name === '@deepseek-ai/dsh-mcp-client');
   const hook = () => entries().find(e => e.options.id === 'dscode-hooks');
   const state = e => e.disabled ? 'disabled' : phases[e.fiber?.state] ?? 'unavailable';
   let changing = false;
@@ -90,8 +94,8 @@ export function apply(ctx) {
       `Tokens: ${show(usage ?? 'no provider usage yet')}`,
       `Context: ${pressure?.pressureTokens ?? pressure?.surfaceTokens ?? '?'} / ${pressure?.contextWindow ?? '?'} tokens`,
       `Events: ${events.length}; /review-usage shows reviewer tokens`,
-      `Tools: ${ctx.tools.schemas(agent).length}; MCP entries: ${mcps().length}`,
-      `Plugins: ${entries().filter(e => state(e) === 'active').length} active, ${entries().filter(e => state(e) === 'failed').length} failed`,
+      `Tools: ${ctx.tools.schemas(agent).length}; MCP entries: ${mcps(agent).length}`,
+      `Plugins: ${entries(agent).filter(e => state(e) === 'active').length} active, ${entries(agent).filter(e => state(e) === 'failed').length} failed`,
       'Use /doctor for diagnostics; /statusline for live context/token display.',
     ].join('\n'));
   });
@@ -101,10 +105,10 @@ export function apply(ctx) {
     const computer = ctx.get('computerUse');
     return ok([
       `Node: ${process.version}; platform: ${process.platform}/${process.arch}`,
-      ...entries().filter(e => !e.disabled && state(e) !== 'active').map(e => `CHECK plugin ${e.id}: ${state(e)}`),
+      ...entries(agent).filter(e => !e.disabled && state(e) !== 'active').map(e => `CHECK plugin ${e.id}: ${state(e)}`),
       `Skills: ${catalog.skills.length}; discovery ${catalog.complete ? 'complete' : 'incomplete'}`,
       `Core tools: ${['bash', 'skill', 'computer_use_activate'].map(n => `${n}=${tools.includes(n)}`).join(', ')}`,
-      ...mcps().map(e => `MCP ${e.id}: ${state(e)}; ${tools.filter(n => n.startsWith(`mcp__${e.options.config?.serverName}__`)).length} registered tools`),
+      ...mcps(agent).map(e => `MCP ${e.id}: ${state(e)}; ${tools.filter(n => n.startsWith(`mcp__${e.options.config?.serverName}__`)).length} registered tools`),
       `Computer Use: ${computer ? show(computer.status()) : 'service unavailable'}`,
       'Credentials and remote model access: not tested. No credential values are read or printed.',
       'For deterministic execution checks outside this session: npm run doctor (in the installation directory).',
@@ -112,8 +116,8 @@ export function apply(ctx) {
   });
   register('mcp', 'MCP list, tools <id>, enable/disable/reconnect <id>', async ({ agent, rawInput }) => {
     const [action = 'list', id, extra] = rawInput.trim().split(/\s+/).filter(Boolean);
-    const list = mcps();
-    if (action === 'list') return ok(list.map(e => `${e.id}: ${state(e)} | server=${show(e.options.config?.serverName)} | transport=${show(e.options.config?.transport)}`).join('\n') + '\n/mcp tools|enable|disable|reconnect <entry-id> — changes last for this process; persist startup config in mcp.local.yml.');
+    const list = mcps(agent);
+    if (action === 'list') return ok(list.map(e => `${e.id}: ${state(e)} | server=${show(e.options.config?.serverName)} | transport=${show(e.options.config?.transport)}`).join('\n') + '\n/mcp tools|enable|disable|reconnect <entry-id> — changes last for this process.');
     const matches = list.filter(e => e.id === id || e.options.id === id);
     const entry = matches.length === 1 ? matches[0] : undefined;
     if (!entry || extra) return fail('Usage: /mcp [list | tools|enable|disable|reconnect <entry-id>]');
@@ -130,7 +134,7 @@ export function apply(ctx) {
     const options = { cwd: agent.session.header.cwd ?? process.cwd(), scope: agent, signal };
     const { skills, complete } = await ctx.skills.snapshot(options);
     const arg = rawInput.trim();
-    if (arg === 'conflicts') return ok(await findConflicts(options.cwd, entries().filter(e => !e.disabled && e.options.name === '@deepseek-ai/dsh-skill-filesystem').map(e => e.options.config ?? {}), skills));
+    if (arg === 'conflicts') return ok(await findConflicts(options.cwd, entries(agent).filter(e => !e.disabled && e.options.name === '@deepseek-ai/dsh-skill-filesystem').map(e => e.options.config ?? {}), skills));
     if (arg && arg !== 'list') {
       const skill = await ctx.skills.get(arg, options);
       return skill ? ok(`${skill.name}\n${skill.description}\nsource: ${skill.source}\nprovider: ${skill.provider}\npath: ${skill.path ?? '(provider managed)'}\ninvocation: ${show(skill.invocation)}`) : fail(`Unknown skill: ${arg}`);

@@ -29,7 +29,7 @@ Hooks which should cover both execution paths should match `^(bash|shell_retry)$
 
 ## Ultra effort
 
-In the DeepSeek native route, `/effort` now offers `Ultra` alongside Off, Low, High and Max. It is a harness policy, not a new DeepSeek API value:
+In the DeepSeek native route, `/effort` replaces the bottom composer with a Low → High → Max → Ultra bar (arrow keys to move, Enter to apply, Esc to cancel, `o` for Off). Focusing Ultra triggers a blue wave that spreads from the center before confirmation. After applying Ultra, the composer briefly shows a second center-out text-and-border ripple. Both effects are skipped when animations are disabled. Ultra is a harness policy, not a new DeepSeek API value:
 
 - Session selection and request headers retain `ultra`; the native adapter serializes it as `thinking.type: enabled` and `reasoning_effort: max`.
 - Normal tool-capable requests get collaboration guidance appended to the effective system message at the adapter boundary. The immutable logged request is not mutated. This extra text is reflected in provider usage; preflight local token estimates do not include the adapter-added text.
