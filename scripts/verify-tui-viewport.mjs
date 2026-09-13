@@ -88,7 +88,7 @@ try {
       assert(frame.includes('type a message'), `Missing composer with ${count} replies`);
       if (count) assert(frame.includes(`Reply number ${count}`), `Newest reply missing with ${count} replies`);
       if (count === 8) assert(frame.includes('─'.repeat(8)), 'Completed turn divider missing from the rendered frame');
-      artworkRows.push(frame.split('\n').filter(line => /[█▄▀╭╰]/.test(line)).length);
+      artworkRows.push(frame.split('\n').filter(line => /[▀▄█╭╰]/.test(line)).length);
     } finally { mounted.unmount(); mounted.cleanup(); stdout.destroy(); stderr.destroy(); stdin.destroy(); }
   }
   assert(artworkRows[0] > artworkRows[1] && artworkRows[1] > artworkRows[2] && artworkRows[2] > artworkRows[3], `Welcome did not scroll upward row by row: ${artworkRows}`);

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { WELCOME_ART, welcomeArtRows } from './patch-welcome.mjs';
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { stripVTControlCharacters } from 'node:util';
@@ -16,7 +17,7 @@ const source = readFileSync(new URL('node_modules/dsh-code/lib/index.mjs', root)
 assert.equal(patchStyle(source), source);
 const entry = new URL(`node_modules/dsh-code/lib/.dscode-style-probe-${process.pid}.mjs`, root);
 // Use the actual bundled Ink renderer and theme, with a captured terminal.
-writeFileSync(entry, source + '\nexport { Header, DscodeActivityLine, AgentsLine, StatusLine, StyledRows, dscodeChatLines, Box, Text, render, import_react as react, setTheme, visibleColumns, dscodeActivity, dscodeTpsTone, dscodeTelemetryParts, dscodeTelemetryNodes, DEFAULT_STATUSLINE_ITEMS };\n');
+writeFileSync(entry, source + '\nexport { Header, DscodeActivityLine, DSCODE_SPIN_FRAMES, AgentsLine, StatusLine, StyledRows, dscodeChatLines, Box, Text, render, import_react as react, setTheme, visibleColumns, dscodeActivity, dscodeTpsTone, dscodeTelemetryParts, dscodeTelemetryNodes, DEFAULT_STATUSLINE_ITEMS };\n');
 const out = new URL('artifacts/local/tui-style/', root);
 mkdirSync(out, { recursive: true });
 const now = Date.now();
@@ -40,6 +41,13 @@ process.env.FORCE_COLOR = '3';
 try {
   const ui = await import(entry.href);
   const h = ui.react.createElement;
+  assert.equal(ui.DSCODE_SPIN_FRAMES.length, 4, 'Snowflake spinner has four orbit frames');
+  for (const frame of ui.DSCODE_SPIN_FRAMES) {
+    assert.equal(frame.length, 3);
+    assert.equal(frame[1], '❄', 'Snowflake stays in the middle cell');
+    assert.equal(ui.visibleColumns(frame.join('')), 3, 'Spinner frames keep a fixed width');
+  }
+  assert.equal(new Set(ui.DSCODE_SPIN_FRAMES.map(frame => frame[0] + frame[2])).size, 4, 'Every orbit frame places the arc differently');
   assert.match(ui.dscodeActivity([], false), /正在思考/);
   assert.match(ui.dscodeActivity([], true), /正在回复/);
   const tools = [{ kind: 'tool', state: 'running', name: 'shell', arguments: JSON.stringify({ command: 'secret command', description: '验证会话恢复行为' }) }];
@@ -95,13 +103,15 @@ try {
       assert.match(plain, /\/workspace\/dsh-code/);
       if (columns >= 64) {
         assert.match(plain, /────────────/);
-        assert.match(plain, /█▄▄█  █▄█▄█  █▄▄█/);
-        assert.match(plain, /          ▄███▄/);
-        assert.match(plain, /          ▀███▀/);
-        assert(plain.indexOf('          ▄███▄') < plain.indexOf('          ▀███▀'));
-        assert.match(plain, /█▀▀█  █▀█▀█  █▀▀█/);
+        const art = plain.split('\n').filter(line => /[▀▄█]/.test(line));
+        assert.equal(art.length, 12, `Welcome snowflake rows: ${art.length}`);
+        const expected = welcomeArtRows(WELCOME_ART, { 1: 'a', 2: 'b', 3: 'c' }).map(segments => segments.map(segment => segment.text).join('').trimEnd());
+        expected.forEach((row, index) => assert(art[index].includes(row), `Snowflake row ${index} drift: ${art[index]}`));
+        assert.match(frame, /\x1b\[48;2;\d+;\d+;\d+m▀/, 'Two-tone half blocks should carry a background colour');
       } else assert.match(plain, /❄ DSCODE/);
       assert(!plain.includes('Deep diving'));
+      assert(!plain.includes('⠋'), 'Braille spinner should be gone');
+      assert.match(plain, /❄  正在执行/, 'Static snowflake leads the activity line');
       assert(!plain.includes('secret command'));
       assert.match(plain, /ultra/);
       if (columns >= 80) {

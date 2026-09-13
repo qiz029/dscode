@@ -21,6 +21,12 @@ export function patchStyle(text) {
     .replace('key: key + "divider", color: inkColor(getPalette().dim) }, "｜"));', 'key: key + "divider", color: inkColor(getPalette().dim) }, "｜ "));')
     .replace('const rightParts = [];\n\t\trow.right.forEach', 'const rightParts = [];\n        if (key === "s2" && row.left.length > 0 && row.right.length > 0) rightParts.push((0, import_react.createElement)(Text, { key: key + "divider", color: inkColor(getPalette().dim) }, "｜ "));\n\t\trow.right.forEach');
     if (!patched.includes('// dscode-tps-colors-v1')) patched = patched.replace('function dscodeActivity(entries, streaming) {', tpsColorSource + '\nfunction dscodeActivity(entries, streaming) {');
+    if (!patched.includes('DSCODE_SPIN_FRAMES')) {
+      const start = patched.indexOf('function DscodeActivityLine(');
+      const end = patched.indexOf('\n}', start) + 2;
+      if (start < 0 || end <= start) throw Error('Patched TUI activity line drift');
+      patched = patched.slice(0, start) + spinnerSource.trim() + '\n' + patched.slice(end);
+    }
     return patched.replace(telemetryTextAnchor, telemetryColorRender);
   }
   const patch = (from, to) => { text = replaceOnce(text, from, to); };
@@ -85,7 +91,7 @@ export function patchStyle(text) {
   // One animation owns the running state; the editor remains a stable target.
   patch('busy ? (0, import_react.createElement)(BusyChase, { animated: animations })', 'busy ? (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, "› ")');
   patch('active: waveTier !== null && waveStyle !== null && !busy && !preparingImages && animations && waveArmed,', 'active: false, // DSCODE keeps the input band stable');
-  return '// dscode-style-v1\n' + tpsColorSource + '\n' + activitySource + '\n' + text;
+  return '// dscode-style-v1\n' + tpsColorSource + '\n' + activitySource + '\n' + spinnerSource + '\n' + text;
 }
 
 const telemetryTextAnchor = '}, span.text));\n\t\t});\n\t\tif (row.hint)';
@@ -126,6 +132,26 @@ function dscodeTelemetryNodes(value, key) {
 }
 `;
 
+const spinnerSource = `
+// A snowflake with an arc orbiting it clockwise: top-left, top-right, bottom-right, bottom-left.
+const DSCODE_SPIN_FRAMES = [["\u25DC", "\u2744", " "], [" ", "\u2744", "\u25DD"], [" ", "\u2744", "\u25DE"], ["\u25DF", "\u2744", " "]];
+function DscodeActivityLine({ entries, streaming, since, animated = true }) {
+  const columns = useStdout().stdout?.columns ?? 80;
+  const tick = useFrames(animated ? 220 : 1000);
+  const elapsed = since > 0 ? Math.max(0, Date.now() - since) : 0;
+  const suffix = columns >= 48 ? " · 本轮 " + runClock(elapsed) + " · Esc 中断" : " · 本轮 " + runClock(elapsed);
+  const [left, flake, right] = animated ? DSCODE_SPIN_FRAMES[tick % DSCODE_SPIN_FRAMES.length] : [" ", "\u2744", " "];
+  const label = truncateColumns(dscodeActivity(entries, streaming), Math.max(1, columns - 8 - visibleColumns(suffix)));
+  return (0, import_react.createElement)(Box, { paddingX: 2 },
+    (0, import_react.createElement)(Text, { wrap: "truncate-end" },
+      (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandMid) }, left),
+      (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, flake),
+      (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandMid) }, right),
+      (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, " " + label),
+      (0, import_react.createElement)(Text, { color: inkColor(getPalette().dim) }, suffix)));
+}
+`;
+
 const activitySource = `
 function dscodeActivity(entries, streaming) {
   const running = entries.filter(entry => entry.kind === "tool" && entry.state === "running");
@@ -142,18 +168,6 @@ function dscodeActivity(entries, streaming) {
   // is a task label, not a claim that the command succeeded.
   return "正在执行 · " + singleLineText(tool.name) + (running.length > 1 ? " +" + (running.length - 1) : "") +
     (description ? " · " + truncateColumns(singleLineText(description), 56) : "");
-}
-function DscodeActivityLine({ entries, streaming, since, animated = true }) {
-  const columns = useStdout().stdout?.columns ?? 80;
-  const tick = useFrames(animated ? 160 : 1000);
-  const elapsed = since > 0 ? Math.max(0, Date.now() - since) : 0;
-  const suffix = columns >= 48 ? " · 本轮 " + runClock(elapsed) + " · Esc 中断" : " · 本轮 " + runClock(elapsed);
-  const glyph = animated ? ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][tick % 10] : "●";
-  const label = truncateColumns(dscodeActivity(entries, streaming), Math.max(1, columns - 6 - visibleColumns(suffix)));
-  return (0, import_react.createElement)(Box, { paddingX: 2 },
-    (0, import_react.createElement)(Text, { wrap: "truncate-end" },
-      (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, glyph + " " + label),
-      (0, import_react.createElement)(Text, { color: inkColor(getPalette().dim) }, suffix)));
 }
 `;
 

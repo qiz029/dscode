@@ -9,7 +9,7 @@ import { patchTui } from '../scripts/patch-tui.mjs';
 import { patchRuntime } from '../scripts/patch-runtime.mjs';
 import { patchStyle } from '../scripts/patch-style.mjs';
 import { visibleSettledLines } from '../scripts/patch-viewport.mjs';
-import { welcomeVisibleRows } from '../scripts/patch-welcome.mjs';
+import { WELCOME_ART, WELCOME_ART_SMALL, welcomeArtRows, welcomeVisibleRows } from '../scripts/patch-welcome.mjs';
 import { ctrlCAction } from '../scripts/patch-interrupt.mjs';
 import { transcriptWindow, mouseWheelDirection } from '../scripts/patch-scroll.mjs';
 import { turnDividedLines } from '../scripts/patch-turn-divider.mjs';
@@ -98,8 +98,8 @@ test('completed turns separate live and resumed transcripts without changing exp
   const render = entry => [{ segments: [{ text: entry.text, style: 'plain' }] }];
   const lines = visibleSettledLines(resumed.entries, resumed.entries.length, Infinity, 32, false, render);
   assert.deepEqual(lines.map(line => line.segments[0].text), [
-    'first prompt', 'first answer', `  ${'─'.repeat(26)}`,
-    'second prompt', 'second answer', `  ${'─'.repeat(26)}`,
+    'first prompt', 'first answer', '─'.repeat(32),
+    'second prompt', 'second answer', '─'.repeat(32),
   ]);
   assert(lines.filter(line => line.segments[0].style === 'dim').length === 2);
   assert(!buildExportMarkdown(resumed, 'fixture').includes('─'));
@@ -109,7 +109,8 @@ test('turn divider yields scarce viewport rows to the answer', () => {
   const answer = [{ segments: [{ text: 'answer', style: 'plain' }] }];
   assert.equal(turnDividedLines({ turnEnded: true }, 80, answer, 1), answer);
   assert.equal(turnDividedLines({ turnEnded: false }, 80, answer, Infinity), answer);
-  assert.equal(turnDividedLines({ turnEnded: true }, 80, answer, Infinity)[1].segments[0].text.length, 74);
+  assert.equal(turnDividedLines({ turnEnded: true }, 80, answer, Infinity)[1].segments[0].text, '─'.repeat(80));
+  assert.equal(turnDividedLines({ turnEnded: true }, 120, answer, Infinity)[1].segments[0].text.length, 120);
 });
 
 test('user background pads every wrapped row without changing its content', () => {
@@ -296,5 +297,25 @@ test('upstream drift fails before replacing any TUI file, including missing logi
     writeFileSync(path, drifted);
     assert.throws(() => patchTui(fixture.root), /Unsupported|drift/);
     assert.equal(readFileSync(path, 'utf8'), drifted);
+  }
+});
+
+test('welcome art packs pixel pairs into half blocks with merged runs', () => {
+  assert.deepEqual(welcomeArtRows(['.1223', '.1332'], { 1: 'deep', 2: 'mid', 3: 'bright' }), [[
+    { glyph: ' ', text: ' ', color: '', background: '' },
+    { glyph: '█', text: '█', color: 'deep', background: '' },
+    { glyph: '▀', text: '▀▀', color: 'mid', background: 'bright' },
+    { glyph: '▀', text: '▀', color: 'bright', background: 'mid' },
+  ]]);
+  assert.deepEqual(welcomeArtRows(['1', '.'], { 1: 'x' }), [[{ glyph: '▀', text: '▀', color: 'x', background: '' }]]);
+  assert.deepEqual(welcomeArtRows(['.', '1'], { 1: 'x' }), [[{ glyph: '▄', text: '▄', color: 'x', background: '' }]]);
+  for (const [art, size] of [[WELCOME_ART, 24], [WELCOME_ART_SMALL, 22]]) {
+    assert.equal(art.length, size);
+    assert(art.every(row => row.length === size && /^[.123]+$/.test(row)));
+    assert.equal(welcomeArtRows(art, { 1: 'a', 2: 'b', 3: 'c' }).length, size / 2);
+    const shape = art.slice(0, size - 1).map(row => row.replace(/[123]/g, '#'));
+    assert.deepEqual(shape, [...shape].reverse(), 'snowflake shape mirrors vertically');
+    // Column 0 and pixel row size-1 are the canvas margins; the flake itself is odd-sized and centred.
+    assert.deepEqual(shape.map(row => row.slice(1)), shape.map(row => [...row.slice(1)].reverse().join('')), 'snowflake shape mirrors horizontally');
   }
 });

@@ -18,8 +18,84 @@ export function welcomeVisibleRows(capacity, maximum, demand, canScroll = true) 
   return Math.max(0, Math.min(maximum, capacity - demand));
 }
 
+/** Pixel rows of the welcome snowflake for terminals of 26+ rows: "." is transparent, "1"-"3" are dark-to-bright brand tones. */
+export const WELCOME_ART = [
+  "...........1.1..........",
+  "............1...........",
+  "............1...........",
+  ".........1..1..1........",
+  ".......1..22222..1......",
+  "...1...1....2....1...1..",
+  "..11...2....2....2...11.",
+  "....11.2...222...2.11...",
+  "......22.22.3.22.22.....",
+  ".....22.22.333.22.22....",
+  "....1...2.33332.2...1...",
+  "........2.33322.2.......",
+  "....1...2.33222.2...1...",
+  ".....22.22.222.22.22....",
+  "......22.22.3.22.22.....",
+  "....11.2...222...2.11...",
+  "..11...2....2....2...11.",
+  "...1...1....2....1...1..",
+  ".......1..22222..1......",
+  ".........1..1..1........",
+  "............1...........",
+  "............1...........",
+  "...........1.1..........",
+  "........................"
+];
+
+/** Smaller snowflake for 24-25 row terminals, where the welcome box may use at most 13 rows. */
+export const WELCOME_ART_SMALL = [
+  "..........1.1.........",
+  "...........1..........",
+  "........1..1..1.......",
+  ".........1.2.1........",
+  "...1..1...222...1..1..",
+  "...1..1....2....1..1..",
+  "..1.1.2...222...2.1.1.",
+  ".....22.22.3.22.22....",
+  "....12.22.333.22.21...",
+  "...1...2.33332.2...1..",
+  ".......2.33322.2......",
+  "...1...2.33222.2...1..",
+  "....12.22.222.22.21...",
+  ".....22.22.3.22.22....",
+  "..1.1.2...222...2.1.1.",
+  "...1..1....2....1..1..",
+  "...1..1...222...1..1..",
+  ".........1.2.1........",
+  "........1..1..1.......",
+  "...........1..........",
+  "..........1.1.........",
+  "......................"
+];
+
+/** Pack two pixel rows per terminal row into half-block runs with foreground/background tones. */
+export function welcomeArtRows(grid, tones) {
+  const rows = [];
+  for (let y = 0; y < grid.length; y += 2) {
+    const top = grid[y] || '';
+    const bottom = grid[y + 1] || '';
+    const segments = [];
+    for (let x = 0; x < Math.max(top.length, bottom.length); x++) {
+      const upper = tones[top[x]] || '';
+      const lower = tones[bottom[x]] || '';
+      const glyph = upper && lower ? upper === lower ? '\u2588' : '\u2580' : upper ? '\u2580' : lower ? '\u2584' : ' ';
+      const color = upper || lower;
+      const background = upper && lower && upper !== lower ? lower : '';
+      const last = segments[segments.length - 1];
+      if (last && last.glyph === glyph && last.color === color && last.background === background) last.text += glyph;
+      else segments.push({ glyph, text: glyph, color, background });
+    }
+    rows.push(segments);
+  }
+  return rows;
+}
+
 function patchWelcomeScroll(text) {
-  if (text.includes('// dscode-welcome-scroll-v1')) return text;
+  if (text.includes('// dscode-welcome-scroll-v1')) return text.replace('const welcomeMaxRows = welcomeFull ? 13 :', 'const welcomeMaxRows = welcomeFull ? terminalRows >= 26 ? 14 : 13 :');
   const start = text.indexOf('const welcomeFull = terminalRows >= 24 && terminalColumns >= 64;');
   const end = text.indexOf('\n\tconst liveBudget =', start);
   if (start < 0 || end < 0) throw Error('Pinned TUI welcome viewport drift');
@@ -28,7 +104,7 @@ function patchWelcomeScroll(text) {
     if (!previous.includes(anchor)) throw Error(`Pinned TUI welcome viewport missing ${anchor}`);
   }
   const layout = `const welcomeFull = terminalRows >= 24 && terminalColumns >= 64;
-  const welcomeMaxRows = welcomeFull ? 13 : terminalRows >= 10 ? 4 : 1;
+  const welcomeMaxRows = welcomeFull ? terminalRows >= 26 ? 14 : 13 : terminalRows >= 10 ? 4 : 1;
   // The nine fixed rows belong to the composer, footer and their gutters.
   const transcriptCapacity = transcriptVisible ? Math.max(0, terminalRows - 9 - composerGutterRows - (composerRows - 1) - menuRows) : 0;
   const streamingActive = view.streaming !== "";
@@ -58,17 +134,32 @@ function patchWelcomeScroll(text) {
 
 export function patchWelcome(text, version) {
   if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version)) throw Error('Invalid DSCODE version for welcome box');
-  if (text.includes('// dscode-welcome-v1')) {
+  const patched = text.includes('// dscode-welcome-v1');
+  if (patched) {
     const start = text.indexOf('function Header({ cwd = "", model = "", effort = "" }) {');
-    const end = text.indexOf('\n}', start) + 2;
-    if (start < 0 || end <= start) throw Error('Patched TUI welcome header drift');
-    const header = text.slice(start, end).replace(/"(  )?v\d+\.\d+\.\d+(?:-[\w.-]+)?"/g, (_, pad = '') => `"${pad}v${version}"`);
-    return patchWelcomeScroll(text.slice(0, start) + header + text.slice(end));
+    const tail = '}, project))));\n  }';
+    const end = text.indexOf(tail, start) + tail.length;
+    if (start < 0 || end <= start + tail.length) throw Error('Patched TUI welcome header drift');
+    text = text.slice(0, start) + welcomeHeaderSource(version) + text.slice(end);
+    if (!text.includes('// dscode-welcome-v2')) text = '// dscode-welcome-v2\n' + 'const WELCOME_ART = ' + JSON.stringify(WELCOME_ART) + ';\nconst WELCOME_ART_SMALL = ' + JSON.stringify(WELCOME_ART_SMALL) + ';\n' + welcomeArtRows.toString() + '\n' + text;
+    return patchWelcomeScroll(text);
   }
   const start = text.indexOf('function Header({ resumed, cwd = "", branch = "", title = "" }) {');
   const end = text.indexOf('\n}', start) + 2;
   if (start < 0 || end <= start) throw Error('Pinned TUI welcome header drift');
-  const header = `function Header({ cwd = "", model = "", effort = "" }) {
+  text = text.slice(0, start) + welcomeHeaderSource(version) + text.slice(end);
+  text = replaceOnce(text,
+    'const settledBudget = transcriptVisible ? Math.max(0, terminalRows - 12 - composerGutterRows - (composerRows - 1) - menuRows) : 0;',
+    'const welcomeFull = terminalRows >= 24 && terminalColumns >= 64;\n  const welcomeChromeRows = welcomeFull ? 22 : terminalRows >= 10 ? 13 : 10;\n  const settledBudget = transcriptVisible ? Math.max(0, terminalRows - welcomeChromeRows - composerGutterRows - (composerRows - 1) - menuRows) : 0;');
+  text = replaceOnce(text,
+    'terminalRows >= 10 ? (0, import_react.createElement)(Header, { resumed: props.resumed, cwd: props.cwd, branch: props.branch, title: view.title })',
+    'terminalRows >= 10 ? (0, import_react.createElement)(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel })');
+  return patchWelcomeScroll('// dscode-welcome-v1\n// dscode-welcome-v2\n' + welcomePath.toString() + '\nconst WELCOME_ART = ' + JSON.stringify(WELCOME_ART) + ';\nconst WELCOME_ART_SMALL = ' + JSON.stringify(WELCOME_ART_SMALL) + ';\n' + welcomeArtRows.toString() + '\n' + text);
+}
+
+/** Source of the patched welcome header: pixel snowflake on the left, session facts on the right. */
+function welcomeHeaderSource(version) {
+  return `function Header({ cwd = "", model = "", effort = "" }) {
     const stdout = useStdout().stdout;
     const columns = stdout?.columns ?? 80;
     const full = (stdout?.rows ?? 30) >= 24 && columns >= 64;
@@ -78,25 +169,21 @@ export function patchWelcome(text, version) {
     const modelName = singleLineText(model).split("/").at(-1) || "unknown";
     const effortName = singleLineText(effort) || "default";
     const project = welcomePath(cwd, detailsWidth);
+    const palette = getPalette();
+    const art = (stdout?.rows ?? 30) >= 26 ? WELCOME_ART : WELCOME_ART_SMALL;
+    const luminance = ([red, green, blue]) => red * 299 + green * 587 + blue * 114;
+    const tones = [palette.brandDeep, palette.brand, palette.brandBright].sort((left, right) => luminance(left) - luminance(right));
     if (!full) return (0, import_react.createElement)(Box, { flexDirection: "column", paddingX: 2, marginBottom: 1 },
       (0, import_react.createElement)(Text, { wrap: "truncate-end" },
         (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright), bold: true }, "❄ DSCODE"),
         (0, import_react.createElement)(Text, { color: inkColor(getPalette().dim) }, "  v${version}")),
       (0, import_react.createElement)(Text, { wrap: "truncate-end" }, truncateColumns(modelName + " · " + effortName, width)),
       (0, import_react.createElement)(Text, { color: inkColor(getPalette().dim), wrap: "truncate-end" }, welcomePath(cwd, width)));
-    return (0, import_react.createElement)(Box, { flexDirection: "column", width, borderStyle: "round", borderColor: inkColor(getPalette().brand), paddingX: 1, marginBottom: 1 },
+    return (0, import_react.createElement)(Box, { flexDirection: "column", width, borderStyle: "round", borderColor: inkColor(getPalette().brand), paddingX: 1 },
       (0, import_react.createElement)(Box, { flexDirection: "row" },
         (0, import_react.createElement)(Box, { flexDirection: "column", width: 28 },
-          (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, "            ▄"),
-          (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, "    █▄▄█  █▄█▄█  █▄▄█"),
-          (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, "    ▄███▄  ▀█▀  ▄███▄"),
-          (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, "       ▀██▄ █ ▄██▀"),
-          (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, "          ▄███▄"),
-          (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, "          ▀███▀"),
-          (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, "       ▄██▀ █ ▀██▄"),
-          (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, "    ▀███▀  ▄█▄  ▀███▀"),
-          (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, "    █▀▀█  █▀█▀█  █▀▀█"),
-          (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, "            ▀")),
+          ...welcomeArtRows(art, { "1": inkColor(tones[0]), "2": inkColor(tones[1]), "3": inkColor(tones[2]) }).map((segments, row) => (0, import_react.createElement)(Text, { key: row }, "  ",
+            ...segments.map((segment, index) => (0, import_react.createElement)(Text, { key: index, color: segment.color || void 0, backgroundColor: segment.background || void 0 }, segment.text))))),
         (0, import_react.createElement)(Box, { flexDirection: "column", width: detailsWidth, marginTop: 2 },
           (0, import_react.createElement)(Text, { color: inkColor(getPalette().text), bold: true }, "DSCODE"),
           (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandDeep) }, "────────────"),
@@ -107,12 +194,4 @@ export function patchWelcome(text, version) {
           (0, import_react.createElement)(Text, { color: inkColor(getPalette().dim) }, "project"),
           (0, import_react.createElement)(Text, { wrap: "truncate-end" }, project))));
   }`;
-  text = text.slice(0, start) + header + text.slice(end);
-  text = replaceOnce(text,
-    'const settledBudget = transcriptVisible ? Math.max(0, terminalRows - 12 - composerGutterRows - (composerRows - 1) - menuRows) : 0;',
-    'const welcomeFull = terminalRows >= 24 && terminalColumns >= 64;\n  const welcomeChromeRows = welcomeFull ? 22 : terminalRows >= 10 ? 13 : 10;\n  const settledBudget = transcriptVisible ? Math.max(0, terminalRows - welcomeChromeRows - composerGutterRows - (composerRows - 1) - menuRows) : 0;');
-  text = replaceOnce(text,
-    'terminalRows >= 10 ? (0, import_react.createElement)(Header, { resumed: props.resumed, cwd: props.cwd, branch: props.branch, title: view.title })',
-    'terminalRows >= 10 ? (0, import_react.createElement)(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel })');
-  return patchWelcomeScroll('// dscode-welcome-v1\n' + welcomePath.toString() + '\n' + text);
 }
