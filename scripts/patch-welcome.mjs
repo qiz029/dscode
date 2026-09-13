@@ -94,8 +94,20 @@ export function welcomeArtRows(grid, tones) {
   return rows;
 }
 
+const LIVE_BUDGET_V1 = 'const liveBudget = dynamicRows === 0 ? 0 : busy || streamingActive ? Math.max(1, Math.floor(dynamicRows / 3)) : Math.max(0, dynamicRows - (deepDivingVisible ? 1 : 0));';
+// Within the live rows the streaming answer comes first; unsettled entries get the remainder.
+const LIVE_BUDGET_V2 = 'const liveBudget = dynamicRows === 0 ? 0 : streamingActive ? Math.max(0, dynamicRows - Math.min(streamingDemand, dynamicRows)) : dynamicRows;';
+
 function patchWelcomeScroll(text) {
-  if (text.includes('// dscode-welcome-scroll-v1')) return text.replace('const welcomeMaxRows = welcomeFull ? 13 :', 'const welcomeMaxRows = welcomeFull ? terminalRows >= 26 ? 14 : 13 :');
+  if (text.includes('// dscode-welcome-scroll-v2')) return text;
+  if (text.includes('// dscode-welcome-scroll-v1')) {
+    text = text.replace('const welcomeMaxRows = welcomeFull ? 13 :', 'const welcomeMaxRows = welcomeFull ? terminalRows >= 26 ? 14 : 13 :');
+    text = replaceOnce(text, '  const settledViewportRows = busy || streamingActive ? Math.floor(settledBudget / 3) : settledBudget;', `  const liveDemand = allLiveLines.length + streamingDemand;
+  const liveCap = busy || streamingActive ? Math.max(1, Math.floor(settledBudget * 2 / 3)) : 0;
+  const liveRows = Math.min(liveDemand, liveCap);
+  const settledViewportRows = Math.max(0, settledBudget - liveRows);`);
+    return '// dscode-welcome-scroll-v2\n' + replaceOnce(text, LIVE_BUDGET_V1, LIVE_BUDGET_V2);
+  }
   const start = text.indexOf('const welcomeFull = terminalRows >= 24 && terminalColumns >= 64;');
   const end = text.indexOf('\n\tconst liveBudget =', start);
   if (start < 0 || end < 0) throw Error('Pinned TUI welcome viewport drift');
@@ -120,7 +132,12 @@ function patchWelcomeScroll(text) {
   const demand = settledTail.length + allLiveLines.length + streamingDemand + (busy ? 1 : 0) + (agentRows.length > 0 ? 1 : 0);
   const welcomeRows = welcomeVisibleRows(transcriptCapacity, welcomeMaxRows, demand, transcriptVisible);
   const settledBudget = transcriptVisible ? Math.max(0, transcriptCapacity - welcomeRows) : 0;
-  const settledViewportRows = busy || streamingActive ? Math.floor(settledBudget / 3) : settledBudget;
+  // Live rows (unsettled entries plus the streaming answer) take only what they need, capped at two
+  // thirds of the budget; settled history fills the rest instead of a fixed third.
+  const liveDemand = allLiveLines.length + streamingDemand;
+  const liveCap = busy || streamingActive ? Math.max(1, Math.floor(settledBudget * 2 / 3)) : 0;
+  const liveRows = Math.min(liveDemand, liveCap);
+  const settledViewportRows = Math.max(0, settledBudget - liveRows);
   const renderedSettled = settledViewportRows > 0 ? settledTail.slice(-settledViewportRows) : [];
   const dynamicRows = Math.max(0, settledBudget - settledViewportRows);`;
   text = text.slice(0, start) + layout + text.slice(end);
@@ -129,7 +146,8 @@ function patchWelcomeScroll(text) {
   const headerExpression = headerLine.trim().slice(0, -1);
   text = replaceOnce(text, headerLine, `    welcomeRows > 0 ? (0, import_react.createElement)(Box, { height: welcomeRows, overflowY: "hidden", flexDirection: "column", justifyContent: "flex-end", flexShrink: 0 },
       (0, import_react.createElement)(Box, { flexShrink: 0 }, ${headerExpression})) : void 0,`);
-  return '// dscode-welcome-scroll-v1\n' + welcomeVisibleRows.toString() + '\n' + text;
+  text = replaceOnce(text, LIVE_BUDGET_V1, LIVE_BUDGET_V2);
+  return '// dscode-welcome-scroll-v1\n// dscode-welcome-scroll-v2\n' + welcomeVisibleRows.toString() + '\n' + text;
 }
 
 export function patchWelcome(text, version) {

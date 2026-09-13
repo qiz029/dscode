@@ -31,6 +31,7 @@ try {
     history: [], statusline: undefined, animations: false, resumed: false,
     loadModels: async () => ({ rows: [] }), onBridgeReady: () => {},
   };
+  const replyCounts = new Map();
   for (const height of [8, 12, 16, 21, 22, 24, 40]) for (const state of ['empty', 'settled', 'streaming']) {
     view.entries = state === 'empty' ? [] : Array.from({ length: 30 }, (_, index) => ({ kind: 'assistant', text: `Reply number ${index + 1}`, reasoning: '' }));
     view.busy = state === 'streaming';
@@ -62,6 +63,12 @@ try {
         assert(frame.includes('deepseek-chat'), `Missing model at ${height} rows`);
         assert(frame.includes('high'), `Missing effort at ${height} rows`);
         assert(frame.includes('/workspace/dsh-code'), `Missing project path at ${height} rows`);
+      }
+      const visibleReplies = (frame.match(/Reply number \d+/g) ?? []).length;
+      if (state === 'settled') replyCounts.set(height, visibleReplies);
+      if (state === 'streaming' && height >= 24) {
+        assert(frame.includes('A live answer stays above the composer'), `Streaming answer missing at ${height} rows`);
+        assert(visibleReplies >= replyCounts.get(height) - 2, `Streaming shrank history at ${height} rows: ${visibleReplies} of ${replyCounts.get(height)} settled replies visible`);
       }
       if (state === 'settled' && height >= 24) {
         assert(frame.includes('Reply number 30'), `Newest settled reply missing at ${height} rows`);
