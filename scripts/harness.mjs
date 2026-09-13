@@ -48,9 +48,9 @@ export function environment(home = runtimeHome) {
   return { ...process.env, PATH: join(root, 'bin') + ':' + process.env.PATH, DSH_HOME: home, DSH_AGENTS_HOME: join(home, 'agents'), DSH_TUI_CHROME_ENTRY: chromeEntry, DSH_TUI_REVIEW_ENTRY: join(root, 'plugins/auto-review/index.mjs') };
 }
 
-export function runDsh(args, { home = runtimeHome, cwd = root, stdio = 'inherit' } = {}) {
-  return spawn(process.execPath, [dshEntry, '--profile', profileName, ...args], {
-    cwd, env: environment(home), stdio,
+export function runDsh(args, { home = runtimeHome, cwd = root, stdio = 'inherit', env = {}, nodeArgs = [] } = {}) {
+  return spawn(process.execPath, [...nodeArgs, dshEntry, '--profile', profileName, ...args], {
+    cwd, env: { ...environment(home), ...env }, stdio,
   });
 }
 

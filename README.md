@@ -16,6 +16,10 @@ DSCODE 是基于 DeepSeek Harness 的终端编码 agent。持久 Shell 负责读
 
 Ultra 主 agent 可按任务给子 agent 指定 `worktree: true`，在独立 Git checkout 中并行编辑；默认仍共享工作区。`/review` 和 agent 的 `review` tool 使用独立、只读模型检查 Git diff。TUI 支持向上滚动、Ctrl+C 快速中断、大段文本粘贴折叠、图片粘贴标记、用户消息背景和轮次分割线。[0.5.0 更新说明 →](docs/releases/0.5.0.md)
 
+### 非交互执行：`dscode exec`
+
+`dscode exec "prompt"` 或 `git diff | dscode exec "review this"` 在不打开 TUI 的情况下跑完一轮完整的 dscode agent：回复流式输出到 stdout，工具活动和 session id 输出到 stderr，退出码反映轮次结果。`--json` 输出 JSON lines，`--resume` 续接已有会话，`--effort`、`--model`、`--permission` 与 TUI 同义。[非交互执行 →](docs/exec.md)
+
 ### 一个 session，接入终端、脚本和外部工具
 
 在 TUI 中开始任务后，可以从另一个终端补充要求、读取输出或订阅进展。不同来源的输入进入同一个运行时，共用上下文；读取和订阅不需要取得 session 写锁。
