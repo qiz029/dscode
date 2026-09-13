@@ -58,3 +58,17 @@ npm run verify:hub
 不能在 bundle/Hub release 可用之前发布 launcher，否则用户的首次启动会失败。新的版本必须重新生成包和 release，不能复用旧完整性哈希。`build:packages` 与 `release:hub` 生成候选产物；只有发布并确认公开 registry 后才算完成发布。v0.1.0 已通过 npm + Hub 公开分发。
 
 发布脚本按阶段执行：`npm run publish:hub -- bundle`、`npm run publish:hub -- profile`、`npm run publish:hub -- launcher`。每阶段核对测试产物哈希；launcher 发布前检查公开 Hub release 的确切版本及完整性。Hub 认领仍需发布者控制台操作，登录使用 `dsh-hub login`。
+
+### 免登录发布（本机）
+
+账号开启了 auth-and-writes 两步验证，`npm login` 的会话 token 会过期，每次 `npm publish` 又要一次性验证码。改用一个 **granular access token**，发布脚本会自动使用它：
+
+1. 在 npm 网站 Access Tokens 页面生成 granular token：勾选 *Bypass two-factor authentication*，Packages and scopes 只给 `@toddzheng024/dscode` 与 `@toddzheng024/dscode-bundle` 的 Read and write，过期时间按需要选（到期后重复这一步）。granular token 目前只能在网站生成。
+2. `npm run publish:token store`，在 `security` 的密码提示处粘贴 token。它存进登录钥匙串（service `dscode-npm-publish`），不会写进 `~/.npmrc`、命令行或 shell 历史。
+3. `npm run publish:token check` 确认 token 以 `toddzheng024` 身份通过认证。
+
+之后 `npm run publish:hub -- bundle|launcher` 会从钥匙串取 token，通过一次性的临时 `--userconfig` 传给 npm，不需要登录也不需要验证码。临时环境可用 `NPM_PUBLISH_TOKEN` 覆盖；两者都没有时退回原来的交互式流程。`npm run publish:token remove` 删除钥匙串里的 token。
+
+npm 已宣布带 bypass 2FA 的 token 直接发布将在 2027 年 1 月停用；届时本机发布需要改为在 CI 上使用 trusted publishing（OIDC）。
+
+Hub 阶段（`profile`）用的是 `dsh-hub login` 写入 `~/.dsh/.hub/auth.json` 的 WorkOS 会话，access token 5 分钟有效、脚本会用 refresh token 自动续期；只有 refresh token 失效时才需要重新 `dsh-hub login`。

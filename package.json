@@ -22,6 +22,7 @@
     "release:hub": "node scripts/hub-release.mjs",
     "verify:hub": "node scripts/verify-hub.mjs",
     "publish:hub": "node scripts/publish-hub.mjs",
+    "publish:token": "node scripts/npm-token.mjs",
     "test:unit": "node scripts/checks.mjs unit",
     "test:integration": "node scripts/checks.mjs integration",
     "test:ui": "node scripts/checks.mjs ui",

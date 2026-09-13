@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { validatePackageDirectory } from '../node_modules/@dsh-plugin-hub/cli/dist/package-validation.js';
 import { HubApiClient } from '../node_modules/@dsh-plugin-hub/cli/dist/api-client.js';
 import { getAccessToken } from '../node_modules/@dsh-plugin-hub/cli/dist/auth.js';
+import { resolvePublishToken, npmWithToken, NPM_USER } from './npm-token.mjs';
 const root = join(import.meta.dirname,'..');
 const out = join(root,'artifacts/npm');
 const read = path => JSON.parse(readFileSync(path,'utf8'));
@@ -23,9 +24,20 @@ async function npmMetadata() {
   if(metadata.dist?.integrity !== pack.integrity) throw Error('Published npm integrity differs from the tested bundle.');
 }
 function publish(artifact) {
+  const args=['publish',join(out,artifact.filename),'--access','public','--ignore-scripts'];
+  // Preferred: the granular token from the Keychain (or NPM_PUBLISH_TOKEN), so no login or one-time code is needed.
+  const token=resolvePublishToken();
+  if(token) {
+    const identity=npmWithToken(token,['whoami'],{stdio:['ignore','pipe','inherit']});
+    if(identity.status !== 0 || (identity.stdout ?? '').trim() !== NPM_USER) throw Error(`The stored npm token does not authenticate as ${NPM_USER}; refresh it with "node scripts/npm-token.mjs store".`);
+    const result=npmWithToken(token,args);
+    if(result.status !== 0) throw Error('npm publication did not complete.');
+    return;
+  }
+  // Fallback: the interactive session in ~/.npmrc (asks for a one-time code under auth-and-writes 2FA).
   const identity=spawnSync('npm',['whoami'],{encoding:'utf8'});
-  if(identity.status !== 0 || identity.stdout.trim() !== 'toddzheng024') throw Error('Run npm login as toddzheng024 before publishing.');
-  const result=spawnSync('npm',['publish',join(out,artifact.filename),'--access','public','--ignore-scripts'],{stdio:'inherit'});
+  if(identity.status !== 0 || identity.stdout.trim() !== NPM_USER) throw Error(`Run npm login as ${NPM_USER} before publishing, or store a token with "node scripts/npm-token.mjs store".`);
+  const result=spawnSync('npm',args,{stdio:'inherit'});
   if(result.status !== 0) throw Error('npm publication did not complete.');
 }
 if(phase==='bundle') publish(pack);
