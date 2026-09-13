@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { Scalar, stringify } from 'yaml';
 
 export const customPlugins = Object.freeze([
-  'auto-review', 'session-metrics', 'session-cards', 'session-bridge', 'memory', 'tui-tools',
+  'auto-review', 'session-metrics', 'session-cards', 'session-bridge', 'memory', 'tui-tools', 'email-tools',
 ]);
 
 const expression = value => {

@@ -75,7 +75,7 @@ patch += `
       name: '${name}/bootstrap'
 `;
 write(bundle, 'cordis.patch.yml', patch);
-const exports = { './package.json':'./package.json', './cordis.patch.yml':'./cordis.patch.yml', './credentials':'./plugins/credentials/index.mjs', './memory':'./plugins/memory/index.mjs', './session-bridge':'./plugins/session-bridge/index.mjs', './session-cards':'./plugins/session-cards/index.mjs' };
+const exports = { './email-tools':'./plugins/email-tools/index.mjs', './imap':'./plugins/email/imap.mjs', './gmail':'./plugins/email/gmail.mjs', './email':'./plugins/email/inbox.mjs', './package.json':'./package.json', './cordis.patch.yml':'./cordis.patch.yml', './credentials':'./plugins/credentials/index.mjs', './memory':'./plugins/memory/index.mjs', './session-bridge':'./plugins/session-bridge/index.mjs', './session-cards':'./plugins/session-cards/index.mjs' };
 for (const [key, file] of Object.entries({subagent:'vendor/subagent/index.js',bootstrap:'bootstrap.mjs',tui:'vendor/tui/index.mjs',startup:'vendor/tui/startup.mjs',deepseek:'vendor/deepseek/index.js',bash:'vendor/bash/index.js',persistent:'vendor/persistent/index.js',policy:'plugins/dscode/index.mjs','auto-review':'plugins/auto-review/index.mjs','session-metrics':'plugins/session-metrics/index.mjs','tui-tools':'plugins/tui-tools/index.mjs'})) exports['./'+key] = './'+file;
 const shared = { version, type:'module', license:'MIT', author:'Todd Zheng', engines:original.engines, publishConfig:{access:'public'}, repository: process.env.DSCODE_REPOSITORY ? {type:'git',url:process.env.DSCODE_REPOSITORY} : original.repository };
 write(bundle, 'package.json', { ...shared, name, description:'DSCODE coding harness: minimal persistent shell, Ultra subagents, auto review, Chrome, computer use and session telemetry.', files:['bootstrap.mjs','cordis.patch.yml','plugins','presets','bin','vendor','THIRD_PARTY_NOTICES.md'], exports, dependencies, dsh:{bundle:{patch:'./cordis.patch.yml'},hub:{schemaVersion:1,displayName:'DSCODE',summary:'A complete DeepSeek coding agent with persistent shell, Ultra collaboration and automatic permission review.',description:'macOS coding TUI with Chrome MCP, Computer Use, skills, compaction, goals, hooks and session telemetry. Requires the DSCODE profile and its pinned DSH runtime.',categories:['community'],keywords:['coding','tui','deepseek-harness'],compatibility:{dsh:'0.1.5-rc.1',node:original.engines.node,platforms:['darwin'],surfaces:['headless'],hmr:'restart'},entryIds:['dscode-bootstrap'],before:[],after:[],channel:'stable'}} });
@@ -84,10 +84,11 @@ write(bundle, 'README.md', '# DSCODE bundle\n\nInstall through the DSCODE Hub pr
 const launcher = join(out, 'launcher');
 rmSync(launcher, { recursive:true, force:true }); mkdirSync(launcher);
 copy('packages/launcher', launcher);
+copy('plugins/email', join(launcher, 'email'));
 mkdirSync(join(launcher, 'session-bridge'), { recursive: true });
 for (const file of ['client.mjs', 'paths.mjs']) copy('plugins/session-bridge/' + file, join(launcher, 'session-bridge', file));
-write(launcher, 'cli.mjs', read('packages/launcher/cli.mjs').replace('../../plugins/session-bridge/client.mjs', './session-bridge/client.mjs'));
-write(launcher, 'package.json', { ...shared, name:'@toddzheng024/dscode', description:'One-command launcher for the DSCODE Hub coding harness preset.', bin:{dscode:'./cli.mjs'}, files:['cli.mjs','manager.mjs','locks.mjs','release.json','tools','session-bridge'], dependencies:{'@dsh-plugin-hub/cli':'0.2.0','@deepseek-ai/node-addon-system':'0.1.2',pnpm:'10.15.1'}, });
+write(launcher, 'cli.mjs', read('packages/launcher/cli.mjs').replace('../../plugins/session-bridge/client.mjs', './session-bridge/client.mjs').replace('../../plugins/email/cli.mjs', './email/cli.mjs'));
+write(launcher, 'package.json', { ...shared, name:'@toddzheng024/dscode', description:'One-command launcher for the DSCODE Hub coding harness preset.', bin:{dscode:'./cli.mjs'}, files:['cli.mjs','manager.mjs','locks.mjs','release.json','tools','session-bridge','email'], dependencies:{imapflow:original.dependencies.imapflow,mailparser:original.dependencies.mailparser,'@dsh-plugin-hub/cli':'0.2.0','@deepseek-ai/node-addon-system':'0.1.2',pnpm:'10.15.1'}, });
 write(launcher, 'release.json', {slug:'dscode',version,runtime:'0.1.5-rc.1',bundle:name});
 for (const dir of [bundle,launcher]) {
   copy('packages/LICENSE', join(dir,'LICENSE'));

@@ -4,6 +4,7 @@ Restart `dscode` to load these commands. Commands run locally and do not call th
 
 | Command | Behavior |
 | --- | --- |
+| `/email` | `i`: connect IMAP with a masked application password; `r`: sync. Browse, preview, and press Enter to steer email directly into this session. [Email interface](email.md). |
 | `/status` | Session ID, workspace, model route, permission mode, recorded token totals/context pressure, tool/plugin counts. Unknown usage stays unknown. `/review-usage` reports the independent reviewer separately. |
 | `/memories [status\|on\|off\|global-on\|global-off\|run\|note <text>\|clear]` | Global cross-session memory controls and background model usage. [Behavior and configuration](memory.md). |
 | `/session` | Current session ID, local socket, and external send/read/watch commands. [Multi-source sessions](session-bridge.md). |

@@ -188,12 +188,43 @@ dscode
 | `/plan`、`/goal` | 计划与持续任务 |
 | `/agents` | 查看子 agent 的任务、状态与当前活动 |
 | `/mailbox` | 查看 session 消息和 deferred 便签 |
+| `/email` | `i` 配置 IMAP 邮箱与应用密码；浏览 `[ToAgent]` 邮件，Enter 直接 steer 进当前 session。Gmail 配置后可让 agent 用 `send_email` 发送。[收发说明](docs/email.md) |
 | `/compact` | 压缩历史上下文 |
 | `/diff`、`/review` | 查看和审查代码修改 |
 | `/clear` | 开始新的空上下文会话，旧会话仍可恢复 |
 | `/resume`、`/fork` | 恢复或分叉会话 |
 
 `Shift+Enter` 换行，`!命令` 运行本地 Shell 命令，`Ctrl+L` 只清屏，`Esc` 中断当前操作。退出后用 `dscode resume [SESSION_ID]` 恢复会话。完整命令以 TUI `/help` 为准。[命令与 hooks 说明 →](docs/tui-commands.md)
+
+## 📬 Agent 邮件
+
+在 TUI 输入 `/email`，按 `i` 配置邮箱。Gmail 使用邮箱地址和 **Google 应用密码**，在隐藏输入框中保存；无需申请 OAuth 客户端 JSON。首次连接后开始接收所选文件夹内、主题以 `[ToAgent]` 开头的新邮件，后台定期同步。应用密码需要先在 Google 账号开启两步验证，再到[应用密码页面](https://myaccount.google.com/apppasswords)创建。
+
+收件箱按更新时间倒序排列，所有 session 共用。↑/↓ 选择邮件，PgUp/PgDn 滚动预览，窄窗口用 Tab 切换列表和预览。按 **Enter 直接注入当前 session**：运行中走 steer，空闲时开始一轮；无需复制粘贴或再次提交。注入使用 `user_injected_email_context` JSON 结构，明确标注由用户选择、仅用于补充上下文，邮件正文不构成新的操作授权。
+
+配置 Gmail 后，也可以让 agent 发邮件：
+
+> 给 person@example.com 发邮件，总结这次修改并请对方检查。
+
+`send_email` 复用本地应用密码，通过 SMTP 发送纯文本，自动给主题加 `[ToAgent]`，并走现有审批流程。发送记录可防止同一请求重复发送；服务端接受不代表已送达或已读，结果不确定时不会自动重新发信。
+
+联系人别名同样跨 session 共用，可以直接告诉 agent：
+
+> 把 congkai 的邮箱设为 person@example.com。
+>
+> 发给 congkai，告诉他这次修改已完成。
+>
+> 列出我的邮箱别名。
+
+也可用 CLI 管理：
+
+```sh
+dscode email alias set congkai person@example.com
+dscode email alias list
+dscode email alias remove congkai
+```
+
+审批会显示别名对应的真实地址；修改别名后，旧地址不能继续用于发送。邮箱数据、联系人和凭据保存在 `~/.dscode/email`，可通过 `DSCODE_EMAIL_DIR` 覆盖。新增功能需重启 DSCODE 加载。自定义 IMAP 邮箱目前支持接收，发送工具目前仅支持 Gmail 应用密码连接。[连接方式、工具与接收接口 →](docs/email.md)
 
 ## 🔧 权限与配置
 

@@ -83,7 +83,10 @@
     "@deepseek-ai/dsh-tools": "0.1.5-rc.1",
     "react": "18.3.1",
     "@deepseek-ai/schemastery": "3.18.2",
-    "@deepseek-ai/node-addon-system": "0.1.2"
+    "@deepseek-ai/node-addon-system": "0.1.2",
+    "imapflow": "2.0.2",
+    "mailparser": "3.9.26",
+    "nodemailer": "10.0.9"
   },
   "devDependencies": {
     "@dsh-plugin-hub/schemas": "0.2.0",

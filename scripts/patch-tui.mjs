@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import { patchIme } from './patch-ime.mjs';
 import { patchInteraction } from './patch-interaction.mjs';
@@ -9,6 +9,7 @@ import { patchLogin } from './patch-login.mjs';
 import { patchViewport } from './patch-viewport.mjs';
 import { patchWelcome } from './patch-welcome.mjs';
 import { patchEffort } from './patch-effort.mjs';
+import { patchEmail } from './patch-email.mjs';
 
 export function patchText(text) {
   const before = '\t\t\tif (text === "/clear") {\n\t\t\t\trefresh();\n\t\t\t\tclearView();\n\t\t\t\tdismissNotice();\n\t\t\t\treturn;\n\t\t\t}';
@@ -38,5 +39,7 @@ export function patchTui(root) {
   after = patchViewport(after);
   after = patchWelcome(after, JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version);
   after = patchEffort(after);
+  after = patchEmail(after);
+  cpSync(new URL('../plugins/email/', import.meta.url), join(dir, 'lib/dscode-email'), { recursive: true });
   if (before !== after) writeFileSync(path, after);
 }
