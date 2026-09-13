@@ -22,18 +22,23 @@ for (const providerName of ['spawn', 'fork']) test(`${providerName}: effort-only
   assert(tool.parameters.properties.reasoning_effort);
   assert.equal(tool.parameters.properties.provider, undefined);
   assert.equal(tool.parameters.properties.model, undefined);
+  assert(tool.parameters.properties.name, 'child name parameter is exposed');
+  assert((tool.parameters.required ?? []).includes('name'), 'parent must name every child');
   const parent = { options: { provider: 'original', model: 'original', reasoningEffort: 'max' }, session: { requestHeader: () => ({ config: { provider: 'deepseek', model: 'flash', reasoningEffort: 'ultra' } }) } };
   const exec = { agent: parent, signal: new AbortController().signal };
   for (const effort of ['low', 'high', 'max']) {
-    await tool.execute({ description: 'test', prompt: 'test', reasoning_effort: effort }, exec);
+    await tool.execute({ name: 'w_' + effort, description: 'test', prompt: 'test', reasoning_effort: effort }, exec);
     assert.deepEqual(starts.at(-1).agentOptions, { reasoningEffort: effort });
     assert.deepEqual(preflights.at(-1), { provider: 'deepseek', model: 'flash', reasoningEffort: effort });
     assert.equal(parent.session.requestHeader().config.reasoningEffort, 'ultra');
   }
-  await tool.execute({ description: 'inherit', prompt: 'test' }, exec);
+  await tool.execute({ name: 'inherit', description: 'inherit', prompt: 'test' }, exec);
   assert.equal(starts.at(-1).agentOptions, undefined);
+  assert.equal(starts.at(-1).label, '/inherit \u00b7 inherit', 'child label carries the /name path');
+  await assert.rejects(tool.execute({ description: 'test', prompt: 'test' }, exec), /missing required property "name"/);
+  for (const name of ['', '1st', 'a_', 'a-b', 'x'.repeat(11)]) await assert.rejects(tool.execute({ name, description: 'test', prompt: 'test' }, exec), /starting and ending with a letter/);
   const count = starts.length;
-  await assert.rejects(tool.execute({ description: 'test', prompt: 'test', reasoning_effort: 'bad' }, exec), /unsupported/);
-  await assert.rejects(tool.execute({ description: 'test', prompt: 'test', provider: 'other', model: 'other', reasoning_effort: 'low' }, exec), /disabled|unexpected|additional|unknown/i);
+  await assert.rejects(tool.execute({ name: 'bad', description: 'test', prompt: 'test', reasoning_effort: 'bad' }, exec), /unsupported/);
+  await assert.rejects(tool.execute({ name: 'other', description: 'test', prompt: 'test', provider: 'other', model: 'other', reasoning_effort: 'low' }, exec), /disabled|unexpected|additional|unknown/i);
   assert.equal(starts.length, count);
 });

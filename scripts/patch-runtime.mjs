@@ -49,7 +49,7 @@ export function patchTerminalBash(text) {
     '"--norc",\n\t"+H",\n\t"-i"',
   );
 }
-export function patchSubagent(text) {
+function patchSubagentBase(text) {
   if (!text.includes('// dscode-child-effort-v1')) {
     text = replaceOnce(text, 'const choiceDescription = !modelSelectionEnabled ? "" :', 'const choiceDescription = !modelSelectionEnabled ? (subagentProvider.capabilities.agentOptions ? " Optionally set reasoning_effort for this child without changing its provider/model. Omit to inherit. Choose low for bounded tasks, high for difficult work, and max only when needed; use an effort supported by the current model." : "") :');
     text = replaceOnce(text, '...backgroundEnabled ? { run_in_background:', `...!modelSelectionEnabled && subagentProvider.capabilities.agentOptions ? { reasoning_effort: {
@@ -90,6 +90,28 @@ export function patchSubagent(text) {
   text = replaceOnce(text, 'signal: exec.signal\n\t\t\t\t\t\t}));\n\t\t\t\t\t}', 'signal: exec.signal\n\t\t\t\t\t\t})), ...childWorktree ? { worktree: childWorktree.cwd } : {} };\n\t\t\t\t\t\t} catch (error) {\n\t\t\t\t\t\t\tif (childWorktree && !await discardCleanChildWorktree(childWorktree)) throw new Error(`${String(error)}; child worktree retained at ${childWorktree.cwd}`, { cause: error });\n\t\t\t\t\t\t\tthrow error;\n\t\t\t\t\t\t}\n\t\t\t\t\t}');
   return '// dscode-child-worktree-v3\n' + text;
 }
+/** Parent-chosen child names: a required `name` parameter, /name labels and result text. Runs after the worktree patch, which anchors on the original label sites. */
+function patchChildName(text) {
+  if (text.includes('// dscode-child-name-v1')) return text;
+  text = replaceOnce(text, 'parameters: {\n\t\t\t\t\t\tdescription: {', `parameters: {
+\t\t\t\t\t\tname: {
+\t\t\t\t\t\t\ttype: "string",
+\t\t\t\t\t\t\trequired: true,
+\t\t\t\t\t\t\tdescription: "Unique name you give this child: 1-10 characters, letters, digits and underscores only, starting and ending with a letter (for example read_code). Address the child as /name in send_message and interrupt_agent."
+\t\t\t\t\t\t},
+\t\t\t\t\t\tdescription: {`);
+  text = replaceOnce(text, 'if (!parent) throw new Error("subagent tool requires a calling agent (exec.agent was undefined)");', 'if (!parent) throw new Error("subagent tool requires a calling agent (exec.agent was undefined)");\n\t\t\t\t\t\tif (typeof args.name !== "string" || !/^[A-Za-z](?:[A-Za-z0-9_]{0,8}[A-Za-z])?$/.test(args.name)) throw new Error("name must be 1-10 characters of letters, digits or underscores, starting and ending with a letter");');
+  if (text.split('label: args.description').length !== 4) throw new Error('Pinned runtime patch drift: subagent label sites');
+  text = text.split('label: args.description').join('label: "/" + args.name + " \u00b7 " + args.description');
+  text = replaceOnce(text, 'started subagent ${value.subagentId}', 'started subagent /${_args.name} (${value.subagentId})');
+  text = '// dscode-child-name-v1\n' + text;
+  return text;
+}
+
+export function patchSubagent(text) {
+  return patchChildName(patchSubagentBase(text));
+}
+
 export function patchSubagentCore(text) {
   if (text.includes('// dscode-child-cwd-v1')) return text;
   text = replaceOnce(text, 'function childSessionMeta(parent, childDepth, isSeeded) {', 'function childSessionMeta(parent, childDepth, isSeeded, workspaceCwd) {');

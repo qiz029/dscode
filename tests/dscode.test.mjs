@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 const fixture = createTestRuntime({ runtime: true });
 const root = fixture.root;
 after(fixture.close);
-import { apply } from '../plugins/dscode/index.mjs';
+import { apply, CHILD_NAME } from '../plugins/dscode/index.mjs';
 
 
 const { DeepSeekAdapter, resolveAdapterOptions } = await import(pathToFileURL(`${root}/node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js`));
@@ -105,4 +105,43 @@ test('ultra reserves concurrent admissions and frees slots after failed launches
   assert.equal(await execute({ name: 'subagent', arguments: {}, agent: owner }, () => 'next'), 'next');
   children.push({ status: 'running', session: { header: { origin: 'subagent', parentSession: 'root' } } });
   await assert.rejects(execute({ name: 'send_message', arguments: { agent_id: 'cold-child' }, agent: owner }, () => 'wake'), /limit/);
+});
+
+test('subagent tool requires a parent-chosen child name and shows it as /name', () => {
+  const text = readFileSync(`${root}/node_modules/@deepseek-ai/dsh-tool-subagent/lib/index.js`, 'utf8');
+  assert(text.includes('// dscode-child-name-v1'));
+  assert.match(text, /name: \{\n\t+type: "string",\n\t+required: true,\n\t+description: "Unique name you give this child/);
+  assert.equal(text.split('label: "/" + args.name + " \u00b7 " + args.description').length, 4, 'every spawn path carries the /name label');
+  assert(text.includes('started subagent /${_args.name} (${value.subagentId})'));
+  assert(text.includes('if (typeof args.name !== "string" || !/^[A-Za-z](?:[A-Za-z0-9_]{0,8}[A-Za-z])?$/.test(args.name)) throw new Error('));
+  for (const valid of ['a', 'ab', 'read_code', 'Read_1st_c', 'x9y']) assert(CHILD_NAME.test(valid), valid);
+  for (const invalid of ['', '_a', 'a_', '1a', 'a1', 'a-b', 'read code', 'toolongname1', 'reader/1', '中文']) assert(!CHILD_NAME.test(invalid), invalid);
+});
+test('children are addressed by /name and the parent by /', async () => {
+  let execute;
+  const live = new Map();
+  const owner = { session: { id: 'root', header: {}, requestHeader: () => ({ config: { reasoningEffort: 'ultra' } }) }, options: {} };
+  apply({ systemPrompt: { section() {} }, on: (event, cb) => { if (event === 'tools/execute') execute = cb; }, commands: { register() {} }, agents: { list: () => [...live.values()], get: id => live.get(id) } });
+  const start = (name, id) => execute({ name: 'subagent', arguments: { name, description: 'read it', prompt: 'go' }, agent: owner }, () => { live.set(id, { status: 'running', session: { id, header: { origin: 'subagent', parentSession: 'root' } } }); return { kind: 'continuable', subagentId: id }; });
+  assert.deepEqual(await start('reader', 'child-1'), { kind: 'continuable', subagentId: 'child-1' });
+  await assert.rejects(start('reader', 'child-2'), /already used by a live child/);
+  await assert.rejects(start('1st', 'child-2'), /starting and ending with a letter/);
+  await assert.rejects(start('a'.repeat(11), 'child-2'), /1-10 characters/);
+  assert.deepEqual(await start('writer', 'child-2'), { kind: 'continuable', subagentId: 'child-2' });
+  const seen = [];
+  const relay = exec => { seen.push(exec.arguments.agent_id); return 'ok'; };
+  const exec = (name, agent_id, agent = owner) => { const call = { name, arguments: { agent_id, message: 'hi' }, agent }; return execute(call, () => relay(call)); };
+  assert.equal(await exec('send_message', '/reader'), 'ok');
+  assert.equal(await exec('interrupt_agent', '/writer'), 'ok');
+  assert.equal(await exec('send_message', 'child-2'), 'ok');
+  assert.deepEqual(seen, ['child-1', 'child-2', 'child-2']);
+  await assert.rejects(exec('send_message', '/nobody'), /Unknown child \/nobody\. Live children: \/reader, \/writer/);
+  await assert.rejects(exec('send_message', '/'), /no parent/);
+  const child = { session: { id: 'child-1', header: { origin: 'subagent', parentSession: 'root' }, requestHeader: () => ({ config: { reasoningEffort: 'high' } }) }, options: {} };
+  assert.equal(await exec('send_message', '/', child), 'ok');
+  assert.equal(seen.at(-1), 'root');
+  live.delete('child-1');
+  assert.deepEqual(await start('reader', 'child-3'), { kind: 'continuable', subagentId: 'child-3' }, 'a name is free again once its child is gone');
+  assert.equal(await exec('send_message', '/reader'), 'ok');
+  assert.equal(seen.at(-1), 'child-3');
 });
