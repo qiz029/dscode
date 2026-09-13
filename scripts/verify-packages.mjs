@@ -23,6 +23,13 @@ try {
       assert.equal(check.status, 0, check.stderr);
     }
     if (name === 'launcher') assert.equal(pkg.dependencies['@deepseek-ai/node-addon-system'], '0.1.2');
+    else {
+      assert.match(readFileSync(join(destination, 'vendor/terminal/index.js'), 'utf8'), /dscode-no-history-expansion-v1/);
+      assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /dscode-bundle\/terminal/);
+      assert(existsSync(join(destination, 'plugins/session-metrics/rate.mjs')));
+      assert(existsSync(join(destination, 'plugins/tui-tools/doctor.mjs')));
+      assert(existsSync(join(destination, 'plugins/tui-tools/doctor-cli.mjs')));
+    }
     const walk = directory => readdirSync(directory, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? walk(join(directory, entry.name)) : [join(directory, entry.name)]);
     for (const file of walk(destination)) {
       assert(!/\/(?:\.env|credentials\.yaml|hooks\.local\.json)$/.test(file), `Local state leaked into tarball: ${file}`);

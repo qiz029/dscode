@@ -1,5 +1,6 @@
 import { readMetrics } from './store.mjs';
 import { estimateCost } from './pricing.mjs';
+import { sessionAverageTps } from './rate.mjs';
 let source;
 export function setMetricSource(next) { source = next; return () => { if (source === next) source = undefined; }; }
 export function summarize(rows, events = [], corrupt = false) {
@@ -35,16 +36,20 @@ export function summarize(rows, events = [], corrupt = false) {
   }
   return { cost, unknown, calls, pending, cache: input > 0 && !cacheUnknown ? Math.min(100, hit / input * 100) : null };
 }
-export function formatFooter(metrics, context, columns = 80) {
+export function formatFooter(metrics, context, columns = 80, rates) {
   const ctx = Number.isFinite(context) ? `${Math.round(context)}%` : '--';
   const cache = metrics.cache === null ? '--' : `${metrics.cache.toFixed(1)}%`;
   const dollars = metrics.unknown && metrics.cost === 0 ? '--' : `~$${metrics.cost.toFixed(metrics.cost < 1 ? 4 : 2)}${metrics.unknown ? '+' : ''}${metrics.pending ? '…' : ''}`;
-  const full = `ctx ${ctx} · ${dollars} · cache ${cache}`;
-  if (full.length <= columns) return full;
-  const short = `ctx ${ctx} · ${dollars}`;
-  if (short.length <= columns) return short;
-  const tiny = `ctx ${ctx}`;
-  return tiny.length <= columns ? tiny : tiny.slice(0, Math.max(0, columns));
+  const parts = rates ? [
+    `current: ${Number.isFinite(rates.current) ? '~' + rates.current.toFixed(1) : '--'} tps`,
+    `average: ${Number.isFinite(rates.average) ? rates.average.toFixed(1) : '--'} tps`,
+    `context: ${ctx}`, dollars, `cache ${cache}`,
+  ] : [`context: ${ctx}`, dollars, `cache ${cache}`];
+  for (let count = parts.length; count > 0; count--) {
+    const value = parts.slice(0, count).join(' ｜ ');
+    if (value.length + count - 1 <= columns) return value;
+  }
+  return parts[0].slice(0, Math.max(0, columns));
 }
 export function footerFor(id, stats, columns) {
   try {
@@ -53,6 +58,7 @@ export function footerFor(id, stats, columns) {
     const summary = summarize(ledger.rows, data?.events ?? [], ledger.corrupt);
     const used = data?.used;
     const capacity = data?.capacity ?? stats.contextWindow;
-    return formatFooter(summary, Number.isFinite(used) && capacity > 0 ? used / capacity * 100 : undefined, columns);
-  } catch { return formatFooter({ cost: 0, unknown: true, cache: null }, undefined, columns); }
+    const average = sessionAverageTps(data?.events ?? []);
+    return formatFooter(summary, Number.isFinite(used) && capacity > 0 ? used / capacity * 100 : undefined, columns, { current: data?.currentTps, average });
+  } catch { return formatFooter({ cost: 0, unknown: true, cache: null }, undefined, columns, { current: null, average: null }); }
 }

@@ -8,7 +8,7 @@ import { patchRuntime } from './patch-runtime.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const lock = JSON.parse(readFileSync(join(root, 'package-lock.json'), 'utf8'));
-export const upstreamPackages = ['dsh-code', ...['dsh-tool-subagent', 'dsh-llm-deepseek', 'dsh-tool-bash', 'dsh-tool-bash-persistent'].map(name => '@deepseek-ai/' + name)];
+export const upstreamPackages = ['dsh-code', ...['dsh-tool-subagent', 'dsh-llm-deepseek', 'dsh-tool-bash', 'dsh-tool-bash-persistent', 'dsh-terminal-bash'].map(name => '@deepseek-ai/' + name)];
 const cache = join(root, 'artifacts/local/test-upstream');
 
 // Keep exact upstream tarballs, verified against the checked-in lock. An

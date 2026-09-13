@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,6 +13,9 @@ test('launcher routes management separately, pins install version and preserves 
  assert.throws(()=>commandPlan(['update','latest'],release,true));
  assert.throws(()=>commandPlan(['rollback','--help'],release,true));
  assert.deepEqual(commandPlan(['rollback'],release,true).hub,['profile','rollback','--profile','dscode']);
+ assert.deepEqual(commandPlan(['doctor'],release,true),{doctor:'analyze'});
+ assert.deepEqual(commandPlan(['doctor','--local'],release,true),{doctor:'local'});
+ assert.throws(()=>commandPlan(['doctor','extra'],release,true),/Usage/);
  assert.equal(stateHome({DSCODE_HOME:'/tmp/custom'}),'/tmp/custom');
 });
 test('management gate excludes concurrent mutations and tolerates stale legacy locks',async ()=>{
@@ -25,6 +28,24 @@ test('management gate excludes concurrent mutations and tolerates stale legacy l
   (await acquireLock(home))();
   writeFileSync(join(home,'.launcher.lock'),String(process.pid));
   await assert.rejects(acquireLock(home),/older DSCODE launcher/);
+ } finally {rmSync(home,{recursive:true,force:true});}
+});
+test('launcher doctor boots a read-only headless diagnostic without taking the session lock',()=>{
+ const home=mkdtempSync(join(tmpdir(),'dscode-launcher-doctor-'));
+ const bundle='@test/dscode-bundle';
+ const profile=join(home,'profiles/dscode');
+ const write=(path,contents)=>{mkdirSync(join(path,'..'),{recursive:true});writeFileSync(path,contents);};
+ try {
+  write(join(home,'.hub/installations/dscode/current.json'),'{}');
+  write(join(profile,'package.json'),'{}');
+  write(join(profile,'node_modules',bundle,'plugins/tui-tools/doctor-cli.mjs'),'export {};');
+  write(join(profile,'node_modules/@deepseek-ai/dsh/lib/bin.js'),'console.log(JSON.stringify(process.argv.slice(2)));');
+  write(join(home,'.launcher.lock'),String(process.pid));
+  const manager=new URL('../packages/launcher/manager.mjs',import.meta.url).href;
+  const result=spawnSync(process.execPath,['--input-type=module','-e',`import { run } from ${JSON.stringify(manager)}; await run(['doctor'],{bundle:${JSON.stringify(bundle)}});`],{encoding:'utf8',env:{...process.env,DSCODE_HOME:home},timeout:10000});
+  assert.equal(result.status,0,result.stderr);
+  assert.match(result.stdout,/doctor-cli\.patch\.yml/);
+  assert.match(readFileSync(join(home,'diagnostics/doctor-cli.patch.yml'),'utf8'),/dscode-session-bridge\n  disabled: true/);
  } finally {rmSync(home,{recursive:true,force:true});}
 });
 test('version mismatch warns once and still launches without confirmation',()=>{

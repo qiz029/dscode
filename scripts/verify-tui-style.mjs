@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { stripVTControlCharacters } from 'node:util';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { patchTui } from './patch-tui.mjs';
 import { patchStyle } from './patch-style.mjs';
+import { setMetricSource } from '../plugins/session-metrics/view.mjs';
+import { appendMetric } from '../plugins/session-metrics/store.mjs';
 
 const root = new URL('../', import.meta.url);
 const version = JSON.parse(readFileSync(new URL('package.json', root), 'utf8')).version;
@@ -12,9 +16,27 @@ const source = readFileSync(new URL('node_modules/dsh-code/lib/index.mjs', root)
 assert.equal(patchStyle(source), source);
 const entry = new URL(`node_modules/dsh-code/lib/.dscode-style-probe-${process.pid}.mjs`, root);
 // Use the actual bundled Ink renderer and theme, with a captured terminal.
-writeFileSync(entry, source + '\nexport { Header, DscodeActivityLine, AgentsLine, StatusLine, Box, Text, render, import_react as react, setTheme, visibleColumns, dscodeActivity, DEFAULT_STATUSLINE_ITEMS };\n');
+writeFileSync(entry, source + '\nexport { Header, DscodeActivityLine, AgentsLine, StatusLine, Box, Text, render, import_react as react, setTheme, visibleColumns, dscodeActivity, dscodeTpsTone, dscodeTelemetryParts, dscodeTelemetryNodes, DEFAULT_STATUSLINE_ITEMS };\n');
 const out = new URL('artifacts/local/tui-style/', root);
 mkdirSync(out, { recursive: true });
+const now = Date.now();
+const metricHome = mkdtempSync(join(tmpdir(), 'dscode-tui-rate-'));
+const previousHome = process.env.DSH_HOME;
+process.env.DSH_HOME = metricHome;
+appendMetric(metricHome, 'fixture', { kind: 'start', id: 'fixture-call', time: now - 12000 });
+appendMetric(metricHome, 'fixture', { kind: 'end', id: 'fixture-call', time: now - 10000, cost: 0.0001, usage: { inputTokens: 10, outputTokens: 20, cacheReadTokens: 0 } });
+const clearMetricSource = setMetricSource(id => id === 'fixture' ? {
+  currentTps: 28.4, used: 43, capacity: 100,
+  events: [
+    { type: 'turn/start', time: now - 10000, data: { turn: 1 } },
+    { type: 'assistant/message', time: now - 5000, data: { usage: { outputTokens: 20 } } },
+    { type: 'turn/end', time: now, data: { turn: 1 } },
+  ],
+} : undefined);
+const previousNoColor = process.env.NO_COLOR;
+const previousForceColor = process.env.FORCE_COLOR;
+delete process.env.NO_COLOR;
+process.env.FORCE_COLOR = '3';
 try {
   const ui = await import(entry.href);
   const h = ui.react.createElement;
@@ -23,6 +45,15 @@ try {
   const tools = [{ kind: 'tool', state: 'running', name: 'shell', arguments: JSON.stringify({ command: 'secret command', description: '验证会话恢复行为' }) }];
   assert(!ui.dscodeActivity(tools, false).includes('secret command'));
   assert(!ui.DEFAULT_STATUSLINE_ITEMS.includes('tokens'));
+  for (const [rate, tone] of [[0, 'yellow'], [74.9, 'yellow'], [75, 'green'], [149.9, 'green'], [150, 'blue'], [250, 'blue'], [250.1, 'purple'], [NaN, null], [-1, null]]) {
+    assert.equal(ui.dscodeTpsTone(rate), tone);
+  }
+  assert.deepEqual(ui.dscodeTelemetryParts('current: ~74.9 tps ｜ average: 150.0 tps ｜ context: 43%'), [
+    { text: 'current: ', tone: null }, { text: '~74.9 tps', tone: 'yellow' },
+    { text: ' ｜ ', tone: null }, { text: 'average: ', tone: null }, { text: '150.0 tps', tone: 'blue' },
+    { text: ' ｜ ', tone: null }, { text: 'context: 43%', tone: null },
+  ]);
+  assert.equal(ui.dscodeTelemetryParts('current: -- tps ｜ average: -- tps').filter(part => part.text.endsWith(' tps')).every(part => part.tone === null), true);
   const agents = [
     { label: '消息队列测试', state: 'running', activity: 'tool shell', updatedAt: 3 },
     { label: '检查取消行为', state: 'idle', activity: 'waiting', updatedAt: 4 },
@@ -44,7 +75,7 @@ try {
       h(ui.DscodeActivityLine, { entries: tools, since: Date.now() - 24000, animated: false }),
       h(ui.AgentsLine, { rows: agents, total: 3 }),
       h(ui.Box, { paddingX: 2, marginY: 1 }, h(ui.Text, null, '› 接下来把取消行为也检查一下')),
-      h(ui.StatusLine, { facts: { model: 'deepseek-official/deepseek-flash', effort: 'ultra', cwd: '/workspace/dsh-code', branch: 'main', sessionId: 'fixture', title: 'Session 间消息投递', permission: 'auto' }, stats: { usage: {}, contextWindow: 100000 }, busy: true, columns }));
+      h(ui.StatusLine, { facts: { model: 'deepseek-official/deepseek-flash', effort: 'ultra', cwd: '/workspace/dsh-code', branch: 'main', sessionId: 'fixture', fullSessionId: 'fixture', title: 'Session 间消息投递', permission: 'auto' }, stats: { usage: {}, contextWindow: 100000 }, busy: true, columns }));
     const mounted = ui.render(app, { stdout, stderr, stdin, debug: true, patchConsole: false, exitOnCtrlC: false });
     try {
       await new Promise(resolve => setTimeout(resolve, 30));
@@ -70,11 +101,51 @@ try {
         assert.match(plain, /1 running · 1 idle · 1 done/);
         assert.match(plain, /消息队列测试/);
       }
-      if (columns < 64) assert(!plain.includes('ctx '));
+      if (columns < 48) assert(!plain.includes('context: '));
+      if (columns >= 48) assert.match(plain, /current: ~28\.4 tps ｜ average: 2\.0 tps/);
+      if (columns >= 80) assert.match(plain, /deepseek-flash ｜ ultra/);
+      if (columns === 80) assert.match(plain, /context: 43%/);
+      if (columns === 80) assert.match(plain, /Session 间消息投递\s+｜ current:/);
+      if (columns === 80) {
+        const yellow = theme === 'light' ? '180;83;9' : '245;158;11';
+        assert.match(frame, new RegExp(`\\x1b\\[38;2;${yellow}m~28\\.4 tps`));
+        assert.match(frame, new RegExp(`\\x1b\\[38;2;${yellow}m2\\.0 tps`));
+      }
       for (const line of plain.split('\n')) assert(ui.visibleColumns(line) <= columns, `Overflow ${theme} ${columns}: ${line}`);
       writeFileSync(new URL(`${theme}-${columns}.ansi`, out), frame);
       writeFileSync(new URL(`${theme}-${columns}.txt`, out), plain);
     } finally { mounted.unmount(); mounted.cleanup(); stdout.destroy(); stdin.destroy(); stderr.destroy(); }
   }
+  for (const theme of ['dark', 'light']) {
+    ui.setTheme(theme);
+    const colors = theme === 'light'
+      ? { yellow: '180;83;9', green: '21;128;61', blue: '72;104;178', purple: '126;34;206' }
+      : { yellow: '245;158;11', green: '34;197;94', blue: '103;158;254', purple: '192;132;252' };
+    const stdout = new PassThrough();
+    Object.assign(stdout, { columns: 120, rows: 8, isTTY: true });
+    const frames = [];
+    stdout.on('data', data => frames.push(data.toString()));
+    const stdin = new PassThrough();
+    const stderr = new PassThrough();
+    const app = h(ui.Box, { flexDirection: 'column' },
+      h(ui.Text, null, ...ui.dscodeTelemetryNodes('current: ~74.9 tps ｜ average: 75.0 tps', 'probe-a')),
+      h(ui.Text, null, ...ui.dscodeTelemetryNodes('current: ~250.0 tps ｜ average: 250.1 tps', 'probe-b')));
+    const mounted = ui.render(app, { stdout, stderr, stdin, debug: true, patchConsole: false, exitOnCtrlC: false });
+    try {
+      await new Promise(resolve => setTimeout(resolve, 30));
+      const frame = frames.filter(chunk => chunk.includes('current:')).at(-1);
+      assert(frame, `No TPS color frame: ${theme}`);
+      for (const [color, value] of [['yellow', '~74.9'], ['green', '75.0'], ['blue', '~250.0'], ['purple', '250.1']]) {
+        assert.match(frame, new RegExp(`\\x1b\\[38;2;${colors[color]}m${value.replace('.', '\\.')} tps`));
+      }
+    } finally { mounted.unmount(); mounted.cleanup(); stdout.destroy(); stdin.destroy(); stderr.destroy(); }
+  }
   console.log('TUI render passed: dark/light × 32/48/60/64/80/120 columns; real Ink frames in artifacts/local/tui-style.');
-} finally { rmSync(entry, { force: true }); }
+} finally {
+  clearMetricSource();
+  if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome;
+  if (previousNoColor === undefined) delete process.env.NO_COLOR; else process.env.NO_COLOR = previousNoColor;
+  if (previousForceColor === undefined) delete process.env.FORCE_COLOR; else process.env.FORCE_COLOR = previousForceColor;
+  rmSync(metricHome, { recursive: true, force: true });
+  rmSync(entry, { force: true });
+}

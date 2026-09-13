@@ -1,6 +1,6 @@
 # dscode TUI commands
 
-Restart `dscode` to load these commands. Commands run locally and do not call the model.
+Restart `dscode` to load these commands. Most commands run locally; `/doctor` makes one bounded call to the selected model for analysis.
 
 | Command | Behavior |
 | --- | --- |
@@ -10,7 +10,7 @@ Restart `dscode` to load these commands. Commands run locally and do not call th
 | `/session` | Current session ID, local socket, and external send/read/watch commands. [Multi-source sessions](session-bridge.md). |
 | `/mailbox [cancel MESSAGE_ID]` | Read messages and deferred notes, or cancel a request/message. [Session communication](session-communication.md). |
 | `/session-new-task` | Explicitly start a fresh communication budget while idle; ordinary continuation and resume retain their existing budgets. |
-| `/doctor` | Read-only plugin, skill, MCP tool-discovery and Computer Use health. Does not test remote credentials or execute tools. |
+| `/doctor [local\|preview]` | Read-only runtime health plus self-diagnosis from recent warning/error logs and session event traces for this workspace. By default, sends bounded, redacted event metadata to the selected model. `local` skips the model; `preview` shows the exact evidence payload. Does not read conversation text, tool arguments, or tool output. Falls back to local findings if model analysis fails. |
 | `/mcp` | List MCP entry IDs, loader state and transport; credentials, headers and environment values are not printed. |
 | `/mcp tools <id>` | List registered tools for a server. |
 | `/mcp enable|disable|reconnect <id>` | Change a server for this process. All agents must be idle. Reconnect disposes and remounts the server. Host servers are configured in `config/mcp.local.yml`; preset servers, including DSCODE's Chrome, are configured in that preset's composition. IDs may be full loader IDs or an unambiguous short ID such as `mcp-chrome`. |
@@ -23,6 +23,8 @@ Restart `dscode` to load these commands. Commands run locally and do not call th
 | Ctrl+L | Clear the screen only, keeping the conversation context. |
 
 Command results use the standard collapsible TUI result presentation.
+
+`dscode doctor` runs the same diagnostic collector and model analysis without opening the TUI. It checks the current working directory's recent sessions, including subagents, and reads the owner-only `diagnostics/runtime.jsonl` warning/error journal under `DSH_HOME`. `--local` skips the model; `--preview` shows the exact evidence payload. A model call is limited to 45 seconds; missing credentials or model failure leave a local trace summary. These commands diagnose existing evidence and do not execute tools or repair state. `npm run doctor` remains the separate deterministic integration fixture.
 
 ## Hooks
 

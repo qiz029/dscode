@@ -34,6 +34,16 @@ export function patchPersistent(text) {
       if (liveId !== undefined && !ctx.terminals.list(owner).some(s => s.sessionId === liveId && s.status.kind !== "exited")) { pending.delete(owner); live.delete(owner); }
       const existing = pending.get(owner);`);
 }
+export function patchTerminalBash(text) {
+  if (text.includes('// dscode-no-history-expansion-v1')) return text;
+  // The persistent tool sends one interactive Bash line. History expansion on
+  // a literal `!` rejects that line before its completion marker can run.
+  return '// dscode-no-history-expansion-v1\n' + replaceOnce(
+    text,
+    '"--norc",\n\t"-i"',
+    '"--norc",\n\t"+H",\n\t"-i"',
+  );
+}
 export function patchSubagent(text) {
   if (text.includes('// dscode-child-effort-v1')) return text;
   text = replaceOnce(text, 'const choiceDescription = !modelSelectionEnabled ? "" :', 'const choiceDescription = !modelSelectionEnabled ? (subagentProvider.capabilities.agentOptions ? " Optionally set reasoning_effort for this child without changing its provider/model. Omit to inherit. Choose low for bounded tasks, high for difficult work, and max only when needed; use an effort supported by the current model." : "") :');
@@ -47,7 +57,7 @@ export function patchSubagent(text) {
   return '// dscode-child-effort-v1\n' + text;
 }
 export function patchRuntime(root) {
-  for (const [pkg, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent]]) {
+  for (const [pkg, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash]]) {
     const dir = join(root, 'node_modules/@deepseek-ai', pkg);
     if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== '0.1.5-rc.1') throw new Error('Revalidate runtime patches before upgrading ' + pkg);
     const path = join(dir, 'lib/index.js');

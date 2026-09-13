@@ -1,4 +1,4 @@
-// Runs inside the real composed Harness. No model request or UI action.
+// Runs inside the real composed Harness. No remote model request or UI action.
 import assert from 'node:assert/strict';
 import { readMetrics } from '../plugins/session-metrics/store.mjs';
 import { summarize } from '../plugins/session-metrics/view.mjs';
@@ -21,6 +21,12 @@ class FixtureAdapter extends LlmAdapter {
   constructor(file) { super(); this.file = file; }
   async *stream(options) {
     options.signal?.throwIfAborted();
+    if (options.messages.at(-1)?.source?.plugin === 'dscode-doctor') {
+      yield { type: 'block-start', index: 0, blockType: 'text' };
+      yield { type: 'block-end', index: 0, block: { type: 'text', text: 'Fixture diagnosis: no confirmed runtime failure.' } };
+      yield { type: 'finish', reason: { kind: 'stop' } };
+      return;
+    }
     if (JSON.stringify(options.messages[0]).includes('independent permission reviewer')) {
       assert.equal(options.tools, undefined, 'Reviewer must not receive tools');
       const request = JSON.parse(options.messages.at(-1).content[0].text);
@@ -98,6 +104,7 @@ async function probe(ctx) {
     const execution = await ctx.commands.execute(agent, `/${name}`, [], new AbortController().signal);
     assert.equal(execution.result.kind, 'success', `${name}: ${execution.result.text}`);
     assert(execution.result.text.length > 0);
+    if (name === 'doctor') assert.match(execution.result.text, /Fixture diagnosis: no confirmed runtime failure/);
   }
   for (const line of ['/skills conflicts', '/hooks reload']) {
     const execution = await ctx.commands.execute(agent, line, [], new AbortController().signal);

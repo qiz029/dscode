@@ -58,7 +58,7 @@ Agent 内置 `list_sessions`、`read_session`、`send_session` 和 `reply_sessio
 
 Ultra 使用 DeepSeek 原生 `max` 推理，并引导 agent 按任务需要决定调查、委派和验证的范围。父 agent 可以给每个子 agent 单独选择 effort：例如让边界清楚的测试任务用 `low`，复杂排查用 `high`，同时保留自己的 Ultra 设置。[持久 Shell 与 Ultra →](docs/dscode-ultra.md)
 
-TUI 启动时清屏，顶部欢迎框显示 DSCODE、模型、effort、版本和项目路径，输入区固定在终端底部；长对话在屏内显示最近内容，完整会话可用 Ctrl+O 查看或 `/export` 导出。默认聚焦用户与 agent 的输出，隐藏 thinking 和工具调用历史；输入区上方显示当前工具、描述和本轮耗时。子 agent 概览区分 running / idle / done，`/agents` 可查看任务与当前活动。支持 `!` Shell、Shift+Enter 换行、中文输入光标定位，以及 `dscode resume` 接续会话。
+TUI 启动时清屏，顶部欢迎框显示 DSCODE、模型、effort、版本和项目路径；随着对话增长，欢迎框逐行滚出屏幕，输入区保持在终端底部。长对话在屏内显示最近内容，完整会话可用 Ctrl+O 查看或 `/export` 导出。默认聚焦用户与 agent 的输出，隐藏 thinking 和工具调用历史；输入区上方显示当前工具、描述和本轮耗时。子 agent 概览区分 running / idle / done，`/agents` 可查看任务与当前活动。支持 `!` Shell、Shift+Enter 换行、中文输入光标定位，以及 `dscode resume` 接续会话。
 
 界面示意：
 
@@ -73,11 +73,11 @@ TUI 启动时清屏，顶部欢迎框显示 DSCODE、模型、effort、版本和
 
   › 接下来把取消行为也检查一下
 
-  deepseek-flash · ultra                         auto
-                              ctx 43% · ~$0.0030
+  deepseek-flash ｜ ultra                        auto
+  current: ~28.4 tps ｜ average: 3.1 tps ｜ context: 43%
 ```
 
-底栏展示上下文占用、session 费用估算与缓存命中率，窄窗口自动精简。费用包含已记录的子 agent、压缩和 auto 审核调用；后台 memory 与 topic 提取另行统计。[统计口径 →](docs/session-metrics.md)
+底栏每秒展示最近 5 秒的估算输出 TPS 与 session 活跃时间的平均 TPS，并按宽度展示上下文占用、费用估算与缓存命中率。平均 TPS 包含工具等待时间，排除轮次间空闲；费用包含已记录的子 agent、压缩和 auto 审核调用。后台 memory 与 topic 提取另行统计。[统计口径 →](docs/session-metrics.md)
 
 ### 编码所需的基础能力也已配好
 
@@ -128,7 +128,7 @@ dscode --cwd /another/project         # 在指定目录工作
 dscode update 0.4.0                   # 升级到 0.4.0
 dscode history                        # 查看保留的版本记录
 dscode rollback                       # 回到上个 preset 版本
-dscode doctor                         # 检查 Hub 安装状态
+dscode doctor                         # 分析近期运行日志和 session trace
 ```
 
 从旧版本升级时，先更新启动器，再更新已安装的 profile：

@@ -3,10 +3,26 @@ import { replaceOnce } from './patch-runtime.mjs';
 // Keep the presentation changes together; patch the pinned upstream renderer
 // without adding a second UI framework or touching its input/IME ownership.
 export function patchStyle(text) {
-  if (text.includes('// dscode-style-v1')) return text
+  if (text.includes('// dscode-style-v1')) {
+    let patched = text
     .replace('...DEFAULT_STATUSLINE_ITEMS.filter((id) => !seen.has(id))', '...STATUS_ITEMS.map(item => item.id).filter((id) => !seen.has(id))')
     .replace('const summary = "agents " + counts + " · /agents";', agentSummary)
-    .replace(': " · " + runClock(elapsed);', ': " · 本轮 " + runClock(elapsed);');
+    .replace(': " · " + runClock(elapsed);', ': " · 本轮 " + runClock(elapsed);')
+    .replace('Math.floor(columns / 2) - 4', 'Math.min(columns - 8, Math.max(40, Math.floor(columns * 0.8) - 4))')
+    .replace('Math.floor(columns * 0.6) - 4', 'Math.min(columns - 8, Math.max(40, Math.floor(columns * 0.8) - 4))')
+    .replace('telemetry: columns >= 64 ?', 'telemetry: columns >= 48 ?')
+    .replace('const STATUS_ITEM_SEPARATOR = " · ";', 'const STATUS_ITEM_SEPARATOR = " ｜ ";')
+    .replace('function sep() {\n\treturn {\n\t\ttext: " · ",', 'function sep() {\n\treturn {\n\t\ttext: " ｜ ",')
+    .replace('`${model} · ${effort}`', '`${model} ｜ ${effort}`')
+    .replace('const groupSeparator = visibleColumns(" | ");', 'const groupSeparator = visibleColumns(" ｜ ");')
+    .replace('}, " | "));', '}, " ｜ "));')
+    .replace(/const row2Budget = Math\.max\(0, budget - 2 - \(facts\.telemetry \? visibleColumns\(facts\.telemetry\) \+ [234] : 0\)\);/, 'const row2Budget = Math.max(0, budget - 1 - (facts.telemetry ? visibleColumns(facts.telemetry) + 3 : 0));')
+    .replace('key: key + "divider", color: inkColor(getPalette().dim) }, " ｜ "));', 'key: key + "divider", color: inkColor(getPalette().dim) }, "｜ "));')
+    .replace('key: key + "divider", color: inkColor(getPalette().dim) }, "｜"));', 'key: key + "divider", color: inkColor(getPalette().dim) }, "｜ "));')
+    .replace('const rightParts = [];\n\t\trow.right.forEach', 'const rightParts = [];\n        if (key === "s2" && row.left.length > 0 && row.right.length > 0) rightParts.push((0, import_react.createElement)(Text, { key: key + "divider", color: inkColor(getPalette().dim) }, "｜ "));\n\t\trow.right.forEach');
+    if (!patched.includes('// dscode-tps-colors-v1')) patched = patched.replace('function dscodeActivity(entries, streaming) {', tpsColorSource + '\nfunction dscodeActivity(entries, streaming) {');
+    return patched.replace(telemetryTextAnchor, telemetryColorRender);
+  }
   const patch = (from, to) => { text = replaceOnce(text, from, to); };
   const replaceFunction = (name, replacement) => {
     const start = text.indexOf(`function ${name}(`);
@@ -53,17 +69,62 @@ export function patchStyle(text) {
   patch('...DEFAULT_STATUSLINE_ITEMS.filter((id) => !seen.has(id))', '...STATUS_ITEMS.map(item => item.id).filter((id) => !seen.has(id))');
   patch('const effort = safe(stats.reasoningEffort);', 'const effort = safe(facts.effort ?? stats.reasoningEffort);');
   patch('const model = safe(facts.model);', 'const model = safe(facts.model).split("/").at(-1);');
-  patch('`${model}@${effort}`', '`${model} · ${effort}`');
+  patch('`${model}@${effort}`', '`${model} ｜ ${effort}`');
   patch('\t\t\tmodel: modelLabel,', '\t\t\tmodel: modelLabel,\n            effort: effortLabel,');
   patch('\t\tfacts.model,', '\t\tfacts.model,\n        facts.effort,');
-  patch('facts = { ...facts, telemetry: dscodeFooterFor(facts.fullSessionId, stats, Math.max(1, columns - 6)) };', 'facts = { ...facts, telemetry: columns >= 64 ? dscodeFooterFor(facts.fullSessionId, stats, Math.max(1, Math.floor(columns / 2) - 4)) : "" };');
+  patch('facts = { ...facts, telemetry: dscodeFooterFor(facts.fullSessionId, stats, Math.max(1, columns - 6)) };', 'facts = { ...facts, telemetry: columns >= 48 ? dscodeFooterFor(facts.fullSessionId, stats, Math.max(1, Math.min(columns - 8, Math.max(40, Math.floor(columns * 0.8) - 4)))) : "" };');
   patch('right: facts.telemetry ? [{ text: facts.telemetry, tone: "value" }] : [],', 'right: facts.telemetry ? [{ text: facts.telemetry, tone: "meta" }] : [],');
+  patch('const STATUS_ITEM_SEPARATOR = " · ";', 'const STATUS_ITEM_SEPARATOR = " ｜ ";');
+  patch('function sep() {\n\treturn {\n\t\ttext: " · ",', 'function sep() {\n\treturn {\n\t\ttext: " ｜ ",');
+  patch('const groupSeparator = visibleColumns(" | ");', 'const groupSeparator = visibleColumns(" ｜ ");');
+  patch('}, " | "));', '}, " ｜ "));');
+  patch('const row2Budget = Math.max(0, budget - 2 - (facts.telemetry ? visibleColumns(facts.telemetry) + 3 : 0));', 'const row2Budget = Math.max(0, budget - 1 - (facts.telemetry ? visibleColumns(facts.telemetry) + 3 : 0));');
+  patch('const rightParts = [];\n\t\trow.right.forEach', 'const rightParts = [];\n        if (key === "s2" && row.left.length > 0 && row.right.length > 0) rightParts.push((0, import_react.createElement)(Text, { key: key + "divider", color: inkColor(getPalette().dim) }, "｜ "));\n\t\trow.right.forEach');
+  patch(telemetryTextAnchor, telemetryColorRender);
   patch('case "model": return {\n\t\t\tcolor: inkColor(getPalette().code),\n\t\t\tbold: true,', 'case "model": return {\n\t\t\tcolor: void 0,\n\t\t\tbold: void 0,');
   // One animation owns the running state; the editor remains a stable target.
   patch('busy ? (0, import_react.createElement)(BusyChase, { animated: animations })', 'busy ? (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, "› ")');
   patch('active: waveTier !== null && waveStyle !== null && !busy && !preparingImages && animations && waveArmed,', 'active: false, // DSCODE keeps the input band stable');
-  return '// dscode-style-v1\n' + activitySource + '\n' + text;
+  return '// dscode-style-v1\n' + tpsColorSource + '\n' + activitySource + '\n' + text;
 }
+
+const telemetryTextAnchor = '}, span.text));\n\t\t});\n\t\tif (row.hint)';
+const telemetryColorRender = '}, key === "s2" && index === 0 ? dscodeTelemetryNodes(span.text, key + "r" + index) : span.text));\n\t\t});\n\t\tif (row.hint)';
+
+const tpsColorSource = `
+// dscode-tps-colors-v1
+function dscodeTpsTone(rate) {
+  if (!Number.isFinite(rate) || rate < 0) return null;
+  if (rate < 75) return "yellow";
+  if (rate < 150) return "green";
+  if (rate <= 250) return "blue";
+  return "purple";
+}
+function dscodeTpsInkColor(tone) {
+  const palette = getPalette();
+  if (tone === "yellow") return inkColor(palette.warn);
+  if (tone === "green") return inkColor(palette.success);
+  if (tone === "blue") return inkColor(palette.brandBright);
+  if (tone === "purple") return inkColor(getTheme() === "light" ? [126, 34, 206] : [192, 132, 252]);
+  return void 0;
+}
+function dscodeTelemetryParts(value) {
+  const result = [];
+  for (const [index, part] of value.split(" ｜ ").entries()) {
+    if (index > 0) result.push({ text: " ｜ ", tone: null });
+    const prefix = part.startsWith("current: ") ? "current: " : part.startsWith("average: ") ? "average: " : "";
+    if (!prefix || !part.endsWith(" tps")) { result.push({ text: part, tone: null }); continue; }
+    const display = part.slice(prefix.length, -4);
+    const rate = Number(display.startsWith("~") ? display.slice(1) : display);
+    result.push({ text: prefix, tone: null }, { text: display + " tps", tone: display && dscodeTpsTone(rate) });
+  }
+  return result;
+}
+function dscodeTelemetryNodes(value, key) {
+  return dscodeTelemetryParts(value).map((part, index) => (0, import_react.createElement)(Text,
+    { key: key + "p" + index, color: dscodeTpsInkColor(part.tone) }, part.text));
+}
+`;
 
 const activitySource = `
 function dscodeActivity(entries, streaming) {

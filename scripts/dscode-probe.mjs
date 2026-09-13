@@ -64,6 +64,8 @@ export async function probeDscode(ctx) {
   assert(!first.includes('isError":true'), first);
   const second = await run('bash', { command: 'printf "%s\\n" "$PWD" "$DSCODE_FIXTURE_VAR"; cat sample.txt' });
   assert(second.includes('nested') && second.includes('survives') && second.includes('before'), second);
+  const bang = await run('bash', { command: "node -e \"if (!Number.isFinite(3)) process.exit(1); console.log('BANG_OK')\"" });
+  assert(bang.includes('BANG_OK') && !bang.includes('timed out'), bang);
   const patched = await run('bash', { command: "apply_patch <<'PATCH'\ndiff --git a/sample.txt b/sample.txt\n--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-before\n\\ No newline at end of file\n+after\n\\ No newline at end of file\nPATCH" });
   assert.equal(readFileSync(join(cwd, 'nested/sample.txt'), 'utf8'), 'after', patched);
   const fresh = await run('shell_retry', { command: 'printf "%s\\n" "$PWD" "${DSCODE_FIXTURE_VAR-unset}"', workdir: cwd, description: 'Verify fresh retry shell state' });

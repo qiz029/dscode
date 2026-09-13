@@ -7,6 +7,7 @@ import { patchTui } from '../scripts/patch-tui.mjs';
 import { patchRuntime } from '../scripts/patch-runtime.mjs';
 import { patchStyle } from '../scripts/patch-style.mjs';
 import { visibleSettledLines } from '../scripts/patch-viewport.mjs';
+import { welcomeVisibleRows } from '../scripts/patch-welcome.mjs';
 
 test('transcript viewport keeps the newest settled lines within its row budget', () => {
   const entries = [['old'], [], ['a', 'b', 'c'], ['streaming']];
@@ -18,6 +19,15 @@ test('transcript viewport keeps the newest settled lines within its row budget',
   assert.deepEqual(visibleSettledLines(entries, 3, 2, 8, false, render), ['b', 'c']);
   assert.deepEqual(visibleSettledLines(entries, 3, 5, 8, false, render), ['old', 'a', 'b', 'c']);
   assert.deepEqual(visibleSettledLines(entries, 3, 0, 8, false, () => assert.fail('hidden viewport must not render')), []);
+});
+
+test('welcome rows yield to conversation demand without exceeding the viewport', () => {
+  assert.equal(welcomeVisibleRows(20, 13, 0), 13);
+  assert.equal(welcomeVisibleRows(20, 13, 7), 13);
+  assert.equal(welcomeVisibleRows(20, 13, 8), 12);
+  assert.equal(welcomeVisibleRows(20, 13, 20), 0);
+  assert.equal(welcomeVisibleRows(3, 4, 30), 4);
+  assert.equal(welcomeVisibleRows(20, 13, 20, false), 13);
 });
 
 test('pristine locked upstream accepts all patches once, remains valid JS, and is idempotent', t => {

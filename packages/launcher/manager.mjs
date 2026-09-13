@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
@@ -25,9 +25,13 @@ export function commandPlan(args, release, installed) {
     if (rest.length > 1 || rest[0]?.startsWith('-')) throw Error('Usage: dscode rollback [revision]');
     return { hub: ['profile', 'rollback', ...rest, ...flags] };
   }
-  if (command === 'history' || command === 'doctor') {
+  if (command === 'history') {
     if (rest.length) throw Error('Usage: dscode ' + command);
     return { hub: ['profile', command, ...flags] };
+  }
+  if (command === 'doctor') {
+    if (rest.length > 1 || rest[0] && !['--local', '--preview'].includes(rest[0])) throw Error('Usage: dscode doctor [--local|--preview]');
+    return { doctor: rest[0]?.slice(2) ?? 'analyze' };
   }
   return { launch: args, install: !installed };
 }
@@ -79,6 +83,21 @@ export async function run(args, release) {
     child.once('error', error => { cleanup(); reject(error); });
     child.once('exit', (code, signal) => { cleanup(); code === 0 ? resolvePromise() : reject(Error(`DSCODE process exited: ${signal ?? code}`)); });
   });
+  if (args[0] === 'doctor') {
+    const mode = commandPlan(args, release, true).doctor;
+    const profile = join(home, 'profiles/dscode');
+    const state = join(home, '.hub/installations/dscode/current.json');
+    if (!existsSync(state) || !existsSync(join(profile, 'package.json'))) throw Error('DSCODE is not installed. Run dscode install first.');
+    const dsh = join(profile, 'node_modules/@deepseek-ai/dsh/lib/bin.js');
+    const runner = join(profile, 'node_modules', release.bundle, 'plugins/tui-tools/doctor-cli.mjs');
+    if (!existsSync(dsh) || !existsSync(runner)) throw Error('DSCODE installation is incomplete. Run dscode update first.');
+    const overlay = join(home, 'diagnostics', 'doctor-cli.patch.yml');
+    mkdirSync(join(home, 'diagnostics'), { recursive: true, mode: 0o700 });
+    writeFileSync(overlay, `${['tui-startup', 'tui-runner', 'dscode-session-bridge', 'dscode-session-cards', 'dscode-memory', 'dscode-email-tools', 'dscode-hooks', 'dscode-auto-review', 'dscode-session-metrics', 'dscode-tui-tools']
+      .map(id => `- id: ${id}\n  disabled: true`).join('\n')}\n- insert:\n    - id: dscode-doctor-cli\n      name: ${JSON.stringify(runner)}\n      config:\n        local: ${mode === 'local'}\n        preview: ${mode === 'preview'}\n`, { mode: 0o600 });
+    await exec(dsh, ['--profile', 'dscode', '--patch', overlay]);
+    return;
+  }
   const releaseLock = await acquireLock(home);
   let lease;
   try {

@@ -5,9 +5,10 @@ import { parse } from 'yaml';
 import { standingMountFor } from '@deepseek-ai/dsh-agent-presets';
 import { hookEvents, validateHooks } from './hooks.mjs';
 import { redact } from '../auto-review/policy.mjs';
+import { analyzeDoctorEvidence, collectDoctorEvidence, recordRuntimeLog } from './doctor.mjs';
 
 export const name = 'dscode-tui-tools';
-export const inject = ['commands', 'agents', 'tools', 'skills', 'permissionPresets'];
+export const inject = ['commands', 'agents', 'tools', 'skills', 'permissionPresets', 'sessionPersistence', 'llm'];
 const phases = ['pending', 'loading', 'active', 'failed', 'unavailable', 'unloading'];
 const ok = text => ({ kind: 'success', text });
 const fail = text => ({ kind: 'error', text });
@@ -60,6 +61,8 @@ export async function findConflicts(cwd, configs, winners, env = process.env) {
 }
 
 export function apply(ctx) {
+  const diagnosticsHome = process.env.DSH_HOME ?? process.env.DSCODE_HOME;
+  if (diagnosticsHome) ctx.logger.exporter({ levels: { default: 2 }, export: message => recordRuntimeLog(diagnosticsHome, message) });
   const entries = agent => [
     ...(ctx.get('loader')?.entries() ?? []),
     ...(agent?.ctx ? standingMountFor(agent.ctx)?.tree.entries() ?? [] : []),
@@ -99,20 +102,25 @@ export function apply(ctx) {
       'Use /doctor for diagnostics; /statusline for live context/token display.',
     ].join('\n'));
   });
-  register('doctor', 'Read-only runtime diagnostics (no model requests)', async ({ agent, signal }) => {
+  register('doctor', 'Analyze recent runtime logs and session traces', async ({ agent, signal, rawInput }) => {
+    const action = rawInput.trim();
+    if (!['', 'preview', 'local'].includes(action)) return fail('Usage: /doctor [preview|local]');
     const tools = ctx.tools.schemas(agent).map(t => t.name);
     const catalog = await ctx.skills.snapshot({ cwd: agent.session.header.cwd, scope: agent, signal });
     const computer = ctx.get('computerUse');
-    return ok([
+    const health = [
       `Node: ${process.version}; platform: ${process.platform}/${process.arch}`,
       ...entries(agent).filter(e => !e.disabled && state(e) !== 'active').map(e => `CHECK plugin ${e.id}: ${state(e)}`),
       `Skills: ${catalog.skills.length}; discovery ${catalog.complete ? 'complete' : 'incomplete'}`,
       `Core tools: ${['bash', 'skill', 'computer_use_activate'].map(n => `${n}=${tools.includes(n)}`).join(', ')}`,
       ...mcps(agent).map(e => `MCP ${e.id}: ${state(e)}; ${tools.filter(n => n.startsWith(`mcp__${e.options.config?.serverName}__`)).length} registered tools`),
       `Computer Use: ${computer ? show(computer.status()) : 'service unavailable'}`,
-      'Credentials and remote model access: not tested. No credential values are read or printed.',
-      'For deterministic execution checks outside this session: npm run doctor (in the installation directory).',
-    ].join('\n'));
+      'Credentials are not read or printed. Diagnostic metadata may be sent to the selected model.',
+    ].join('\n');
+    const evidence = await collectDoctorEvidence(ctx, { agent, signal });
+    if (action === 'preview') return ok(JSON.stringify(evidence, null, 2));
+    const route = agent.session.requestHeader()?.config ?? agent.options;
+    return ok(`${health}\n\n${await analyzeDoctorEvidence(ctx, evidence, route, signal, { model: action !== 'local' })}`);
   });
   register('mcp', 'MCP list, tools <id>, enable/disable/reconnect <id>', async ({ agent, rawInput }) => {
     const [action = 'list', id, extra] = rawInput.trim().split(/\s+/).filter(Boolean);

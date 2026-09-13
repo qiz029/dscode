@@ -54,8 +54,10 @@ try {
       assert(inputIndex >= 0, `Missing input at ${height} rows: ${frame}\n${errors.join('')}`);
       assert.equal(lines.length, height - 1, `Frame height at ${height} rows`);
       assert(inputIndex >= height - 6, `Composer drifted above bottom at ${height} rows: ${inputIndex}`);
-      assert(lines.slice(0, 5).some(line => line.includes('DSCODE')), `Missing header at ${height} rows: ${frame}`);
-      if (height >= 10) {
+      const headerVisible = state === 'empty' || height <= 12;
+      if (headerVisible) assert(lines.some(line => line.includes('DSCODE')), `Missing welcome content at ${height} rows: ${frame}`);
+      else assert(!lines.some(line => line.includes('DSCODE')), `Welcome remained pinned above conversation at ${height} rows: ${frame}`);
+      if (headerVisible && height >= 10) {
         assert(frame.includes(`v${version}`), `Missing DSCODE version at ${height} rows`);
         assert(frame.includes('deepseek-chat'), `Missing model at ${height} rows`);
         assert(frame.includes('high'), `Missing effort at ${height} rows`);
@@ -63,9 +65,32 @@ try {
       }
       if (state === 'settled' && height >= 24) {
         assert(frame.includes('Reply number 30'), `Newest settled reply missing at ${height} rows`);
-        assert(!/Reply number 1(?!\d)/.test(frame), `Old reply overflowed viewport at ${height} rows`);
+        if (height <= 24) assert(!/Reply number 1(?!\d)/.test(frame), `Old reply overflowed viewport at ${height} rows`);
       }
     } finally { mounted.unmount(); mounted.cleanup(); stdout.destroy(); stderr.destroy(); stdin.destroy(); }
   }
-  console.log('TUI viewport passed: clear-on-mount and bounded history with bottom composer at 8/12/16/21/22/24/40 rows.');
+  const artworkRows = [];
+  for (const count of [0, 8, 11, 30]) {
+    view.entries = Array.from({ length: count }, (_, index) => ({ kind: 'assistant', text: `Reply number ${index + 1}`, reasoning: '' }));
+    view.busy = false;
+    view.streaming = '';
+    const stdout = new PassThrough();
+    Object.assign(stdout, { columns: 80, rows: 30, isTTY: true });
+    const stderr = new PassThrough();
+    const stdin = new PassThrough();
+    Object.assign(stdin, { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
+    const frames = [];
+    stdout.on('data', data => frames.push(data.toString()));
+    const mounted = ui.render(ui.react.createElement(ui.App, props), { stdout, stderr, stdin, debug: true, patchConsole: false, exitOnCtrlC: false });
+    try {
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const frame = stripVTControlCharacters(frames.filter(chunk => chunk.includes('type a message')).at(-1) ?? '');
+      assert(frame.includes('type a message'), `Missing composer with ${count} replies`);
+      if (count) assert(frame.includes(`Reply number ${count}`), `Newest reply missing with ${count} replies`);
+      artworkRows.push(frame.split('\n').filter(line => /[█▄▀╭╰]/.test(line)).length);
+    } finally { mounted.unmount(); mounted.cleanup(); stdout.destroy(); stderr.destroy(); stdin.destroy(); }
+  }
+  assert(artworkRows[0] > artworkRows[1] && artworkRows[1] > artworkRows[2] && artworkRows[2] > artworkRows[3], `Welcome did not scroll upward row by row: ${artworkRows}`);
+  assert.equal(artworkRows[3], 0);
+  console.log('TUI viewport passed: welcome scrolls off with conversation, bounded history and bottom composer at 8/12/16/21/22/24/40 rows.');
 } finally { rmSync(entry, { force: true }); }
