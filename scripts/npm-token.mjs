@@ -41,22 +41,35 @@ export function npmWithToken(token, args, { run = spawnSync, stdio = 'inherit' }
   finally { config.cleanup(); }
 }
 
-/** Store a token in the Keychain. `security` prompts for the secret itself, so it never appears on a command line. */
-export function storePublishToken({ run = spawnSync } = {}) {
-  return run('security', ['add-generic-password', '-U', '-s', KEYCHAIN_SERVICE, '-a', NPM_USER, '-l', 'npm publish token for dscode (granular, bypass 2FA)'], { stdio: 'inherit' });
+/** Store a token in the Keychain through `security -i`'s command stream, so the secret never appears on a command line. */
+export function storePublishToken(token, { run = spawnSync } = {}) {
+  if (!/^npm_[A-Za-z0-9]{16,}$/.test(token)) throw new Error('That does not look like an npm granular token (expected npm_ followed by letters and digits)');
+  const command = `add-generic-password -U -s ${JSON.stringify(KEYCHAIN_SERVICE)} -a ${JSON.stringify(NPM_USER)} -l "npm publish token for dscode (granular, bypass 2FA)" -w ${JSON.stringify(token)}\n`;
+  return run('security', ['-i'], { input: command, encoding: 'utf8', stdio: ['pipe', 'ignore', 'inherit'] });
+}
+
+async function readToken(stream) {
+  if (stream.isTTY) throw new Error('Pipe the token in: pbpaste | npm run publish:token store   (or: printf %s "$TOKEN" | npm run publish:token store)');
+  let text = '';
+  stream.setEncoding('utf8');
+  for await (const chunk of stream) text += chunk;
+  return text.trim();
 }
 
 async function main(command) {
   if (command === 'store') {
-    process.stdout.write(`Paste the granular npm token for ${NPM_USER} when "security" asks for a password (input is hidden).\n`);
-    const result = storePublishToken();
+    const token = await readToken(process.stdin);
+    if (!token) throw new Error('No token received on stdin. Copy the granular token, then run: pbpaste | npm run publish:token store');
+    const result = storePublishToken(token);
     if (result.status !== 0) throw new Error('Keychain write failed');
-    process.stdout.write(`Stored in the login Keychain as service "${KEYCHAIN_SERVICE}".\n`);
+    const stored = resolvePublishToken({ env: {} });
+    if (stored !== token) throw new Error('Keychain read-back did not return the stored token');
+    process.stdout.write(`Stored in the login Keychain as service "${KEYCHAIN_SERVICE}" (${token.length} characters).\n`);
     return;
   }
   if (command === 'check') {
     const token = resolvePublishToken();
-    if (!token) throw new Error(`No token: set NPM_PUBLISH_TOKEN or run "node scripts/npm-token.mjs store".`);
+    if (!token) throw new Error(`No token: set NPM_PUBLISH_TOKEN, or copy the granular token and run "pbpaste | npm run publish:token store".`);
     const who = npmWithToken(token, ['whoami'], { stdio: ['ignore', 'pipe', 'inherit'] });
     const user = (who.stdout ?? '').trim();
     if (who.status !== 0 || user !== NPM_USER) throw new Error(`Token does not authenticate as ${NPM_USER} (got "${user || 'nothing'}")`);

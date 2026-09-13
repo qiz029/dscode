@@ -33,8 +33,10 @@ test('token user config is private, holds only the registry token, and is remove
 
 test('storing a token never puts the secret on the command line', () => {
   let seen;
-  storePublishToken({ run: (cmd, args) => { seen = [cmd, args]; return { status: 0 }; } });
-  assert.equal(seen[0], 'security');
-  assert(seen[1].includes('add-generic-password') && seen[1].includes('-U'));
-  assert(!seen[1].includes('-w'), 'security prompts for the secret instead of receiving it as an argument');
+  storePublishToken('npm_abcdefghijklmnopqrstuv', { run: (cmd, args, options) => { seen = { cmd, args, input: options.input }; return { status: 0 }; } });
+  assert.equal(seen.cmd, 'security');
+  assert.deepEqual(seen.args, ['-i'], 'the secret travels through the security command stream, not argv');
+  assert.match(seen.input, /^add-generic-password -U -s "dscode-npm-publish" -a "toddzheng024" .* -w "npm_abcdefghijklmnopqrstuv"\n$/);
+  assert.throws(() => storePublishToken('hunter2'), /granular token/);
+  assert.throws(() => storePublishToken(''), /granular token/);
 });
