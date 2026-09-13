@@ -94,7 +94,7 @@ test('TUI renders relay body as a visible message while preserving plugin attrib
   vm.runInContext(patched.slice(0, patched.indexOf(original.slice(0, 3), patched.indexOf('}\n') + 2)), context);
   assert(context.dscodeVisibleRelay({ source: { kind: 'plugin', plugin: 'dscode-session-bridge', form: 'relay' } }));
   assert(!context.dscodeVisibleRelay({ source: { kind: 'plugin', plugin: 'other', form: 'relay' } }));
-  const tui = readFileSync(new URL('../node_modules/dsh-code/lib/index.mjs', import.meta.url), 'utf8');
+  const tui = patchSessionBridge(readFileSync(new URL('../node_modules/dsh-code/lib/index.mjs', import.meta.url), 'utf8'));
   const start = tui.indexOf('if (message.source.kind === "user" || dscodeVisibleRelay(message))');
   assert(start >= 0);
   const branch = tui.slice(start, tui.indexOf('const notice = message.source.kind', start));
