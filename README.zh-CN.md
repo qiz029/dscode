@@ -32,7 +32,7 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 | **[会话名片](docs/session-cards.md)** | 每个 session 展示项目、工作区与最近 5 条用户请求 topic，选协作对象时不必先读它的记录。名片描述用户让它做过什么，不放任务结论。 |
 | **[跨会话记忆](docs/memory.md)** | 后台提取可复用经验，检索时一并给出工作区和来源消息。支持按 session 或全局关闭，后台模型用量单独统计。 |
 | **[推理强度与子 agent](docs/dscode-ultra.md)** | Ultra 使用 DeepSeek 原生 `max` 推理，自行决定调查、委派和验证的范围。父 agent 可为每个子 agent 单独选择 effort，需要编辑的子 agent 可从干净的 `HEAD` 建立隔离 Git worktree。 |
-| **[独立审查](docs/tui-commands.md)** | 代码改动通过相关检查后，agent 会把 Git diff 交给独立的只读模型审查，先修复具体发现再结束本轮。`/review` 可手动触发，范围可选暂存区、基准分支、单次提交或路径。 |
+| **[独立审查](docs/tui-commands.md)** | 代码改动通过相关检查后，agent 会把 Git diff（非 Git 工作区则是相对任务开始时快照的改动）交给独立的只读模型审查，先修复具体发现再结束本轮。`/review` 可手动触发，范围可选暂存区、基准分支、单次提交或路径。 |
 | **[非交互执行](docs/exec.md)** | `dscode exec "prompt"`，或 `git diff \| dscode exec "review this"`，在脚本和 CI 中跑完整一轮：回复流式输出到 stdout，工具活动和 session id 到 stderr，退出码反映轮次结果，支持 `--json` 与 `--resume`。 |
 | **[终端体验](docs/session-metrics.md)** | 六种界面语言、可选中复制、向上滚动历史、verbose 思考与工具调用视图、固定在底部的输入区、子 agent 概览，以及底栏 TPS / context / 费用 / 缓存指标。 |
 | **[权限护栏](docs/auto-review.md)** | 默认 `workspace-write` sandbox 与独立模型 Auto 审核，可切回人工审批。Ultra 不增加权限，Computer Use 保留人工授权。 |
@@ -40,9 +40,9 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
-**0.7.4** — `danger-full-access` 下 MCP 调用恢复可用。之前自动审核不看预设，一律要求 MCP 调用审批，而 `never` 策略会在任何人应答前拒绝所有审批请求，导致 TUI 里 MCP 被静默拒绝，`dscode exec --approve-all` 也放行不了。0.7.3 新增了在 DeepSeek 官方 API 与 OpenRouter 之间切换的 `/provider`。
+**0.7.5** — 独立审查支持非 Git 工作区。工作区不是 Git 仓库时，DSCODE 在任务第一次调用工具前为文件拍快照，review 审核此后的改动，agent 在这类工作区也会收到审查引导；快照存放在数据目录，不会动工作区。0.7.4 修复了 `danger-full-access` 下 MCP 调用被静默拒绝、`dscode exec --approve-all` 也放行不了的问题。
 
-每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.4 更新说明](docs/releases/0.7.4.md)。
+每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.5 更新说明](docs/releases/0.7.5.md)。
 
 ## 🚀 快速开始
 
@@ -83,11 +83,11 @@ npm start -- --cwd /path/to/project
 
 也可复制 `.env.example` 为 `.env`，仅在本机填写密钥；此方式会优先于 `/login` 保存的凭据。
 
-**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.4.tar.gz`，然后执行：
+**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.5.tar.gz`，然后执行：
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.4.tar.gz -C dscode-install
+tar -xzf dscode-0.7.5.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -96,14 +96,14 @@ sh dscode-install/install.sh
 **若 npm 包名查询暂时返回 404**，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.4.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.5.tgz
 ```
 
 **升级** —— 先更新启动器，再更新已安装的 profile：
 
 ```sh
-npm install -g @toddzheng024/dscode@0.7.4
-dscode update 0.7.4
+npm install -g @toddzheng024/dscode@0.7.5
+dscode update 0.7.5
 ```
 
 `dscode history` 查看保留的版本记录，`dscode rollback` 回到上个 preset 版本。源码、tar 与 npm/Hub 使用不同的数据目录，会话和凭据不会互相迁移。详见 [tar 分发说明](docs/distribution.md) 与 [npm + Hub 分发指南](docs/hub-distribution.md)。

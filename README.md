@@ -32,7 +32,7 @@ DSCODE is a terminal coding agent for macOS, built on [DeepSeek Harness](https:/
 | **[Session cards](docs/session-cards.md)** | Each session advertises its project, workspace and the topics of its last five user requests—enough to pick the right collaborator without reading its transcript. Cards describe what the user asked for, not conclusions. |
 | **[Cross-session memory](docs/memory.md)** | Reusable experience is extracted in the background and retrieved together with its workspace and source messages. Memory can be disabled per session or globally, and its model usage is tracked separately. |
 | **[Effort and sub-agents](docs/dscode-ultra.md)** | Ultra uses DeepSeek's native `max` reasoning and decides how far to investigate, delegate and verify. Parents pick a separate effort per child, and children that edit can work in isolated Git worktrees created from a clean `HEAD`. |
-| **[Independent review](docs/tui-commands.md)** | After a code change passes its relevant checks, the agent sends the Git diff to a separate read-only model and fixes concrete findings before ending the turn. `/review` runs the same reviewer by hand, scoped to the staging area, a base branch, a commit or a path. |
+| **[Independent review](docs/tui-commands.md)** | After a code change passes its relevant checks, the agent sends the Git diff—or, outside a repository, the changes since a snapshot taken when the task began—to a separate read-only model and fixes concrete findings before ending the turn. `/review` runs the same reviewer by hand, scoped to the staging area, a base branch, a commit or a path. |
 | **[Non-interactive runs](docs/exec.md)** | `dscode exec "prompt"`, or `git diff \| dscode exec "review this"`, runs a full turn in scripts and CI: the reply streams to stdout, tool activity and the session id go to stderr, and the exit code reflects the turn. `--json` and `--resume` are supported. |
 | **[Terminal UX](docs/session-metrics.md)** | Six interface languages, select-and-copy text, scrollback through history, a verbose view of thinking and tool calls, an input area pinned to the bottom, a sub-agent overview, and footer TPS / context / cost / cache figures. |
 | **[Guardrails](docs/auto-review.md)** | A `workspace-write` sandbox by default and Auto permission review by an independent model, switchable to human approval. Ultra grants no extra permissions and Computer Use keeps human authorisation. |
@@ -40,9 +40,9 @@ DSCODE is a terminal coding agent for macOS, built on [DeepSeek Harness](https:/
 
 ## 🆕 What's new
 
-**0.7.4** — MCP calls work under `danger-full-access` again. Auto review asked for approval on MCP calls whatever the preset, and the `never` policy rejects every ask before anyone can answer, so MCP was silently blocked in the TUI and `dscode exec --approve-all` could not allow it. 0.7.3 added `/provider` for switching between DeepSeek's official API and OpenRouter.
+**0.7.5** — independent review works outside Git. In a workspace that is not a repository, DSCODE snapshots the files before the task's first tool call and reviews what changed since, so the agent gets the review guidance there too; the snapshot lives under the data directory and never touches the workspace. 0.7.4 made MCP calls work under `danger-full-access` again, where they were silently rejected and `dscode exec --approve-all` could not allow them.
 
-Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.4 notes](docs/releases/0.7.4.md) have the long version.
+Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.5 notes](docs/releases/0.7.5.md) have the long version.
 
 ## 🚀 Quick start
 
@@ -81,11 +81,11 @@ npm start
 npm start -- --cwd /path/to/project
 ```
 
-**From a tar package** — download `dscode-0.7.4.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
+**From a tar package** — download `dscode-0.7.5.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.4.tar.gz -C dscode-install
+tar -xzf dscode-0.7.5.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -94,14 +94,14 @@ The command lands in `~/.local/bin/dscode` by default—make sure that directory
 **If the npm name lookup returns 404**, install the same version straight from the official registry tarball:
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.4.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.5.tgz
 ```
 
 **Upgrade** — update the launcher first, then the installed profile:
 
 ```sh
-npm install -g @toddzheng024/dscode@0.7.4
-dscode update 0.7.4
+npm install -g @toddzheng024/dscode@0.7.5
+dscode update 0.7.5
 ```
 
 `dscode history` lists retained versions and `dscode rollback` returns to the previous preset revision. Source, tar and npm/Hub installs use different data directories, and sessions and credentials are not migrated between them. See the [tar distribution notes](docs/distribution.md) and the [npm + Hub guide](docs/hub-distribution.md).

@@ -10,6 +10,8 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes here. -->
 
+## [0.7.5] - 2026-09-14
+
 ### Changed
 
 - The review guidance and the `review` tool work outside a Git repository. Before a task's first tool call, dscode snapshots the workspace as a tree in a shadow bare repository under `DSH_HOME/review-baselines` (the workspace is never touched), and review diffs that baseline against a fresh snapshot; `path` narrows it, while `staged`, `base` and `commit` still need Git. Snapshots skip `.git`, `node_modules`, virtualenv and cache directories, the same sensitive files review already skips and files over 4 MiB, and a workspace with more than 20,000 files or 256 MiB returns `no_baseline` instead. The baseline is a ref per session, so it survives a resume, and a new task replaces it. Without a git executable there is no guidance and review still returns `no_repository`.
