@@ -1,0 +1,89 @@
+name: Release
+
+# Tag pushes publish; a manual run only builds and verifies unless asked to publish.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified packages to npm and the Hub
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Require the tag to match the manifest version
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(node -p "require('./package.json').version")
+          test "$GITHUB_REF_NAME" = "v$version" || { echo "::error::tag $GITHUB_REF_NAME does not match version $version"; exit 1; }
+      - run: npm run check
+      - name: Build the release candidates
+        env:
+          DSCODE_REPOSITORY: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          npm run build:packages
+          npm run release:hub
+      - run: npm run verify:hub
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-candidates
+          if-no-files-found: error
+          path: |
+            artifacts/npm
+            artifacts/local/hub-verification.json
+
+  publish:
+    needs: build
+    if: github.ref_type == 'tag' || inputs.publish
+    runs-on: macos-14
+    timeout-minutes: 60
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-candidates
+      - name: Require the publishing credentials
+        env:
+          NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
+          DSH_HUB_TOKEN: ${{ secrets.DSH_HUB_TOKEN }}
+        run: |
+          test -n "$NPM_PUBLISH_TOKEN" || { echo "::error::add the NPM_PUBLISH_TOKEN secret (granular npm token with bypass 2FA for @toddzheng024/dscode and @toddzheng024/dscode-bundle)"; exit 1; }
+          test -n "$DSH_HUB_TOKEN" || { echo "::error::add the DSH_HUB_TOKEN secret (Hub CI token)"; exit 1; }
+      # Never publish the launcher before its Hub release resolves: the three
+      # phases each re-check the artifact hashes they verified above.
+      - name: Publish the bundle to npm
+        env:
+          NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
+        run: npm run publish:hub -- bundle
+      - name: Sync npm and publish the Hub profile
+        env:
+          DSH_HUB_TOKEN: ${{ secrets.DSH_HUB_TOKEN }}
+        run: npm run publish:hub -- profile
+      - name: Publish the launcher to npm
+        env:
+          NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
+        run: npm run publish:hub -- launcher

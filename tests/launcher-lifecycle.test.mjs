@@ -19,8 +19,8 @@ function fixture(t) {
   put(join(profile, 'node_modules/@fixture/bundle/package.json'), { name: release.bundle, version: release.version });
   put(join(profile, 'node_modules/@deepseek-ai/dsh/package.json'), { version: release.runtime });
   put(join(profile, 'node_modules/@deepseek-ai/dsh/lib/bin.js'), `
-    console.log(JSON.stringify({ready:true,pid:process.pid,args:process.argv.slice(2)}));
     process.on('SIGTERM',()=>process.exit(0));
+    console.log(JSON.stringify({ready:true,pid:process.pid,args:process.argv.slice(2)}));
     setInterval(()=>{},1000);
   `);
   const launcher = join(home, 'launcher');
@@ -29,8 +29,8 @@ function fixture(t) {
   put(join(launcher, 'node_modules/@dsh-plugin-hub/cli/package.json'), { main: 'dist/index.js' });
   put(join(launcher, 'node_modules/@dsh-plugin-hub/cli/dist/index.js'), '');
   put(join(launcher, 'node_modules/@dsh-plugin-hub/cli/dist/bin.js'), `
-    console.log(JSON.stringify({ready:true,pid:process.pid,kind:'hub'}));
     process.on('SIGTERM',()=>process.exit(0));
+    console.log(JSON.stringify({ready:true,pid:process.pid,kind:'hub'}));
     setInterval(()=>{},1000);
   `);
   symlinkSync(new URL('../node_modules/@deepseek-ai', import.meta.url), join(launcher, 'node_modules/@deepseek-ai'), 'dir');

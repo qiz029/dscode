@@ -8,9 +8,11 @@ import { discover, request, exchange } from '../plugins/session-bridge/client.mj
 export const name = 'session-messaging-probe';
 export const inject = ['agents', 'agentPresets', 'llm', 'sessions', 'tools', 'sessionCommunication'];
 export function apply(ctx) { void probe(ctx).catch(error => { console.error(error.stack); ctx.get('appExit')(1); }); }
-async function until(fn) {
-  for (let i = 0; i < 300; i++) { const value = await fn(); if (value) return value; await new Promise(r => setTimeout(r, 10)); }
-  throw Error('Messaging fixture timed out');
+// A loaded CI runner starts a second Host far slower than a laptop; the budget has
+// to clear the whole fixture handshake, and the label says which wait expired.
+async function until(fn, label = 'the fixture condition') {
+  for (let i = 0; i < 1500; i++) { const value = await fn(); if (value) return value; await new Promise(r => setTimeout(r, 10)); }
+  throw Error(`Messaging fixture timed out waiting for ${label}`);
 }
 async function probe(ctx) {
   await ctx.get('loader').await();
@@ -52,7 +54,7 @@ async function probe(ctx) {
     });
     const r = { child, output: '', done: new Promise((resolve, reject) => { child.once('exit', resolve); child.once('error', reject); }) };
     child.stdout.on('data', b => { r.output += b; }); child.stderr.on('data', b => { r.output += b; }); children.push(r);
-    await until(() => { if (child.exitCode !== null) throw Error(r.output); return r.output.includes('MESSAGING_CHILD_READY'); }); return r;
+    await until(() => { if (child.exitCode !== null) throw Error(r.output); return r.output.includes('MESSAGING_CHILD_READY'); }, 'the secondary host handshake'); return r;
   };
   let child = await launch(false);
   const endpoint = async () => (await discover(process.env.DSH_HOME)).find(s => s.id === 'messaging-b');
@@ -73,22 +75,22 @@ async function probe(ctx) {
   snapshot = await readB(); assert.equal(snapshot.status, 'idle'); assert.equal(snapshot.mailbox.messages[0].delivery, 'accepted');
   const queued = await tool('send_session', { ...args, kind: 'request', mode: 'queue', text: 'REPLY_ME', idempotency_key: 'request-reply' });
   assert(queued.accepted, JSON.stringify(queued));
-  await until(() => service.store.get(queued.messageId).request_state === 'replied').catch(async error => {
+  await until(() => service.store.get(queued.messageId).request_state === 'replied', 'the queued request to be answered').catch(async error => {
     console.error(child.output); console.error(JSON.stringify((await readB()).events.slice(-12))); throw error;
   });
-  await until(() => agent.status === 'idle' && agent.session.snapshotEvents().some(e => e.type === 'user/message' && e.data.content.some(b => b.text?.includes('FINAL_REPLY'))));
+  await until(() => agent.status === 'idle' && agent.session.snapshotEvents().some(e => e.type === 'user/message' && e.data.content.some(b => b.text?.includes('FINAL_REPLY'))), 'the final reply to land in the transcript');
   snapshot = await readB();
   assert.equal(snapshot.events.filter(e => e.type === 'user/message' && e.data.source.communicationId === sent.messageId).length, 1);
   assert.equal((await tool('send_session', args)).duplicate, true);
   // Kill after durable ledger admission but before native inbox admission; recovery must fill the gap.
   const crash = service.store.admit('messaging-b', { text: 'RECOVER_ADMISSION', requestId: 'crash-gap', kind: 'notify', mode: 'queue' }, service.state(agent).auth).row;
   await stop(child); child = await launch(true);
-  await until(() => service.store.get(crash.id).delivery === 'consumed');
+  await until(() => service.store.get(crash.id).delivery === 'consumed', 'the crashed admission to be recovered');
   snapshot = await readB(); assert.equal(snapshot.events.filter(e => e.type === 'user/message' && e.data.source.communicationId === crash.id).length, 1);
   const cancelled = await tool('send_session', { ...args, idempotency_key: 'cancel-note', text: 'CANCELLED_NOTE' });
   await service.cancel(agent, cancelled.messageId);
   await request((await endpoint()).socket, { method: 'send', sessionId: 'messaging-b', requestId: 'natural-turn', text: 'Continue naturally' });
-  await until(async () => (await readB()).status === 'idle');
+  await until(async () => (await readB()).status === 'idle', 'the second host to go idle');
   snapshot = await readB(); assert(!snapshot.events.some(e => e.type === 'user/message' && e.data.source.communicationId === cancelled.messageId));
   const watch = exchange((await endpoint()).socket, { method: 'watch-mailbox', sessionId: 'messaging-b', after: 0 });
   assert.equal((await watch.next()).value.type, 'ready');
@@ -107,7 +109,7 @@ async function probe(ctx) {
   await durable.flush(); await durable.close();
   const recovered = await ctx.agents.resume({ resumeSessionId: pendingId, setup, agentOptions: { provider: 'messaging-fixture', model: 'fixture' } });
   await service.state(recovered.agent).ready; await recovered.agent.whenIdle();
-  await until(() => service.store.get(staged.id).delivery === 'consumed');
+  await until(() => service.store.get(staged.id).delivery === 'consumed', 'the staged message to be consumed');
   assert.equal(recovered.agent.session.snapshotEvents().filter(e => e.type === 'user/message' && e.data.source.communicationId === staged.id).length, 1);
   const dropped = service.store.admit(pendingId, { requestId: 'user-cancelled', text: 'DO_NOT_RESURRECT', mode: 'queue' }, service.state(agent).auth).row;
   recovered.agent.inbox.append('next-turn', service.native(dropped));
@@ -128,10 +130,10 @@ async function probe(ctx) {
   agent.followup(human('Natural boundary')); await entered.promise;
   const late = await service.receive(agent, { text: 'LATE_NOTE', mode: 'defer', requestId: 'late-note' });
   released.resolve(); await agent.whenIdle();
-  await until(() => service.store.get(early.messageId).delivery === 'consumed');
+  await until(() => service.store.get(early.messageId).delivery === 'consumed', 'the early message to be consumed');
   assert.equal(service.store.get(late.messageId).delivery, 'accepted');
   agent.followup(human('Next boundary')); await agent.whenIdle();
-  await until(() => service.store.get(late.messageId).delivery === 'consumed'); unhook();
+  await until(() => service.store.get(late.messageId).delivery === 'consumed', 'the late message to be consumed'); unhook();
   const readonly = await tool('read_session', { session_id: 'messaging-b', after: -1, limit: 10 }); assert(readonly.events.length);
   const titleEndpoint = (await endpoint()).socket;
   const titleRequest = { method: 'send', sessionId: 'messaging-b', requestId: 'deferred-title', mode: 'defer', kind: 'notify', text: 'title note', title: 'Deferred title' };

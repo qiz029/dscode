@@ -12,7 +12,7 @@ try {
     cwd: root, env: { ...environment(home), DSCODE_MEMORY_HOME: join(home, 'memories'), DSCODE_MESSAGING_PATCH: patch }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = ''; child.stdout.on('data', b => { output += b; }); child.stderr.on('data', b => { output += b; });
-  const timer = setTimeout(() => child.kill('SIGTERM'), 20000);
+  const timer = setTimeout(() => child.kill('SIGTERM'), 60000);
   const code = await new Promise((resolve, reject) => { child.once('exit', resolve); child.once('error', reject); }).finally(() => clearTimeout(timer));
   if (code !== 0 || !output.includes('SESSION_MESSAGING_PROBE_PASSED')) throw Error(output || `Probe exited ${code}`);
   console.log(output.split('\n').find(s => s.includes('SESSION_MESSAGING_PROBE_PASSED')));

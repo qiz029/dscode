@@ -71,4 +71,24 @@ npm run verify:hub
 
 npm 已宣布带 bypass 2FA 的 token 直接发布将在 2027 年 1 月停用；届时本机发布需要改为在 CI 上使用 trusted publishing（OIDC）。
 
+### GitHub Actions
+
+两个 workflow：
+
+- `.github/workflows/checks.yml`：每次 push/PR 在 `macos-14` 上跑 `npm run check`（Node 22.19.0 与 24 两个矩阵），上传覆盖率产物；同一 ref 的新推送会取消上一轮。
+- `.github/workflows/release.yml`：推送 `v*` tag（或手动 `workflow_dispatch`）时先跑 `build` job —— `npm run check` → `npm run build:packages` → `npm run release:hub` → `npm run verify:hub`，把 `artifacts/npm` 与 `artifacts/local/hub-verification.json` 作为 `release-candidates` 产物上传。`publish` job 依赖它，并挂在 `release` environment 上（可在仓库 Settings → Environments 里加 required reviewers 做人工放行）。
+
+发布凭据放在仓库 Secrets（Settings → Secrets and variables → Actions）：
+
+| Secret | 用途 |
+| --- | --- |
+| `DSH_HUB_TOKEN` | Hub CI 凭据。`@dsh-plugin-hub/cli` 的 `getAccessToken()` 优先读它，因此流水线不跑设备登录、也不依赖 5 分钟有效的 WorkOS access token。 |
+| `NPM_PUBLISH_TOKEN` | npm granular token（勾选 *Bypass two-factor authentication*，只授权 `@toddzheng024/dscode` 与 `@toddzheng024/dscode-bundle` 的 Read and write）。`npm run publish:hub` 会把它写进一次性的 `--userconfig`，不落盘、不进 shell 历史。 |
+
+发布按文档顺序分三段执行，每段都重新核对上面验过的哈希：`publish:hub -- bundle` → `publish:hub -- profile`（先让 Hub 从 npm 同步，再要求该精确版本可解析）→ `publish:hub -- launcher`。**launcher 永远在 bundle 与 public Hub release 之后**，否则用户首次启动会失败。新包在 Hub 控制台的认领（claim）仍需人工完成；tag 与 `package.json` 版本不一致时 `build` job 直接失败，不会发布。
+
+手动 dry run：Actions → Release → Run workflow，`publish` 保持 `false`，只构建并验证候选产物、不发布。
+
+
+
 Hub 阶段（`profile`）用的是 `dsh-hub login` 写入 `~/.dsh/.hub/auth.json` 的 WorkOS 会话，access token 5 分钟有效、脚本会用 refresh token 自动续期；只有 refresh token 失效时才需要重新 `dsh-hub login`。
