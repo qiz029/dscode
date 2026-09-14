@@ -40,9 +40,9 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
-**0.7.0** — `/language` 在六种界面语言间切换并记住选择。鼠标捕获默认关闭，终端里可直接拖选复制，`/mouse` 恢复滚轮滚动。`/verbose` 以暗色显示思考和工具调用。底栏 `current` TPS 按实际生成时长计算并用结算用量校准，`average` 为输出 token ÷ LLM 调用总耗时。review 工具在非 Git 目录返回 `no_repository`，模型异常结束时重试一次并说明原因。
+**0.7.1** — 修复滚轮失效：0.7.0 默认关闭鼠标捕获，而 TUI 原地重绘并清空终端 scrollback，导致滚轮既没有事件、也没有可滚动的内容，只有 `/mouse` 打开才能滚。现在默认开启捕获，每格滚动 1 行（原 3 行），同一帧内到达的事件合并为一次重绘，`/mouse` 仍可关闭以直接拖选复制。
 
-每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.0 更新说明](docs/releases/0.7.0.md)。
+每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.1 更新说明](docs/releases/0.7.1.md)。
 
 ## 🚀 快速开始
 
@@ -83,11 +83,11 @@ npm start -- --cwd /path/to/project
 
 也可复制 `.env.example` 为 `.env`，仅在本机填写密钥；此方式会优先于 `/login` 保存的凭据。
 
-**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.0.tar.gz`，然后执行：
+**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.1.tar.gz`，然后执行：
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.0.tar.gz -C dscode-install
+tar -xzf dscode-0.7.1.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -96,14 +96,14 @@ sh dscode-install/install.sh
 **若 npm 包名查询暂时返回 404**，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.0.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.1.tgz
 ```
 
 **升级** —— 先更新启动器，再更新已安装的 profile：
 
 ```sh
-npm install -g @toddzheng024/dscode@0.7.0
-dscode update 0.7.0
+npm install -g @toddzheng024/dscode@0.7.1
+dscode update 0.7.1
 ```
 
 `dscode history` 查看保留的版本记录，`dscode rollback` 回到上个 preset 版本。源码、tar 与 npm/Hub 使用不同的数据目录，会话和凭据不会互相迁移。详见 [tar 分发说明](docs/distribution.md) 与 [npm + Hub 分发指南](docs/hub-distribution.md)。

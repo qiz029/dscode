@@ -125,6 +125,7 @@ try {
     sourceInput.write('\x1b[<64;20;12M');
     await settle();
     assert(!frame().includes('Reply number 40'), 'mouse wheel up must reveal older replies');
+    assert(frame().includes('Reply number 39'), 'one wheel notch must move exactly one row');
     const browsing = frame().match(/Reply number \d+/g);
     view.entries = [...view.entries, { kind: 'assistant', text: 'Reply number 41', reasoning: '' }];
     mounted.rerender(ui.react.createElement(ui.App, { ...props }));
@@ -138,9 +139,15 @@ try {
     mounted.rerender(ui.react.createElement(ui.App, { ...props }));
     await settle();
     assert(frame().includes('Reply number 42'), 'viewport must follow new replies after returning to bottom');
+    sourceInput.write('\x1b[<64;20;12M');
+    sourceInput.write('\x1b[<64;20;12M');
+    sourceInput.write('\x1b[<64;20;12M');
+    await settle();
+    assert(!/Reply number 4[012]/.test(frame()), 'three wheel notches in one frame must scroll three rows');
+    assert(frame().includes('Reply number 39'), 'the burst must stop one row short of skipping a fourth reply');
     assert(frame().includes('type a message'), 'mouse report must not enter composer');
   } finally {
     mounted.unmount(); mounted.cleanup(); split.dispose(); sourceInput.destroy(); stdout.destroy(); stderr.destroy();
   }
-  console.log('TUI viewport passed: welcome, bounded history, PageUp/PageDown, mouse wheel and bottom composer at 8/12/16/21/22/24/40 rows.');
+  console.log('TUI viewport passed: welcome, bounded history, PageUp/PageDown, per-row coalesced mouse wheel and bottom composer at 8/12/16/21/22/24/40 rows.');
 } finally { rmSync(entry, { force: true }); }

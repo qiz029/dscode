@@ -8,6 +8,21 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-14
+
+### Added
+
+- `docs/CHANGELOG.md` records every release from 0.1.0 on, and the repository README is now English with `README.zh-CN.md` as its Chinese counterpart.
+
+### Fixed
+
+- Wheel scrolling works out of the box again. 0.7.0 turned mouse capture off by default, but the pinned viewport renders in place and clears the terminal scrollback, so with capture off the wheel produced no events anywhere and did nothing until `/mouse` enabled it. Capture now defaults to on, and `/mouse` still releases it for direct selection.
+
+### Changed
+
+- A wheel notch scrolls one row instead of three, and the notches that arrive in the same 16 ms frame are merged into a single render, so trackpad scrolling is smoother without dropping events.
+- The `/mouse` hint names Shift first, alongside Option (iTerm2) and Fn (Terminal.app).
+
 ## [0.7.0] - 2026-09-13
 
 Interface languages, copyable text, a verbose view, accurate TPS figures, and steadier review.
@@ -108,7 +123,8 @@ One session runtime shared by the TUI, the CLI, scripts and other agents.
 
 Initial public release: the npm launcher and Hub profile installation for the DSCODE harness.
 
-[Unreleased]: https://github.com/qiz029/dscode/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/qiz029/dscode/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/qiz029/dscode/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/qiz029/dscode/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/qiz029/dscode/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/qiz029/dscode/compare/v0.4.0...v0.5.0

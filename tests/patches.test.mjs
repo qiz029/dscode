@@ -11,7 +11,7 @@ import { patchStyle } from '../scripts/patch-style.mjs';
 import { visibleSettledLines } from '../scripts/patch-viewport.mjs';
 import { WELCOME_ART, WELCOME_ART_SMALL, welcomeArtRows, welcomeVisibleRows } from '../scripts/patch-welcome.mjs';
 import { ctrlCAction } from '../scripts/patch-interrupt.mjs';
-import { transcriptWindow, mouseWheelDirection } from '../scripts/patch-scroll.mjs';
+import { patchScroll, transcriptWindow, mouseWheelDirection } from '../scripts/patch-scroll.mjs';
 import { turnDividedLines } from '../scripts/patch-turn-divider.mjs';
 import { userBackgroundRows } from '../scripts/patch-user-background.mjs';
 import { collapseLargePaste, expandLargePastes, pasteAtomicEdit, pasteCursorEdge } from '../scripts/patch-large-paste.mjs';
@@ -282,7 +282,7 @@ test('pristine locked upstream accepts all patches once, remains valid JS, and i
   patchTui(fixture.root); patchRuntime(fixture.root);
   assert.deepEqual(files.map(path => readFileSync(path, 'utf8')), after);
   const tui = after[files.findIndex(path => path.endsWith('dsh-code/lib/index.mjs'))];
-  for (const marker of ['label: "/verbose"', 'if (text === "/verbose")', 'label: "/mouse"', 'if (text === "/mouse")', 'function dscodeSetMouse(', 'notify(dscodeT(enabled ? "mouse.on" : "mouse.off"))', 'label: "/language"', 'if (text === "/language"', 'function LanguagePanel(', 'if (!wanted) { openLanguage(); return; }', 'function dscodeT(', 'dscodeT("activity.running")', 'dscodeT("welcome.model")', 'notify(dscodeT(next ? "verbose.on" : "verbose.off"))', 'function dscodeSpinnerCells(', 'effort: effortLabel, animated: animations })', 'const ripplePhase = animated ? rippleTick % 4 : 3;', ', dscodeLocale) : ""', 'value === "" ? dscodeT("composer.placeholder") :', 'function dscodeLoadFlag(', 'dscodeSaveFlag("verbose", next);', 'useState)(() => dscodeLoadFlag("verbose"))', 'let dscodeMouseEnabled = dscodeLoadFlag("mouse", false);', 'process.stdout.isTTY === true && dscodeMouseEnabled ? DSCODE_MOUSE_ENABLE : ""', 'dscodeSaveFlag("mouse", enabled);']) assert(tui.includes(marker), marker);
+  for (const marker of ['label: "/verbose"', 'if (text === "/verbose")', 'label: "/mouse"', 'if (text === "/mouse")', 'function dscodeSetMouse(', 'notify(dscodeT(enabled ? "mouse.on" : "mouse.off"))', 'label: "/language"', 'if (text === "/language"', 'function LanguagePanel(', 'if (!wanted) { openLanguage(); return; }', 'function dscodeT(', 'dscodeT("activity.running")', 'dscodeT("welcome.model")', 'notify(dscodeT(next ? "verbose.on" : "verbose.off"))', 'function dscodeSpinnerCells(', 'effort: effortLabel, animated: animations })', 'const ripplePhase = animated ? rippleTick % 4 : 3;', ', dscodeLocale) : ""', 'value === "" ? dscodeT("composer.placeholder") :', 'function dscodeLoadFlag(', 'dscodeSaveFlag("verbose", next);', 'useState)(() => dscodeLoadFlag("verbose"))', 'let dscodeMouseEnabled = dscodeLoadFlag("mouse", true);', 'function dscodeQueueWheel(', 'const DSCODE_WHEEL_FRAME_MS = 16;', 'if (amount === 0) return;', 'scrollRef.current = scrollTranscript;', 'process.stdout.isTTY === true && dscodeMouseEnabled ? DSCODE_MOUSE_ENABLE : ""', 'dscodeSaveFlag("mouse", enabled);']) assert(tui.includes(marker), marker);
   assert(!/[\u4e00-\u9fff]/.test(tui.replace(/const DSCODE_MESSAGES = .*\n/, '').replace(/const DSCODE_LANGUAGES = .*\n/, '').replace(/const DSCODE_LANGUAGE_ALIASES = .*\n/, '')), 'no hard-coded CJK outside the language tables');
   // Prior style revisions used a shorter activity suffix and summary catalog.
   const oldStyle = after[0].replace(': " · 本轮 " + runClock(elapsed);', ': " · " + runClock(elapsed);');
@@ -321,4 +321,84 @@ test('welcome art packs pixel pairs into half blocks with merged runs', () => {
     // Column 0 and pixel row size-1 are the canvas margins; the flake itself is odd-sized and centred.
     assert.deepEqual(shape.map(row => row.slice(1)), shape.map(row => [...row.slice(1)].reverse().join('')), 'snowflake shape mirrors horizontally');
   }
+});
+
+test('older bundles upgrade to per-row coalesced wheel scrolling without duplicating helpers', () => {
+  const v2 = [
+    '// dscode-scroll-v2',
+    'const dscodeWheelListeners = new Set();',
+    'let dscodeMouseEnabled = dscodeLoadFlag("mouse", false);',
+    'function dscodeSetMouse(enabled) {',
+    '  dscodeMouseEnabled = enabled;',
+    '  return enabled;',
+    '}',
+    'function dscodeHandleMouseUnit(unit) {',
+    '  const direction = mouseWheelDirection(unit);',
+    '  if (direction === null) return false;',
+    '  if (direction !== 0) for (const listener of dscodeWheelListeners) listener(direction);',
+    '  return true;',
+    '}',
+    'const startup = (process.stdout.isTTY === true && dscodeMouseEnabled ? DSCODE_MOUSE_ENABLE : "");',
+    '\t\t\tif (text === "/mouse") {',
+    '\t\t\t\tconst enabled = dscodeSetMouse(!dscodeMouseEnabled);',
+    '\t\t\t\tdscodeSaveFlag("mouse", enabled);',
+    '\t\t\t\tnotify(dscodeT(enabled ? "mouse.on" : "mouse.off"));',
+    '\t\t\t\treturn;',
+    '\t\t\t}',
+    '  const scrollTranscript = (direction, page = false) => {',
+    '    if (!transcriptVisible || settledViewportRows <= 0) return;',
+    '    const step = page ? Math.max(1, settledViewportRows - 1) : 3;',
+    '    setScrollOffset(current => Math.max(0, Math.min(maxScrollOffset, (current === scrollOffset ? effectiveScrollOffset : current) + direction * step)));',
+    '  };',
+    '  (0, import_react.useEffect)(() => {',
+    '    const listener = direction => scrollTranscript(direction);',
+    '    dscodeWheelListeners.add(listener);',
+    '    return () => dscodeWheelListeners.delete(listener);',
+    '  });',
+    '',
+  ].join('\n');
+  const upgraded = patchScroll(v2);
+  assert(upgraded.startsWith('// dscode-scroll-v3\n'), 'marker moves to v3');
+  assert(upgraded.includes('let dscodeMouseEnabled = dscodeLoadFlag("mouse", true);'), 'capture defaults on');
+  assert(upgraded.includes('function dscodeQueueWheel(direction) {'), 'notches coalesce inside a frame');
+  assert(upgraded.includes('if (direction !== 0) dscodeQueueWheel(direction);'));
+  assert(upgraded.includes('const amount = direction * step;'), 'one row per notch');
+  assert(upgraded.includes('scrollRef.current = scrollTranscript;'));
+  assert(!upgraded.includes(': 3;'), 'the coarse three-row step is gone');
+  assert.equal((upgraded.match(/const dscodeWheelListeners = new Set\(\);/g) ?? []).length, 1, 'helpers are not duplicated');
+  assert.equal(patchScroll(upgraded), upgraded, 'upgrade is idempotent');
+
+  const v1 = [
+    '// dscode-scroll-v1',
+    '\t{\n\t\tlabel: "/verbose",\n\t\tdescription: "toggle thinking and tool call details in the chat"\n\t},\n',
+    'const dscodeWheelListeners = new Set();',
+    'function dscodeHandleMouseUnit(unit) {',
+    '  const direction = mouseWheelDirection(unit);',
+    '  if (direction === null) return false;',
+    '  if (direction !== 0) for (const listener of dscodeWheelListeners) listener(direction);',
+    '  return true;',
+    '}',
+    'let dscodeMouseEnabled = true;',
+    'const startup = (process.stdout.isTTY === true ? DSCODE_MOUSE_ENABLE : "");',
+    'if (process.stdout.isTTY === true) process.stdout.write(DSCODE_MOUSE_DISABLE);\n\t\t\tif (process.stdin.isTTY === true) process.stdin.setRawMode?.(false);\n\t\t\tthrow error;',
+    '\t\t\tif (text === "/todos") {\n\t\t\t\topenTodos();',
+    '  const scrollTranscript = (direction, page = false) => {',
+    '    if (!transcriptVisible || settledViewportRows <= 0) return;',
+    '    const step = page ? Math.max(1, settledViewportRows - 1) : 3;',
+    '    setScrollOffset(current => Math.max(0, Math.min(maxScrollOffset, (current === scrollOffset ? effectiveScrollOffset : current) + direction * step)));',
+    '  };',
+    '  (0, import_react.useEffect)(() => {',
+    '    const listener = direction => scrollTranscript(direction);',
+    '    dscodeWheelListeners.add(listener);',
+    '    return () => dscodeWheelListeners.delete(listener);',
+    '  });',
+    '',
+  ].join('\n');
+  const migrated = patchScroll(v1);
+  assert(migrated.startsWith('// dscode-scroll-v3\n'), 'a v1 bundle moves to v3');
+  assert(migrated.includes('function dscodeQueueWheel(direction) {') && migrated.includes('let dscodeMouseEnabled = dscodeLoadFlag("mouse", true);'), 'v1 gains the coalesced wheel and the new default');
+  assert(migrated.includes('label: "/mouse"') && migrated.includes('dscodeSaveFlag("mouse", enabled);'), 'v1 gains the /mouse command');
+  assert.equal((migrated.match(/function dscodeHandleMouseUnit/g) ?? []).length, 1, 'v1 does not duplicate the handler');
+  assert.equal(migrated.match(/function dscodeQueueWheel/g).length, 1);
+  assert.equal(patchScroll(migrated), migrated, 'v1 upgrade is idempotent');
 });
