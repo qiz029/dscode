@@ -40,9 +40,9 @@ DSCODE is a terminal coding agent for macOS, built on [DeepSeek Harness](https:/
 
 ## 🆕 What's new
 
-**0.7.1** — wheel scrolling works out of the box again. 0.7.0 turned mouse capture off by default, but the pinned viewport renders in place and clears the terminal scrollback, so the wheel had no events and nothing to scroll until `/mouse` was enabled. Capture is on by default now, a notch moves one row instead of three, notches that arrive in the same frame merge into one render, and `/mouse` still hands the mouse back for drag-select and copy.
+**0.7.2** — the terminal owns scrolling, selection and copy again. The transcript now lands in the terminal's own scrollback through Ink's Static output instead of an in-place viewport, so the wheel, drag-select and copy are native and `/mouse` is gone. The footer is two rows — `● <session title> ｜ <permission>` above `provider: model @ effort | current | average | context | $spend / $balance 🔥 | cache hit` — and a command that waits for terminal input no longer freezes the turn on macOS.
 
-Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.1 notes](docs/releases/0.7.1.md) have the long version.
+Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.2 notes](docs/releases/0.7.2.md) have the long version.
 
 ## 🚀 Quick start
 
@@ -81,11 +81,11 @@ npm start
 npm start -- --cwd /path/to/project
 ```
 
-**From a tar package** — download `dscode-0.7.1.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
+**From a tar package** — download `dscode-0.7.2.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.1.tar.gz -C dscode-install
+tar -xzf dscode-0.7.2.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -94,14 +94,14 @@ The command lands in `~/.local/bin/dscode` by default—make sure that directory
 **If the npm name lookup returns 404**, install the same version straight from the official registry tarball:
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.1.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.2.tgz
 ```
 
 **Upgrade** — update the launcher first, then the installed profile:
 
 ```sh
-npm install -g @toddzheng024/dscode@0.7.1
-dscode update 0.7.1
+npm install -g @toddzheng024/dscode@0.7.2
+dscode update 0.7.2
 ```
 
 `dscode history` lists retained versions and `dscode rollback` returns to the previous preset revision. Source, tar and npm/Hub installs use different data directories, and sessions and credentials are not migrated between them. See the [tar distribution notes](docs/distribution.md) and the [npm + Hub guide](docs/hub-distribution.md).

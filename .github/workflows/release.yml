@@ -45,6 +45,7 @@ jobs:
         run: |
           npm run build:packages
           npm run release:hub
+          npm run dist
       - run: npm run verify:hub
       - uses: actions/upload-artifact@v4
         with:
@@ -53,6 +54,7 @@ jobs:
           path: |
             artifacts/npm
             artifacts/local/hub-verification.json
+            artifacts/dscode-*.tar.gz
 
   publish:
     needs: build
@@ -60,6 +62,8 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 60
     environment: release
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -97,3 +101,18 @@ jobs:
         env:
           NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
         run: npm run publish:hub -- launcher
+      # The README points users at the tar package on GitHub Releases, so the
+      # release is only complete once that asset is there beside the npm and Hub ones.
+      - name: Attach the source tarball to the GitHub release
+        if: github.ref_type == 'tag' || inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tarball="artifacts/dscode-$version.tar.gz"
+          test -f "$tarball" || { echo "::error::missing $tarball"; exit 1; }
+          if gh release view "v$version" >/dev/null 2>&1; then
+            gh release upload "v$version" "$tarball" --clobber
+          else
+            gh release create "v$version" "$tarball" --title "DSCODE $version" --notes-file "docs/releases/$version.md"
+          fi

@@ -8,6 +8,10 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 ## [Unreleased]
 
+<!-- Add upcoming changes here. -->
+
+## [0.7.2] - 2026-09-14
+
 ### Added
 
 - GitHub Actions releases the verified packages. `.github/workflows/release.yml` builds the candidates on every `v*` tag (checks, `build:packages`, `release:hub`, `verify:hub`), uploads them, and publishes through a `release` environment gate in the documented order — bundle, Hub profile, launcher — using the `NPM_PUBLISH_TOKEN` and `DSH_HUB_TOKEN` secrets. A manual dispatch without the publish flag is a dry run, a dispatch with `verify_credentials` checks both tokens read-only (npm identity, Hub profile read, and whether the version is still free on npm) and stops, and a tag that disagrees with `package.json` fails before anything is published.
