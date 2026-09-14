@@ -31,7 +31,8 @@ const clearMetricSource = setMetricSource(id => id === 'fixture' ? {
   currentTps: 28.4, used: 43, capacity: 100,
   events: [
     { type: 'turn/start', time: now - 10000, data: { turn: 1 } },
-    { type: 'assistant/message', time: now - 5000, data: { usage: { outputTokens: 20 } } },
+    { type: 'step/start', time: now - 10000, data: { turn: 1, step: 1 } },
+    { type: 'assistant/message', time: now - 5000, data: { turn: 1, step: 1, usage: { outputTokens: 20 } } },
     { type: 'turn/end', time: now, data: { turn: 1 } },
   ],
 } : undefined);
@@ -132,14 +133,14 @@ try {
         assert.match(plain, /消息队列测试/);
       }
       if (columns < 48) assert(!plain.includes('context: '));
-      if (columns >= 48) assert.match(plain, /current: ~28\.4 tps ｜ average: 2\.0 tps/);
+      if (columns >= 48) assert.match(plain, /current: ~28\.4 tps ｜ average: 4\.0 tps/);
       if (columns >= 80) assert.match(plain, /deepseek-flash ｜ ultra/);
       if (columns === 80) assert.match(plain, /context: 43%/);
       if (columns === 80) assert.match(plain, /Session 间消息投递\s+｜ current:/);
       if (columns === 80) {
         const yellow = theme === 'light' ? '180;83;9' : '245;158;11';
         assert.match(frame, new RegExp(`\\x1b\\[38;2;${yellow}m~28\\.4 tps`));
-        assert.match(frame, new RegExp(`\\x1b\\[38;2;${yellow}m2\\.0 tps`));
+        assert.match(frame, new RegExp(`\\x1b\\[38;2;${yellow}m4\\.0 tps`));
       }
       for (const line of plain.split('\n')) assert(ui.visibleColumns(line) <= columns, `Overflow ${theme} ${columns}: ${line}`);
       writeFileSync(new URL(`${theme}-${columns}.ansi`, out), frame);
