@@ -10,6 +10,12 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes here. -->
 
+## [0.7.4] - 2026-09-14
+
+### Fixed
+
+- MCP calls work under `danger-full-access` again. Auto review turned every MCP call other than the Chrome read methods into an ask whatever the preset, and under the `never` approval policy the approval service rejects an ask before any `approval/request` handler runs, so the TUI rejected MCP silently and `dscode exec --approve-all` never got to allow it. The gate now stands down under `never`; presets on the `ask` policy still review or ask for MCP calls.
+
 ## [0.7.3] - 2026-09-14
 
 ### Added
