@@ -36,32 +36,56 @@ test('session totals weight input tokens, retain unknowns and survive replay', (
   for (const columns of [20, 32, 48, 80, 120]) assert(formatFooter(summary, 43.2, columns).length <= columns);
   assert.match(formatFooter(summary, 43.2), /context: 43%.*~\$0.0030.*cache 9.0%/);
 });
-test('five-second TPS uses streaming output deltas and expires while idle', () => {
+test('live TPS divides by the time the window actually spans, restarts after a pause, and calibrates to settled usage', () => {
   const session = {}, other = {};
   const rate = createWindowRate();
   assert.equal(rate.get(session, 10000), null);
   assert.equal(estimatedDeltaTokens({ type: 'usage', usage }), 0);
-  rate.add(session, { type: 'text-delta', text: 'a'.repeat(40) }, 10000);
-  rate.add(session, { type: 'reasoning-delta', text: 'b'.repeat(40) }, 12000);
-  rate.add(session, { type: 'tool-call-delta', argumentsDelta: 'c'.repeat(20) }, 14000);
-  assert.equal(rate.get(session, 14000), 5);
-  assert.equal(rate.get(other, 14000), null);
-  assert.equal(rate.get(session, 15000), 3);
-  assert.equal(rate.get(session, 19000), 0);
   assert.equal(estimatedDeltaTokens({ type: 'text-delta', text: '你好' }), 1.5);
+  rate.add(session, { type: 'text-delta', text: 'a'.repeat(40) }, 10000);
+  assert.equal(rate.get(session, 10000), 20, 'the first sample is rated over the half-second minimum span, not five seconds');
+  rate.add(session, { type: 'reasoning-delta', text: 'b'.repeat(40) }, 11000);
+  assert.equal(rate.get(session, 11000), 20, '20 tokens over one second');
+  rate.add(session, { type: 'tool-call-delta', argumentsDelta: 'c'.repeat(20) }, 12000);
+  assert.equal(rate.get(session, 12000), 12.5, '25 tokens over two seconds');
+  assert.equal(rate.get(other, 12000), null);
+  assert.ok(Math.abs(rate.get(session, 14500) - 25 / 4.5) < 1e-9, '25 tokens over the 4.5 seconds the window spans');
+  assert.equal(rate.get(session, 16000), 1.25, 'samples older than five seconds fall out: 5 tokens over four seconds');
+  assert.equal(rate.get(session, 19000), 0, 'silence decays to zero');
+  rate.calibrate(session, 25);
+  assert.equal(rate.get(session, 19000), 0, 'a settled count equal to the estimate leaves the factor at one');
+  // A tool call pauses output; the next chunk rates only its own burst, not the silence.
+  rate.add(session, { type: 'text-delta', text: 'd'.repeat(80) }, 30000);
+  assert.equal(rate.get(session, 30500), 40, '20 tokens over the half-second minimum span after a gap');
+  rate.add(session, { type: 'text-delta', text: 'e'.repeat(80) }, 31000);
+  assert.equal(rate.get(session, 31000), 40, '40 tokens over one second');
+  // Settled usage says the byte estimate undercounted by half: later readings scale up.
+  rate.calibrate(session, 80);
+  assert.equal(rate.get(session, 31000), 60, 'the factor moves halfway toward the measured ratio');
+  rate.calibrate(session, 0); rate.calibrate(session, NaN);
+  assert.equal(rate.get(session, 31000), 60, 'zero or missing usage never changes the factor');
+  rate.add(session, { type: 'text-delta', text: 'f'.repeat(4000) }, 31500);
+  rate.calibrate(session, 10);
+  assert(rate.get(session, 31500) > 0, 'ratios are clamped so one odd response cannot zero the rate');
 });
-test('session average includes tool waits but excludes idle time between turns', () => {
+test('session average is output tokens over summed LLM call time, excluding tool waits and idle', () => {
   const events = [
     { type: 'turn/start', time: 0, data: { turn: 1 } },
-    { type: 'assistant/message', time: 2000, data: { usage: { outputTokens: 20 } } },
+    { type: 'step/start', time: 0, data: { turn: 1, step: 1 } },
+    { type: 'assistant/message', time: 2000, data: { turn: 1, step: 1, usage: { outputTokens: 20 } } },
+    { type: 'tool/call', time: 2000, data: { turn: 1 } },
+    { type: 'tool/result', time: 8000, data: { turn: 1 } },
+    { type: 'step/start', time: 8000, data: { turn: 1, step: 2 } },
+    { type: 'assistant/message', time: 10000, data: { turn: 1, step: 2, usage: { outputTokens: 40 } } },
     { type: 'turn/end', time: 10000, data: { turn: 1 } },
     { type: 'turn/start', time: 100000, data: { turn: 2 } },
+    { type: 'step/start', time: 100000, data: { turn: 2, step: 1 } },
   ];
-  assert.equal(sessionAverageTps(events.slice(0, 3), 90000), 2);
-  assert.equal(sessionAverageTps(events, 105000), 20 / 15);
-  assert.equal(sessionAverageTps([{ type: 'turn/start', time: 0, data: { turn: 1 } }], 1000), null);
-  assert.equal(sessionAverageTps([...events, { type: 'assistant/message', time: 102000, data: {} }], 105000), null);
-  assert.equal(sessionAverageTps([...events, { type: 'turn/end', time: 105000, data: { turn: 2 } }], 300000), 20 / 15);
+  assert.equal(sessionAverageTps(events.slice(0, 3)), 10, '20 tokens over a two-second call');
+  assert.equal(sessionAverageTps(events), 15, '60 tokens over four seconds of calls; the six-second tool wait and the idle gap do not count');
+  assert.equal(sessionAverageTps(events.slice(0, 2)), null, 'no settled call yet');
+  assert.equal(sessionAverageTps([...events, { type: 'assistant/message', time: 102000, data: { turn: 2, step: 1 } }]), null, 'a message without usage makes the average unknown');
+  assert.equal(sessionAverageTps([...events, { type: 'assistant/message', time: 102000, data: { turn: 9, step: 9, usage: { outputTokens: 5 } } }]), null, 'a message without its step start makes the average unknown');
 });
 test('footer prioritizes both TPS values within narrow telemetry budgets', () => {
   const metrics = { cost: 0.003, unknown: false, pending: 0, cache: 90 };
@@ -81,7 +105,8 @@ test('collector streaming deltas reach the live footer', async () => {
   const start = Date.now() - 10000;
   const session = { seq: 1, header: {}, snapshotEvents: () => [
     { type: 'turn/start', time: start, data: { turn: 1 } },
-    { type: 'assistant/message', time: start + 5000, data: { usage: { outputTokens: 20 } } },
+    { type: 'step/start', time: start, data: { turn: 1, step: 1 } },
+    { type: 'assistant/message', time: start + 5000, data: { turn: 1, step: 1, usage: { outputTokens: 20 } } },
     { type: 'turn/end', time: start + 10000, data: { turn: 1 } },
   ] };
   let wrapper, dispose;
@@ -98,7 +123,7 @@ test('collector streaming deltas reach the live footer', async () => {
       yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 10, cacheReadTokens: 0 } };
     })) {}
     const line = footerFor('root', { contextWindow: 100 }, 80);
-    assert.match(line, /current: ~2\.0 tps ｜ average: 2\.0 tps/);
+    assert.match(line, /current: ~20\.0 tps ｜ average: 4\.0 tps/, 'ten estimated tokens over the half-second minimum span; 20 settled tokens over a five-second call');
     assert.match(line, /context: 43%/);
   } finally {
     dispose?.();

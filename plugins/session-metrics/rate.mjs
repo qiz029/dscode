@@ -1,4 +1,9 @@
 const WINDOW_MS = 5000;
+// A pause longer than this (tool execution, the wait for the first token) ends
+// the current output burst: the next chunk starts a fresh window instead of
+// averaging over the silence.
+const GAP_MS = 1500;
+const MIN_SPAN_MS = 500;
 
 // Providers report exact output tokens only when a request settles. During
 // streaming, estimate from UTF-8 bytes without rounding each small chunk.
@@ -9,8 +14,18 @@ export function estimatedDeltaTokens(chunk) {
   return typeof text === 'string' ? Buffer.byteLength(text, 'utf8') / 4 : 0;
 }
 
+/**
+ * Live output rate: tokens seen in the last five seconds divided by the time
+ * that window actually spans, so the rate is right from the first second of a
+ * burst. Settled usage calibrates the byte-based estimate per session.
+ */
 export function createWindowRate() {
   const samples = new WeakMap();
+  const stateOf = session => {
+    let state = samples.get(session);
+    if (!state) { state = { values: [], head: 0, sum: 0, factor: 1, pending: 0 }; samples.set(session, state); }
+    return state;
+  };
   const prune = (state, now) => {
     while (state.head < state.values.length && state.values[state.head].time <= now - WINDOW_MS) {
       state.sum -= state.values[state.head++].tokens;
@@ -24,39 +39,55 @@ export function createWindowRate() {
     add(session, chunk, now = Date.now()) {
       const tokens = estimatedDeltaTokens(chunk);
       if (!(tokens > 0)) return;
-      const state = samples.get(session) ?? { values: [], head: 0, sum: 0 };
+      const state = stateOf(session);
+      const last = state.values.at(-1);
+      if (last && now - last.time > GAP_MS) { state.values = []; state.head = 0; state.sum = 0; }
       state.values.push({ time: now, tokens });
       state.sum += tokens;
+      state.pending += tokens;
       prune(state, now);
-      samples.set(session, state);
+    },
+    /** Feed the provider's settled output count for the request whose chunks were just added. */
+    calibrate(session, outputTokens) {
+      const state = samples.get(session);
+      if (!state) return;
+      const pending = state.pending;
+      state.pending = 0;
+      if (!(pending > 0) || !Number.isFinite(outputTokens) || outputTokens <= 0) return;
+      const ratio = Math.min(2, Math.max(0.5, outputTokens / pending));
+      state.factor = state.factor * 0.5 + ratio * 0.5;
     },
     get(session, now = Date.now()) {
       const state = samples.get(session);
       if (!state) return null;
       prune(state, now);
-      return Math.max(0, state.sum) / (WINDOW_MS / 1000);
+      if (state.head >= state.values.length) return 0;
+      const span = Math.min(WINDOW_MS, Math.max(MIN_SPAN_MS, now - state.values[state.head].time));
+      return Math.max(0, state.sum) * state.factor / (span / 1000);
     },
   };
 }
 
-// Count only active turns: tool waits are part of the user's elapsed work,
-// while time between user turns is not. Output tokens come from the root
-// agent's settled messages, so parallel children do not inflate this rate.
-export function sessionAverageTps(events, now = Date.now()) {
-  const open = new Map();
-  let activeMs = 0, outputTokens = 0, known = 0, unknown = false;
+// Output tokens per second of LLM call time: every settled assistant message's
+// exact output tokens over the time from its step's request start to its
+// settlement (first-token latency included, tool execution and user idle time
+// excluded). Only the root agent's own messages count, so parallel children do
+// not inflate the rate; an in-flight call contributes nothing until it settles.
+export function sessionAverageTps(events) {
+  const starts = new Map();
+  let callMs = 0, outputTokens = 0, known = 0, unknown = false;
   for (const event of events) {
-    if (event.type === 'turn/start') open.set(event.data.turn, event.time);
-    else if (event.type === 'turn/end') {
-      const start = open.get(event.data.turn);
-      if (start !== undefined) activeMs += Math.max(0, event.time - start);
-      open.delete(event.data.turn);
-    } else if (event.type === 'assistant/message') {
-      const output = event.data.usage?.outputTokens;
-      if (Number.isFinite(output) && output >= 0) { outputTokens += output; known++; }
-      else unknown = true;
+    const key = `${event.data?.turn}:${event.data?.step}`;
+    if (event.type === 'step/start') starts.set(key, event.time);
+    else if (event.type === 'assistant/message') {
+      const start = starts.get(key);
+      starts.delete(key);
+      const output = event.data?.usage?.outputTokens;
+      if (start === undefined || !Number.isFinite(output) || output < 0) { unknown = true; continue; }
+      callMs += Math.max(0, event.time - start);
+      outputTokens += output;
+      known++;
     }
   }
-  for (const start of open.values()) activeMs += Math.max(0, now - start);
-  return activeMs > 0 && known > 0 && !unknown ? outputTokens / (activeMs / 1000) : null;
+  return callMs > 0 && known > 0 && !unknown ? outputTokens / (callMs / 1000) : null;
 }

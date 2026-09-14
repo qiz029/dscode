@@ -42,6 +42,7 @@ export function apply(ctx) {
         yield chunk;
       }
     } finally {
+      if (liveSession) liveRate.calibrate(liveSession, usage?.outputTokens);
       save({ kind: 'end', id, time, usage: usage ?? null, cost: estimateCost(options.provider, options.model, usage, time), priceVersion: PRICE_VERSION });
     }
   });
