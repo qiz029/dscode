@@ -20,6 +20,7 @@ Restart `dscode` to load these commands. Most commands run locally; `/doctor` ma
 | `/hooks` | Hook configuration location and supported events. |
 | `/hooks reload|enable|disable` | Reload installation-owned hook configuration, or switch hooks for this process while all agents are idle. |
 | `/review [--staged\|--base REF\|--commit REF] [--path RELATIVE_PATH]` | Independently review the selected Git diff in a read-only, tool-free model request. Default includes tracked and untracked uncommitted changes; empty scopes do not call the model. Narrow large or unrelated diffs with `--path`. |
+| `/verbose` | Toggle verbose chat: thinking and tool calls appear dimmed as `· Thinking: …`, `· Tool Call: name args` and `  Output: …` (thinking capped at eight lines). Ctrl/Alt+R toggles the same setting; Ctrl+O still opens the full history inspector. |
 | `/clear` | Start a fresh session and clear the screen after successful activation; the previous session remains available through `/resume`. Stop a running turn first. |
 | Ctrl+L | Clear the screen only, keeping the conversation context. |
 | Ctrl+C | While an agent runs, cancel it immediately; a second press exits the TUI without waiting for the busy display to settle. With an idle draft, the first press clears it and the second exits. |

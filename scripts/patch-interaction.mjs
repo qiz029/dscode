@@ -1,7 +1,52 @@
 import { replaceOnce } from './patch-runtime.mjs';
 
+// Chat rendering: quiet by default; /verbose (or Ctrl/Alt+R) shows thinking and tool calls in dim text.
+export const CHAT_LINES_SOURCE = `function dscodeChatLines(entry, columns, verbose = false) {
+  const width = Math.max(1, Math.floor(columns));
+  if (entry.kind === "tool") {
+    if (!verbose) return [];
+    const state = entry.state === "running" ? " · running" : entry.state === "error" ? " · error" : "";
+    const lines = hangingStyledLines([lineSegment("Tool Call: " + entry.name, "dim"), lineSegment(entry.preview ? " " + entry.preview : "", "dim"), lineSegment(state, entry.state === "error" ? "error" : "dim")], width, "· ", "dim", "  ", "dim");
+    if (entry.summary) lines.push(...hangingTextLines("Output: " + entry.summary, width, "  ", entry.state === "error" ? "error" : "dim", "    "));
+    return lines;
+  }
+  if (entry.kind === "assistant") {
+    const thinking = verbose && entry.reasoning ? dscodeThinkingLines(entry.reasoning, width) : [];
+    if (!entry.text && !entry.interrupted) return thinking;
+    return [...thinking, ...transcriptEntryLines({ ...entry, reasoning: "" }, columns, false, false, false)];
+  }
+  return transcriptEntryLines(entry, columns, false, false, false);
+}
+function dscodeThinkingLines(reasoning, width) {
+  const lines = hangingTextLines("Thinking: " + reasoning.replace(/\\s+/g, " ").trim(), width, "· ", "dimItalic", "  ");
+  const cap = 8;
+  return lines.length <= cap ? lines : [...lines.slice(0, cap), ...textLines("  … " + (lines.length - cap) + " more lines · Ctrl+O opens the full history", width, "dim")];
+}
+`;
+const CATALOG_ANCHOR = '\t{\n\t\tlabel: "/todos",\n\t\tdescription: "inspect the full todo list"\n\t},\n';
+const CATALOG_ENTRY = '\t{\n\t\tlabel: "/verbose",\n\t\tdescription: "toggle thinking and tool call details in the chat"\n\t},\n';
+const DISPATCH_ANCHOR = '\t\t\tif (text === "/todos") {\n\t\t\t\topenTodos();';
+const DISPATCH_ENTRY = '\t\t\tif (text === "/verbose") {\n\t\t\t\ttoggleReasoning();\n\t\t\t\treturn;\n\t\t\t}\n';
+const TOGGLE_V1 = '\t\ttoggleReasoning: () => {\n\t\t\tsetShowReasoning((current) => !current);\n\t\t\trefreshScreen();\n\t\t},';
+const TOGGLE_V2 = '\t\ttoggleReasoning: () => {\n\t\t\tconst next = !showReasoning;\n\t\t\tsetShowReasoning(next);\n\t\t\tnotify(next ? "verbose on: thinking and tool calls are shown in the chat" : "verbose off");\n\t\t\trefreshScreen();\n\t\t},';
+
+/** Upgrade an already-patched bundle to the verbose chat rendering; safe to apply repeatedly. */
+function patchVerbose(text) {
+  if (text.includes('// dscode-interaction-v2')) return text;
+  const start = text.indexOf('function dscodeChatLines(');
+  const end = text.indexOf('\n}\n', start) + 3;
+  if (start < 0 || end <= start) throw Error('Patched TUI chat lines drift');
+  text = text.slice(0, start) + CHAT_LINES_SOURCE + text.slice(end);
+  text = text.split('dscodeChatLines(entry, columns);').join('dscodeChatLines(entry, columns, showReasoning);');
+  text = text.split('dscodeChatLines(entry, Math.max(1, terminalColumns - 2))').join('dscodeChatLines(entry, Math.max(1, terminalColumns - 2), showReasoning)');
+  text = replaceOnce(text, CATALOG_ANCHOR, CATALOG_ANCHOR + CATALOG_ENTRY);
+  text = replaceOnce(text, DISPATCH_ANCHOR, DISPATCH_ENTRY + DISPATCH_ANCHOR);
+  text = replaceOnce(text, TOGGLE_V1, TOGGLE_V2);
+  return '// dscode-interaction-v2\n' + text;
+}
+
 export function patchInteraction(text) {
-  if (text.includes('// dscode-interaction-v1')) return text.replace('runSlash("/shell " + line.slice(1))', 'runSlash("/shell-exec " + line.slice(1))');
+  if (text.includes('// dscode-interaction-v1')) return patchVerbose(text.replace('runSlash("/shell " + line.slice(1))', 'runSlash("/shell-exec " + line.slice(1))'));
   const patch = (from, to) => { text = replaceOnce(text, from, to); };
   patch('if (ctrl) return "\\n";\n\t\tif (alt)', 'if (ctrl || shift) return "\\n";\n\t\tif (alt)');
   patch('function normalizeKeyboardChunk(chunk) {', 'function normalizeKeyboardChunk(chunk) {\n\tchunk = chunk.replace(/\\x1b\\[27;2;13~/g, "\\n");');
@@ -17,5 +62,5 @@ export function patchInteraction(text) {
   patch(reasoning, 'const reasoningRows = 0;');
   patch('text: "✻ Thinking… (Ctrl/Alt+R to expand)"', 'text: "Working…"');
   patch('transcriptVisible ? (0, import_react.createElement)(TodoPanel, { todos: view.todos }) : void 0', 'transcriptVisible && busy ? (0, import_react.createElement)(Text, { dimColor: true, wrap: "truncate-end" }, view.entries.filter(entry => entry.kind === "tool" && entry.state === "running").map(entry => "● " + entry.name).join(" · ")) : void 0');
-  return '// dscode-interaction-v1\nfunction dscodeChatLines(entry, columns) {\n  if (entry.kind === "tool") return [];\n  if (entry.kind === "assistant") {\n    if (!entry.text && !entry.interrupted) return [];\n    entry = { ...entry, reasoning: "" };\n  }\n  return transcriptEntryLines(entry, columns, false, false, false);\n}\n' + text;
+  return patchVerbose('// dscode-interaction-v1\nfunction dscodeChatLines(entry, columns) {\n  if (entry.kind === "tool") return [];\n}\n' + text);
 }

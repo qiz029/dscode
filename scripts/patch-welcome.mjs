@@ -99,6 +99,8 @@ const LIVE_BUDGET_V1 = 'const liveBudget = dynamicRows === 0 ? 0 : busy || strea
 const LIVE_BUDGET_V2 = 'const liveBudget = dynamicRows === 0 ? 0 : streamingActive ? Math.max(0, dynamicRows - Math.min(streamingDemand, dynamicRows)) : dynamicRows;';
 
 function patchWelcomeScroll(text) {
+  // Live chat lines follow the verbose toggle; a plain string swap keeps every marker generation idempotent.
+  text = text.split('dscodeChatLines(entry, Math.max(1, terminalColumns - 2))').join('dscodeChatLines(entry, Math.max(1, terminalColumns - 2), showReasoning)');
   if (text.includes('// dscode-welcome-scroll-v2')) return text;
   if (text.includes('// dscode-welcome-scroll-v1')) {
     text = text.replace('const welcomeMaxRows = welcomeFull ? 13 :', 'const welcomeMaxRows = welcomeFull ? terminalRows >= 26 ? 14 : 13 :');
@@ -121,7 +123,7 @@ function patchWelcomeScroll(text) {
   const transcriptCapacity = transcriptVisible ? Math.max(0, terminalRows - 9 - composerGutterRows - (composerRows - 1) - menuRows) : 0;
   const streamingActive = view.streaming !== "";
   const deepDivingVisible = busy;
-  const allLiveLines = (0, import_react.useMemo)(() => view.entries.slice(settled).flatMap((entry) => dscodeChatLines(entry, Math.max(1, terminalColumns - 2))), [
+  const allLiveLines = (0, import_react.useMemo)(() => view.entries.slice(settled).flatMap((entry) => dscodeChatLines(entry, Math.max(1, terminalColumns - 2), showReasoning)), [
     view.entries,
     settled,
     terminalColumns,
