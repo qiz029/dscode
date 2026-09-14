@@ -48,12 +48,14 @@ test('the TUI patch embeds the tables, adds /language, and refreshes an already-
     'const inputActive = !themeOpen && x;\nconst transcriptVisible = !themeOpen && y;\nconst modalVisible = themeOpen || z;\n',
     '\t\tsetThemeOpen(false);\n\t\tsetHistoryOpen(false);\n\t\topenTheme: () => setThemeOpen(true),\n',
     '}) : void 0, historyOpen && !approvalPending && !questionPending ? (0, import_react.createElement)(HistoryPanel, {\n',
-    'function ThemePanel({ current, select, close }) {\n'].join('');
+    'function ThemePanel({ current, select, close }) {\n',
+    'facts = { ...facts, telemetry: columns >= 48 ? dscodeFooterFor(facts.fullSessionId, stats, Math.max(1, Math.min(columns - 8, 40))) : "" };\n'].join('');
   const once = patchLanguage(upstream);
   assert(once.startsWith('// dscode-language-v2\n// dscode-language-v1\n'));
   assert(once.includes('label: "/language"') && once.includes('if (text === "/language" || text.startsWith("/language "))'));
   assert(once.includes('if (!wanted) { openLanguage(); return; }'), 'bare /language opens the picker');
   assert(once.includes('function LanguagePanel({ current, select, close })') && once.includes('createElement)(LanguagePanel, {'));
+  assert(once.includes('Math.max(1, Math.min(columns - 8, 40)), dscodeLocale) : ""'), 'footer call carries the locale after the width expression');
   assert(once.includes('const inputActive = !themeOpen && !languageOpen && x;') && once.includes('const modalVisible = themeOpen || languageOpen || z;'));
   assert(once.includes('openStatusline, openTheme, openLanguage, openHistory,') && once.includes('openLanguage: () => setLanguageOpen(true),') && once.includes('\t\tsetLanguageOpen(false);\n'));
   assert(once.includes(LANGUAGE_SOURCE));

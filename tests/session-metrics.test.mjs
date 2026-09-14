@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { estimateCost } from '../plugins/session-metrics/pricing.mjs';
-import { summarize, formatFooter, footerFor } from '../plugins/session-metrics/view.mjs';
+import { summarize, formatFooter, footerFor, displayWidth } from '../plugins/session-metrics/view.mjs';
 import { apply } from '../plugins/session-metrics/index.mjs';
 import { readMetrics } from '../plugins/session-metrics/store.mjs';
 import { createWindowRate, estimatedDeltaTokens, sessionAverageTps } from '../plugins/session-metrics/rate.mjs';
@@ -125,4 +125,17 @@ test('collector includes child costs in parent, emits one final usage and record
     await assert.rejects(async () => { for await (const _ of wrapper({ ...options, sessionId: 'parent' }, async function* () { throw new Error('aborted'); })) {} }, /aborted/);
     assert(summarize(readMetrics(home, 'parent').rows).unknown);
   } finally { if (old === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = old; rmSync(home, { recursive: true, force: true }); }
+});
+
+test('footer labels follow the interface language and wide characters count as two columns', () => {
+  const metrics = { cost: 0.003, unknown: false, pending: 0, cache: 90 };
+  const rates = { current: 12.3, average: 2.4 };
+  assert.equal(displayWidth('context: 43%'), 12);
+  assert.equal(displayWidth('上下文: 43%'), 11);
+  assert.equal(displayWidth(' ｜ '), 4);
+  const zh = formatFooter(metrics, 43, 80, rates, 'zh-CN');
+  assert.match(zh, /^当前: ~12\.3 tps ｜ 平均: 2\.4 tps ｜ 上下文: 43% ｜ ~\$0\.0030 ｜ 缓存 90\.0%$/);
+  assert.match(formatFooter(metrics, 43, 80, rates, 'ja'), /^現在: ~12\.3 tps ｜ 平均: 2\.4 tps ｜ コンテキスト: 43%/);
+  for (const columns of [20, 24, 30, 40, 60]) assert(displayWidth(formatFooter(metrics, 43, columns, rates, 'ko')) <= columns, `fits ${columns}`);
+  assert.equal(formatFooter(metrics, 43, 80, rates, 'xx'), formatFooter(metrics, 43, 80, rates), 'unknown locale falls back to English');
 });

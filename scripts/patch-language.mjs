@@ -99,7 +99,22 @@ function patchLanguagePanel(text) {
   return '// dscode-language-v2\n' + text;
 }
 
+/** Append the live locale to the dscodeFooterFor call, whatever width expression the style patch left inside it. Runs last in the chain. */
+function withFooterLocale(text) {
+  const marker = 'dscodeFooterFor(facts.fullSessionId, stats, ';
+  const at = text.indexOf(marker);
+  if (at < 0) throw new Error('Pinned TUI footer call drift');
+  let depth = 1, index = at + marker.length;
+  while (index < text.length && depth > 0) { const char = text[index++]; if (char === '(') depth++; else if (char === ')') depth--; }
+  const close = index - 1;
+  if (text.slice(at, close).includes('dscodeLocale')) return text;
+  return text.slice(0, close) + ', dscodeLocale' + text.slice(close);
+}
+
 export function patchLanguage(text) {
+  // The composer placeholder and the footer labels follow the interface language; plain, idempotent swaps.
+  text = text.split('value === "" ? "type a message" :').join('value === "" ? dscodeT("composer.placeholder") :');
+  text = withFooterLocale(text);
   if (text.includes('// dscode-language-v1')) {
     // Refresh the embedded message tables so translation edits reach an already-patched bundle.
     const start = text.indexOf('const DSCODE_LANGUAGES = ');

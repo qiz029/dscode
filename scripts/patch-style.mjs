@@ -122,9 +122,10 @@ function dscodeTelemetryParts(value) {
   const result = [];
   for (const [index, part] of value.split(" ｜ ").entries()) {
     if (index > 0) result.push({ text: " ｜ ", tone: null });
-    const prefix = part.startsWith("current: ") ? "current: " : part.startsWith("average: ") ? "average: " : "";
-    if (!prefix || !part.endsWith(" tps")) { result.push({ text: part, tone: null }); continue; }
-    const display = part.slice(prefix.length, -4);
+    const match = /^(.+?: )(~?(?:\\d+(?:\\.\\d+)?|--)) tps$/.exec(part);
+    if (!match) { result.push({ text: part, tone: null }); continue; }
+    const prefix = match[1];
+    const display = match[2];
     const rate = Number(display.startsWith("~") ? display.slice(1) : display);
     result.push({ text: prefix, tone: null }, { text: display + " tps", tone: display && dscodeTpsTone(rate) });
   }

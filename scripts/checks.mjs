@@ -11,7 +11,7 @@ const output = join(root, 'artifacts/local/coverage');
 const run = (args, cwd = root) => new Promise((resolvePromise, reject) => {
   const child = spawn(process.execPath, args, {
     cwd, stdio: 'inherit',
-    env: suite === 'package' ? { ...process.env, npm_config_cache: join(cwd, '.npm-cache') } : process.env,
+    env: { ...process.env, DSCODE_LANGUAGE: 'en', ...(suite === 'package' ? { npm_config_cache: join(cwd, '.npm-cache') } : {}) },
   });
   const timeout = setTimeout(() => child.kill('SIGKILL'), 180000);
   child.once('error', reject);
