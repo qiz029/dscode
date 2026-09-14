@@ -34,8 +34,8 @@ export function summarize(rows, events = [], corrupt = false) {
     const u = row.usage;
     if (!u || !Number.isFinite(u.inputTokens) || !Number.isFinite(u.outputTokens)) { cacheUnknown = true; continue; }
     const total = u.inputTokens + (u.cacheReadTokens ?? 0) + (u.cacheWriteTokens ?? 0);
+    // pi-ai (OpenRouter) reports cache reads only when there are some: a missing count is zero, not unknown.
     input += total; hit += u.cacheReadTokens ?? 0;
-    if (total > 0 && u.cacheReadTokens === undefined) cacheUnknown = true;
   }
   return { cost, unknown, calls, pending, cache: input > 0 && !cacheUnknown ? Math.min(100, hit / input * 100) : null };
 }

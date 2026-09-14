@@ -1,7 +1,7 @@
 // Model providers `/provider` switches between. DeepSeek's official API is the
-// native `llm-deepseek` route; OpenRouter reaches the same DeepSeek models
-// through pi-ai's catalog route, which the base composition mounts dormant until
-// a `llm-pi-ai:` settings section declares it.
+// native `llm-deepseek` route; OpenRouter serves the DeepSeek models and the rest
+// of pi-ai's OpenRouter catalog through pi-ai's catalog route, which the base
+// composition mounts dormant until a `llm-pi-ai:` settings section declares it.
 
 export const PROVIDERS = Object.freeze([
   { id: 'deepseek-official', name: 'DeepSeek', aliases: ['deepseek', 'deepseek-official', 'official'], credentialRef: 'DEEPSEEK_API_KEY', defaultModel: 'deepseek-flash' },
@@ -23,15 +23,65 @@ export const OPENROUTER_MODELS = Object.freeze([
   { id: 'deepseek/deepseek-v4-flash-vision-exp', name: 'DeepSeek V4 Flash Vision Exp', official: ['deepseek-v4-flash-vision-exp'] },
 ]);
 
-/** The `llm-pi-ai` profile `/provider openrouter` writes: installed-catalog models narrowed to DeepSeek. */
+/** The `llm-pi-ai` profile `/provider openrouter` writes: pi-ai's whole OpenRouter catalog. */
 export function openRouterProfile() {
   return {
     displayName: 'OpenRouter',
     apiKeyEnv: 'OPENROUTER_API_KEY',
-    // Like the official route, requests default to high; it also gives /effort the DSCODE detent bar.
+    // Like the official route, requests default to high; a model without high uses its own default.
+    reasoning: 'high',
+    // No models list, so the route serves every catalog model; the overrides give the
+    // DeepSeek models the official detents (and /effort its detent bar).
+    modelOverrides: Object.fromEntries(OPENROUTER_MODELS.map(({ id, name }) => [id, { name, reasoningEfforts: { ...OPENROUTER_EFFORTS } }])),
+  };
+}
+
+/** The profile 0.7.3 to 0.7.5 wrote: the catalog narrowed to the three DeepSeek models. */
+export function narrowOpenRouterProfile() {
+  return {
+    displayName: 'OpenRouter',
+    apiKeyEnv: 'OPENROUTER_API_KEY',
     reasoning: 'high',
     models: OPENROUTER_MODELS.map(({ id, name }) => ({ id, name, reasoningEfforts: { ...OPENROUTER_EFFORTS } })),
   };
+}
+
+// Fields a user sets to point the route elsewhere or shape its requests. The settings
+// service describes a profile with its resolved defaults, which fill these with empty
+// values (`input: []`, `compat: { chatTemplateKwargs: {}, ... }`), so empty counts as unset.
+const USER_FIELDS = ['api', 'baseURL', 'modelOverrides', 'headers', 'compat', 'thinkingBudgets', 'cacheRetention', 'transport'];
+const empty = value => value === undefined || (Array.isArray(value) ? value.length === 0
+  : value !== null && typeof value === 'object' && Object.values(value).every(empty));
+const sameEfforts = (left, right) => left !== null && typeof left === 'object'
+  && Object.keys(left).length === Object.keys(right).length && Object.entries(right).every(([level, wire]) => left[level] === wire);
+
+/** Whether a stored profile is exactly the narrow one DSCODE wrote, so replacing it discards nothing the user chose. */
+export function isNarrowOpenRouterProfile(profile) {
+  if (profile === null || typeof profile !== 'object' || !Array.isArray(profile.models)) return false;
+  const narrow = narrowOpenRouterProfile();
+  return profile.displayName === narrow.displayName && profile.apiKeyEnv === narrow.apiKeyEnv && profile.reasoning === narrow.reasoning
+    && USER_FIELDS.every(field => empty(profile[field]))
+    && profile.models.length === narrow.models.length
+    && narrow.models.every((expected, index) => {
+      const { id, name, reasoningEfforts, ...rest } = profile.models[index] ?? {};
+      return id === expected.id && name === expected.name && sameEfforts(reasoningEfforts, expected.reasoningEfforts) && Object.values(rest).every(empty);
+    });
+}
+
+/**
+ * Replace the narrow profile earlier builds wrote with the whole-catalog one.
+ * Never declares a route and never throws: /model must open regardless.
+ * @returns whether the settings changed.
+ */
+export async function migrateOpenRouterProfile(settings) {
+  try {
+    const descriptor = settings?.describe?.({ redactSecrets: true }).find(entry => entry.ns === PI_AI_NS);
+    if (!descriptor || settings.writable !== true || !isNarrowOpenRouterProfile(descriptor.value?.providers?.openrouter)) return false;
+    await settings.mutate(PI_AI_NS, [{ op: 'set', path: ['providers', 'openrouter'], value: openRouterProfile() }], descriptor.revision);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function providerSpec(id) {
@@ -107,7 +157,8 @@ export function credentialState(row) {
 
 /**
  * Declare a provider's route before it is used. Only OpenRouter needs one; a
- * profile the user already has (their own models or endpoint) is left alone.
+ * profile the user already has (their own models or endpoint) is left alone,
+ * while the narrow profile earlier builds wrote is replaced.
  * @param settings - the host settings service.
  * @returns whether the settings changed.
  */
@@ -116,7 +167,8 @@ export async function ensureProviderRoute(settings, provider) {
   if (typeof settings?.describe !== 'function' || typeof settings.mutate !== 'function') throw new Error('settings are unavailable; OpenRouter cannot be configured in this profile');
   const descriptor = settings.describe({ redactSecrets: true }).find(entry => entry.ns === PI_AI_NS);
   if (!descriptor) throw new Error('the OpenRouter adapter (llm-pi-ai) is not mounted in this profile');
-  if (descriptor.value?.providers?.openrouter !== undefined) return false;
+  const existing = descriptor.value?.providers?.openrouter;
+  if (existing !== undefined) return migrateOpenRouterProfile(settings);
   if (settings.writable !== true) throw new Error('settings are read-only; OpenRouter cannot be configured here');
   await settings.mutate(PI_AI_NS, [{ op: 'set', path: ['providers', 'openrouter'], value: openRouterProfile() }], descriptor.revision);
   return true;

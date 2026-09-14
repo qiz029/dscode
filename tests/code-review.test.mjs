@@ -69,7 +69,7 @@ test('independent review uses a separate tool-free model request and caches unch
   assert.equal(first.usage.inputTokens, 40);
   assert.equal(calls[0].reasoningEffort, 'high');
   assert.equal(calls[0].purpose, 'review');
-  assert.equal(calls[0].maxTokens, 8192);
+  assert.equal(calls[0].maxTokens, undefined, 'the route default output cap applies');
   assert.equal(calls[0].tools, undefined);
   assert.match(JSON.stringify(calls[0].messages), /Fix the bug/);
   const second = await independentReview(ctx, agent, {}, undefined, collect);

@@ -1,10 +1,12 @@
+import { openRouterPriceVersion, openRouterRates } from './openrouter-prices.mjs';
+
 // USD per million tokens. Snapshot of the official page opened 2026-09-11.
 // https://api-docs.deepseek.com/quick_start/pricing/
 export const PRICE_SOURCE = 'https://api-docs.deepseek.com/quick_start/pricing/';
 export const PRICE_VERSION = 'deepseek-2026-09-11';
-// OpenRouter list prices for the DeepSeek models `/provider openrouter` declares,
-// from the pinned pi-ai 0.85.1 catalog (its OpenRouter /models snapshot).
-// OpenRouter bills no peak window. [cache read, input, output].
+// OpenRouter calls are priced from its live model listing (openrouter-prices.mjs).
+// Until that table loads, the DeepSeek models keep these list prices from the pinned
+// pi-ai 0.85.1 catalog. OpenRouter bills no peak window. [cache read, input, output].
 export const OPENROUTER_PRICE_VERSION = 'openrouter-pi-ai-0.85.1';
 const OPENROUTER_PRICES = {
   'deepseek/deepseek-v4-flash': [0.017052, 0.08526, 0.17052],
@@ -12,14 +14,22 @@ const OPENROUTER_PRICES = {
   'deepseek/deepseek-v4-flash-vision-exp': [0.007, 0.22, 0.66],
 };
 
-/** The price table a provider's ledger entries are estimated with. */
-export function priceVersionFor(provider) {
-  return provider === 'openrouter' ? OPENROUTER_PRICE_VERSION : PRICE_VERSION;
+/** The price table a ledger entry for this route is estimated with. */
+export function priceVersionFor(provider, model) {
+  if (provider !== 'openrouter') return PRICE_VERSION;
+  return model !== undefined && openRouterRates(model) !== undefined ? openRouterPriceVersion() : OPENROUTER_PRICE_VERSION;
 }
+
+const promptTokens = usage => (usage.inputTokens ?? 0) + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
 
 export function estimateCost(provider, model, usage, time) {
   if (!usage || !Number.isFinite(time)) return null;
-  if (provider === 'openrouter') return OPENROUTER_PRICES[model] ? charge(usage, OPENROUTER_PRICES[model]) : null;
+  if (provider === 'openrouter') {
+    // A model that lists no cache-read or cache-write price bills that input at the input rate.
+    const live = openRouterRates(model, promptTokens(usage));
+    if (live) return charge(usage, [live.cacheRead ?? live.input, live.input, live.output], live.cacheWrite ?? live.input);
+    return OPENROUTER_PRICES[model] ? charge(usage, OPENROUTER_PRICES[model]) : null;
+  }
   if (provider !== 'deepseek-official') return null;
   // Earlier requests require an older price table; never back-price them at today's rate.
   if (time < Date.UTC(2026, 8, 11)) return null;
@@ -30,10 +40,11 @@ export function estimateCost(provider, model, usage, time) {
   return cost === null ? null : cost * (isPeak(time) ? 2 : 1);
 }
 
-function charge(usage, [read, input, output]) {
+/** Cost in USD; cache writes need a write price, or the call stays unpriced. */
+function charge(usage, [read, input, output], write) {
   const values = [usage.inputTokens, usage.outputTokens, usage.cacheReadTokens ?? 0, usage.cacheWriteTokens ?? 0];
-  if (!values.every(n => Number.isFinite(n) && n >= 0) || values[3] !== 0) return null;
-  return (values[0] * input + values[1] * output + values[2] * read) / 1e6;
+  if (!values.every(n => Number.isFinite(n) && n >= 0) || values[3] !== 0 && !Number.isFinite(write)) return null;
+  return (values[0] * input + values[1] * output + values[2] * read + values[3] * (write ?? 0)) / 1e6;
 }
 
 /**

@@ -8,7 +8,7 @@ The prompt is read from stdin when omitted or given as "-".
 Options:
   --cwd DIR             workspace for the agent (default: current directory)
   --model PROVIDER/ID   model route (default: the saved default model)
-  --effort LEVEL        reasoning effort: low, high, max or ultra
+  --effort LEVEL        reasoning effort the model offers: off, minimal, low, medium, high, xhigh, max or ultra
   --permission PRESET   permission preset: auto, ask, workspace-write, read-only, danger-full-access
   --approve-all         answer every approval request with allow (no human is present)
   --resume SESSION_ID   continue an existing session instead of starting a new one
@@ -44,7 +44,8 @@ export function parseExecArgs(argv) {
         words.push(arg);
     }
   }
-  if (options.effort !== undefined && !['low', 'high', 'max', 'ultra'].includes(options.effort)) throw new Error('--effort expects low, high, max or ultra');
+  // Only the level name is checked here; the Host checks it against the model. This file ships alone in the launcher, so the names are inlined.
+  if (options.effort !== undefined && !['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(options.effort)) throw new Error('--effort expects off, minimal, low, medium, high, xhigh, max or ultra');
   if (options.model !== undefined && !/^[^/]+\/.+$/.test(options.model)) throw new Error('--model expects provider/model');
   options.prompt = words.join(' ');
   return options;

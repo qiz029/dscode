@@ -5,6 +5,7 @@ import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm';
 import { redact } from '../auto-review/policy.mjs';
 import { t, readLanguage } from '../i18n/messages.mjs';
 import { chargeTo } from '../session-metrics/attribution.mjs';
+import { effortFor } from '../providers/effort.mjs';
 const L = (key, params) => t(readLanguage(), key, params);
 
 const MAX_LOG_BYTES = 1024 * 1024;
@@ -127,8 +128,9 @@ export async function analyzeDoctorEvidence(ctx, evidence, route, signal, { mode
   const deadline = AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(45000)]);
   try {
     let finished = false;
+    const reasoningEffort = await effortFor(ctx.llm, route, 'low', deadline);
     await chargeTo(sessionId, 'doctor', async () => {
-      for await (const chunk of ctx.llm.stream({ provider: route.provider, model: route.model, reasoningEffort: 'low', maxTokens: 4096, system: SYSTEM,
+      for await (const chunk of ctx.llm.stream({ provider: route.provider, model: route.model, ...(reasoningEffort ? { reasoningEffort } : {}), maxTokens: 4096, system: SYSTEM,
         messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(evidence) }], source: { kind: 'plugin', plugin: 'dscode-doctor' } })], signal: deadline })) {
         deadline.throwIfAborted(); assembler.push(chunk);
         if (chunk.type === 'finish') finished = true;

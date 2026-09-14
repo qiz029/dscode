@@ -10,6 +10,22 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes here. -->
 
+### Added
+
+- `/provider openrouter` serves pi-ai's whole OpenRouter catalog (366 models, including Anthropic, OpenAI, Google, Qwen, Kimi and GLM) instead of three DeepSeek models, so no model has to be added by hand. The DeepSeek models keep the official detents through `modelOverrides`; every other model uses its own reasoning levels. Opening `/model` replaces the narrow profile 0.7.3 to 0.7.5 wrote, and a profile the user edited is left alone.
+- `/model` has a search: `/` or Ctrl+F starts it, typed words filter by provider and model name, Esc leaves it and clears the filter, and ↑↓ and Enter keep working while typing.
+- OpenRouter calls are priced from OpenRouter's live model listing (read without a key once an OpenRouter key is configured, cached for a day in the data directory), including cache-write prices and long-prompt tiers. The pinned DeepSeek prices remain the fallback.
+
+### Changed
+
+- Delegation (`subagent`, `subagent_fork`) is offered at every effort, not only Ultra. Below Ultra the shell policy makes it the exception: the agent works itself by default and delegates only substantial independent parts or a broad read-only investigation, one child at a time. Ultra keeps its collaboration policy, `workflow` and `ralph` stay unavailable, and the three-child cap applies at every effort. Models without a `max` level, which never offer Ultra, can now delegate.
+- The review tool no longer caps its reviewer at 8,192 output tokens: the model's route default applies (256k on DeepSeek, the catalog limit on OpenRouter). Its deadline rises from 90 seconds to 10 minutes so a reasoning reviewer can finish a long report, and the report returned to the agent keeps up to 64,000 characters instead of 16,000.
+
+### Fixed
+
+- Reasoning effort follows the model instead of DeepSeek's detents. A route default the model does not support, such as the OpenRouter profile's `high` on a model without reasoning, now falls back to the model default instead of failing every call. Session cards, `/doctor`, memory, and the review tool under Ultra ask for the nearest level the model offers, or none. Memory accepts any standard level name; `dscode exec --effort` accepts `minimal`, `medium` and `xhigh` and is checked against the model before the turn starts. The child-effort guidance no longer names levels a model may lack, and `/status` no longer reports an xhigh wire effort for non-DeepSeek OpenRouter models.
+- The footer's cache hit no longer reads `--` for every OpenRouter session. pi-ai reports cache reads only when there are some, and a call without the field made the whole session's figure unknown; a missing count now counts as zero.
+
 ## [0.7.5] - 2026-09-14
 
 ### Changed

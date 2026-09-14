@@ -5,6 +5,7 @@ import { collectReviewDiff, parseReviewCommand, isGitAvailableSync, isGitWorkspa
 import { baselineStore } from './baseline.mjs';
 import { redact } from '../auto-review/policy.mjs';
 import { chargeTo } from '../session-metrics/attribution.mjs';
+import { effortFor } from '../providers/effort.mjs';
 
 export const name = 'dscode-code-review';
 export const inject = ['tools', 'commands', 'llm', 'systemPrompt'];
@@ -47,8 +48,11 @@ export async function independentReview(ctx, agent, options = {}, signal, collec
   const diffHash = createHash('sha256').update(JSON.stringify({ diff, task, label, model: route.model })).digest('hex').slice(0, 16);
   const prior = results.get(agent);
   if (prior?.diffHash === diffHash) return { ...prior.result, cached: true };
-  const deadline = AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(90000)]);
+  // A reasoning reviewer writing a long report needs minutes, not seconds; the caller's signal still cancels at once.
+  const deadline = AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(10 * 60 * 1000)]);
   const request = { task, scope: label, diff: redact(diff) };
+  // Ultra is the session's collaboration mode, not a reviewer level: review at high, or the nearest level the model offers.
+  const reasoningEffort = route.reasoningEffort === 'ultra' ? await effortFor(ctx.llm, route, 'high', deadline) : route.reasoningEffort;
   // One model attempt: returns the assembler plus whether the stream delivered a finish chunk.
   // Charged to this session's ledger; the request itself carries no sessionId.
   const attempt = () => chargeTo(agent.session.id, 'review', async () => {
@@ -56,8 +60,9 @@ export async function independentReview(ctx, agent, options = {}, signal, collec
     const operation = (async () => {
       let finished = false;
       for await (const chunk of ctx.llm.stream({
-        provider: route.provider, model: route.model, reasoningEffort: route.reasoningEffort === 'ultra' ? 'high' : route.reasoningEffort, purpose: 'review',
-        maxTokens: 8192, system: POLICY, messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(request) }], source: { kind: 'plugin', plugin: name } })], signal: deadline,
+        provider: route.provider, model: route.model, reasoningEffort, purpose: 'review',
+        // No output cap of our own: the model's route default applies (256k on DeepSeek, the catalog limit on OpenRouter).
+        system: POLICY, messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(request) }], source: { kind: 'plugin', plugin: name } })], signal: deadline,
       })) {
         deadline.throwIfAborted();
         assembler.push(chunk);
@@ -92,7 +97,7 @@ export async function independentReview(ctx, agent, options = {}, signal, collec
   if (blocks.some(block => !['text', 'reasoning'].includes(block.type))) throw Error('Code reviewer returned unexpected output.');
   const report = blocks.filter(block => block.type === 'text').map(block => block.text).join('').trim();
   if (!report) throw Error(truncated ? 'Code reviewer ran out of output tokens before writing the report; narrow the diff with path and retry.' : 'Code reviewer returned an empty report.');
-  const result = { status: omitted.length || truncated ? 'partial' : 'reviewed', scope: label, report: `${redact(report).slice(0, 16000)}${omitted.length ? `\n\nReview incomplete: ${omitted.length} file(s) were omitted or binary and could not be inspected from the diff.` : ''}${truncated ? '\n\nReview incomplete: the reviewer hit its output limit; later findings may be missing. Narrow the diff with path for a complete pass.' : ''}`, diffHash, usage: assembler.usage ?? null };
+  const result = { status: omitted.length || truncated ? 'partial' : 'reviewed', scope: label, report: `${redact(report).slice(0, 64000)}${omitted.length ? `\n\nReview incomplete: ${omitted.length} file(s) were omitted or binary and could not be inspected from the diff.` : ''}${truncated ? '\n\nReview incomplete: the reviewer hit its output limit; later findings may be missing. Narrow the diff with path for a complete pass.' : ''}`, diffHash, usage: assembler.usage ?? null };
   results.set(agent, { diffHash, result });
   return result;
 }

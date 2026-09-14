@@ -11,7 +11,8 @@ test('exec arguments: prompt words, options, stdin marker and errors', async () 
   assert.equal(parseExecArgs([]).prompt, '');
   assert.equal(parseExecArgs(['--', '--not-an-option']).prompt, '--not-an-option');
   assert.equal(parseExecArgs(['--help']).help, true);
-  assert.throws(() => parseExecArgs(['--effort', 'medium']), /low, high, max or ultra/);
+  assert.throws(() => parseExecArgs(['--effort', 'extreme']), /--effort expects off, minimal, low, medium, high, xhigh, max or ultra/);
+  assert.equal(parseExecArgs(['--effort', 'medium']).effort, 'medium', 'levels beyond DeepSeek pass the CLI; the Host checks them against the model');
   assert.throws(() => parseExecArgs(['--model', 'nomodel']), /provider\/model/);
   assert.throws(() => parseExecArgs(['--timeout', '0']), /positive/);
   assert.throws(() => parseExecArgs(['--cwd']), /requires a value/);

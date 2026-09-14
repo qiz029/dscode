@@ -92,7 +92,7 @@ export function apply(ctx) {
       `Session: ${session.id}`, `Workspace: ${session.header.cwd ?? process.cwd()}`,
       `Agent: ${agent.status} | preset: ${session.header.agentPreset ?? 'standard'}`,
       `Model: ${route?.provider ?? 'default'} / ${route?.model ?? 'default'}`,
-      `Effort: ${route?.reasoningEffort ?? 'model default'}${route?.reasoningEffort === 'ultra' ? ` (${route.provider === 'openrouter' ? 'OpenRouter wire: xhigh' : 'DeepSeek wire: max'}; collaboration enabled)` : ''}`,
+      `Effort: ${route?.reasoningEffort ?? 'model default'}${route?.reasoningEffort === 'ultra' ? ` (${route.provider === 'deepseek-official' ? 'DeepSeek wire: max' : route.model?.startsWith('deepseek/') ? 'OpenRouter wire: xhigh' : "sent as the model's max level"}; collaboration enabled)` : ''}`,
       `Permission: ${show(ctx.permissionPresets.current(session))}`,
       `Tokens: ${show(usage ?? 'no provider usage yet')}`,
       `Context: ${pressure?.pressureTokens ?? pressure?.surfaceTokens ?? '?'} / ${pressure?.contextWindow ?? '?'} tokens`,

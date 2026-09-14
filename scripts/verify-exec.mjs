@@ -62,7 +62,10 @@ try {
 
   const empty = await run([...base], '   ');
   assert.equal(empty.code, 1); assert.match(empty.stderr, /Prompt is empty/);
-  const bad = await run(['--effort', 'medium', 'x']);
+  const bad = await run(['--effort', 'extreme', 'x']);
   assert.equal(bad.code, 1); assert.match(bad.stderr, /--effort expects/);
-  console.log('EXEC_PROBE_PASSED: argument prompt, stdin prompt, --quiet, --json with a tool call, a terminal-blocking command, --resume, empty prompt and bad option exits');
+  // A known level name passes the CLI; the Host refuses it when the model does not offer it.
+  const unoffered = await run(['--effort', 'medium', 'x']);
+  assert.equal(unoffered.code, 1); assert.match(unoffered.stderr, /--effort medium is not offered by [^;]+; it offers /);
+  console.log('EXEC_PROBE_PASSED: argument prompt, stdin prompt, --quiet, --json with a tool call, a terminal-blocking command, --resume, empty prompt, bad option and unoffered effort exits');
 } finally { rmSync(home, { recursive: true, force: true }); }

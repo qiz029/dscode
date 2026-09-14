@@ -6,6 +6,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import { MemoryStore } from './store.mjs';
 import { defaults, runPipeline } from './pipeline.mjs';
 import { chargeTo } from '../session-metrics/attribution.mjs';
+import { EFFORT_LEVELS, effortFor } from '../providers/effort.mjs';
 
 export const name = 'dscode-memory';
 export const inject = ['llm', 'sessions', 'sessionPersistence', 'systemPrompt', 'tools', 'commands'];
@@ -20,7 +21,7 @@ export function resolveConfig(options = {}) {
   for (const key of ['maxPerRun', 'maxCandidates', 'maxInputChars', 'maxConsolidationChars', 'timeoutMs']) {
     if (!Number.isSafeInteger(config[key])) throw Error(`Invalid memory ${key}: expected a safe integer`);
   }
-  for (const key of ['extractEffort', 'consolidationEffort']) if (!['low', 'high', 'max'].includes(config[key])) throw Error(`Invalid memory ${key}`);
+  for (const key of ['extractEffort', 'consolidationEffort']) if (!EFFORT_LEVELS.includes(config[key])) throw Error(`Invalid memory ${key}`);
   if (!!config.provider !== !!config.model) throw Error('Memory provider and model must be configured together');
   if (typeof config.generate !== 'boolean' || typeof config.use !== 'boolean') throw Error('Invalid memory switches');
   return config;
@@ -39,11 +40,14 @@ export function apply(ctx, options = {}) {
     const deadline = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]);
     const assembler = new BlockAssembler();
     let terminal = false, usage;
+    const target = { provider: config.provider ?? route.provider, model: config.model ?? route.model };
+    // The configured level, or the nearest one the memory model offers.
+    const reasoningEffort = await effortFor(ctx.llm, target, effort, deadline);
     try {
       // Background work is charged to the live session that scheduled it.
       await chargeTo(live.has(lastSession) ? lastSession : undefined, 'memory', async () => {
         for await (const chunk of ctx.llm.stream({
-          provider: config.provider ?? route.provider, model: config.model ?? route.model, reasoningEffort: effort,
+          ...target, ...(reasoningEffort ? { reasoningEffort } : {}),
           system, messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(input) }], source: { kind: 'plugin', plugin: name } })],
           maxTokens: 12000, signal: deadline,
         })) {
@@ -58,7 +62,7 @@ export function apply(ctx, options = {}) {
       const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('').trim();
       return JSON.parse(text.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, ''));
     } finally {
-      if (!controller.signal.aborted) store.recordCall({ time: Date.now(), provider: config.provider ?? route.provider, model: config.model ?? route.model, effort, usage: usage ?? null });
+      if (!controller.signal.aborted) store.recordCall({ time: Date.now(), ...target, effort: reasoningEffort, usage: usage ?? null });
     }
   };
   const schedule = (route, sessionId) => {

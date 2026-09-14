@@ -3,8 +3,31 @@ import assert from 'node:assert/strict';
 import { Config } from '@deepseek-ai/dsh-llm-pi-ai';
 import {
   PROVIDERS, OPENROUTER_MODELS, openRouterProfile, providerArgument, splitModelLabel, providerOfLabel, providerOfHeader,
-  pickModel, credentialState, ensureProviderRoute, waitForModels,
+  pickModel, credentialState, ensureProviderRoute, waitForModels, narrowOpenRouterProfile, isNarrowOpenRouterProfile, migrateOpenRouterProfile,
 } from '../plugins/providers/catalog.mjs';
+import { EFFORT_LEVELS, chooseEffort, effortFor } from '../plugins/providers/effort.mjs';
+
+test('auxiliary calls get the nearest effort a model offers, or none when it offers no levels', async () => {
+  const deepseek = ['off', 'low', 'high', 'max', 'ultra'], gpt = ['minimal', 'low', 'medium', 'high'];
+  assert.deepEqual(EFFORT_LEVELS, ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+  assert.equal(chooseEffort(deepseek, 'low'), 'low');
+  assert.equal(chooseEffort(['off', 'high'], 'low'), 'high', 'the nearest level above');
+  assert.equal(chooseEffort(gpt, 'max'), 'high', 'else the highest below');
+  assert.equal(chooseEffort(['off'], 'low'), undefined, 'a model without levels gets no effort');
+  assert.equal(chooseEffort([], 'high'), undefined);
+  assert.equal(chooseEffort(gpt, 'ultra'), undefined, 'Ultra is not a level to approximate');
+  assert.equal(chooseEffort(undefined, 'low'), 'low', 'an unknown capability keeps the request');
+  assert.equal(chooseEffort(deepseek, undefined), undefined);
+  const service = { async resolveModelInfo(provider, model) {
+    const models = { 'openai/gpt-5': gpt, 'qwen/qwen3-coder': null };
+    if (!(model in models)) throw Error('unknown model');
+    return { provider, id: model, name: model, ...(models[model] ? { reasoning: { efforts: models[model].map(id => ({ id })) } } : {}) };
+  } };
+  assert.equal(await effortFor(service, { provider: 'openrouter', model: 'openai/gpt-5' }, 'max'), 'high');
+  assert.equal(await effortFor(service, { provider: 'openrouter', model: 'qwen/qwen3-coder' }, 'low'), undefined);
+  assert.equal(await effortFor(service, { provider: 'openrouter', model: 'missing' }, 'low'), 'low', 'a failed lookup keeps the request');
+  assert.equal(await effortFor({}, { provider: 'openrouter', model: 'openai/gpt-5' }, 'low'), 'low', 'no model metadata keeps the request');
+});
 
 const efforts = ids => ({ efforts: ids.map(id => ({ id })), defaultEffort: 'high' });
 const ladder = efforts(['off', 'low', 'high', 'max', 'ultra']);
@@ -57,14 +80,16 @@ test('credential state distinguishes saved, environment, missing and unreadable 
   assert.equal(credentialState({ credential: { kind: 'error', message: 'denied' } }), 'error');
 });
 
-test('the OpenRouter profile is a valid pi-ai route that narrows the catalog to DeepSeek', () => {
+test('the OpenRouter profile serves the whole pi-ai catalog with the official detents on the DeepSeek models', () => {
   const profile = openRouterProfile();
   assert.equal(profile.apiKeyEnv, 'OPENROUTER_API_KEY');
-  assert.deepEqual(profile.models.map(model => model.id), OPENROUTER_MODELS.map(model => model.id));
-  for (const model of profile.models) assert.deepEqual(model.reasoningEfforts, { off: 'none', low: 'high', high: 'high', max: 'xhigh' });
+  assert.equal(profile.models, undefined, 'no models list, so every catalog model is served');
+  assert.deepEqual(Object.keys(profile.modelOverrides), OPENROUTER_MODELS.map(model => model.id));
+  for (const override of Object.values(profile.modelOverrides)) assert.deepEqual(override.reasoningEfforts, { off: 'none', low: 'high', high: 'high', max: 'xhigh' });
   assert.doesNotThrow(() => Config({ providers: { openrouter: profile } }));
-  profile.models[0].reasoningEfforts.max = 'changed';
-  assert.equal(openRouterProfile().models[0].reasoningEfforts.max, 'xhigh', 'each call returns a fresh profile');
+  assert.doesNotThrow(() => Config({ providers: { openrouter: narrowOpenRouterProfile() } }));
+  profile.modelOverrides['deepseek/deepseek-v4-flash'].reasoningEfforts.max = 'changed';
+  assert.equal(openRouterProfile().modelOverrides['deepseek/deepseek-v4-flash'].reasoningEfforts.max, 'xhigh', 'each call returns a fresh profile');
 });
 
 test('the OpenRouter route is declared once and a user profile is never overwritten', async () => {
@@ -79,6 +104,27 @@ test('the OpenRouter route is declared once and a user profile is never overwrit
   assert.deepEqual(writes, [['llm-pi-ai', [{ op: 'set', path: ['providers', 'openrouter'], value: openRouterProfile() }], 7]]);
   assert.equal(await ensureProviderRoute(settings({ providers: { openrouter: { models: [{ id: 'mine' }] } } }), 'openrouter'), false);
   assert.equal(writes.length, 1);
+  // The described value carries resolved defaults, shaped as the real settings service returns them; they do not make the narrow profile the user's own.
+  const compat = { chatTemplateKwargs: {}, chatTemplateArgs: {} };
+  const narrow = {
+    ...narrowOpenRouterProfile(), models: narrowOpenRouterProfile().models.map(model => ({ ...model, input: [], compat })),
+    modelOverrides: {}, compat, headers: {}, thinkingBudgets: {}, defaultContextWindow: 262144, defaultMaxTokens: 32768, defaultInput: ['text'], streamIdleTimeoutMs: 300000,
+  };
+  assert.equal(isNarrowOpenRouterProfile(narrow), true);
+  assert.equal(await ensureProviderRoute(settings({ providers: { openrouter: narrow } }), 'openrouter'), true, 'the narrow profile earlier builds wrote is replaced');
+  assert.deepEqual(writes[1], ['llm-pi-ai', [{ op: 'set', path: ['providers', 'openrouter'], value: openRouterProfile() }], 7]);
+  const withImages = { ...narrow, models: narrow.models.map((model, index) => index ? model : { ...model, input: ['text', 'image'] }) };
+  const withKwargs = { ...narrow, compat: { ...compat, chatTemplateKwargs: { thinking: true } } };
+  for (const edited of [{ ...narrow, baseURL: 'https://proxy.example/api/v1' }, { ...narrow, models: narrow.models.slice(1) }, { ...narrow, reasoning: 'max' }, withImages, withKwargs, openRouterProfile()]) {
+    assert.equal(isNarrowOpenRouterProfile(edited), false);
+    assert.equal(await migrateOpenRouterProfile(settings({ providers: { openrouter: edited } })), false, 'a profile the user changed is left alone');
+  }
+  assert.equal(await migrateOpenRouterProfile(settings({ providers: { openrouter: narrow } })), true);
+  assert.equal(await migrateOpenRouterProfile(settings({ providers: {} })), false, 'migration never declares a route');
+  assert.equal(await migrateOpenRouterProfile(settings({ providers: { openrouter: narrow } }, { writable: false })), false);
+  assert.equal(await migrateOpenRouterProfile(undefined), false, 'a profile without settings still opens /model');
+  assert.equal(await migrateOpenRouterProfile({ writable: true, describe: () => { throw new Error('boom'); } }), false);
+  assert.equal(writes.length, 3);
   await assert.rejects(ensureProviderRoute(settings(undefined), 'openrouter'), /not mounted/);
   await assert.rejects(ensureProviderRoute(settings({}, { writable: false }), 'openrouter'), /read-only/);
   await assert.rejects(ensureProviderRoute(undefined, 'openrouter'), /unavailable/);

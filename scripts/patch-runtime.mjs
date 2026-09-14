@@ -11,13 +11,16 @@ export function replaceOnce(text, from, to) {
 export function patchDeepSeek(text) {
   const marker = '// dscode-ultra-v1';
   const prefix = marker + '\nconst ULTRA_POLICY = ' + JSON.stringify(ULTRA_POLICY) + ';\n' + ultraRequest.toString() + '\nconst FLASH_POLICY = ' + JSON.stringify(FLASH_POLICY) + ';\n' + flashRequest.toString() + '\n';
-  const filterTools = body => replaceOnce(body, 'const tools = options.tools?.map((tool) => ({', 'const tools = options.tools?.filter((tool) => options.reasoningEffort === "ultra" ? tool.name !== "workflow" && tool.name !== "ralph" : !["subagent", "subagent_fork", "workflow", "ralph"].includes(tool.name)).map((tool) => ({');
+  // Delegation tools are offered at every effort; workflow and ralph never are. Earlier builds hid delegation below Ultra.
+  const toolFilter = 'options.tools?.filter((tool) => tool.name !== "workflow" && tool.name !== "ralph").map((tool) => ({';
+  const ultraOnlyFilter = 'options.tools?.filter((tool) => options.reasoningEffort === "ultra" ? tool.name !== "workflow" && tool.name !== "ralph" : !["subagent", "subagent_fork", "workflow", "ralph"].includes(tool.name)).map((tool) => ({';
+  const filterTools = body => replaceOnce(body, 'const tools = options.tools?.map((tool) => ({', 'const tools = ' + toolFilter);
   const addFlash = body => replaceOnce(body, 'messages = ultraRequest(options, messages);', 'messages = flashRequest(options, messages);\n\tmessages = ultraRequest(options, messages);');
   if (text.startsWith(marker)) {
     const start = text.indexOf('\nimport ');
     if (start < 0) throw new Error('Malformed patched DeepSeek module');
     const body = text.slice(start + 1);
-    const filtered = body.includes('options.tools?.filter((tool) => options.reasoningEffort === "ultra"') ? body : filterTools(body);
+    const filtered = body.includes(toolFilter) ? body : body.includes(ultraOnlyFilter) ? replaceOnce(body, ultraOnlyFilter, toolFilter) : filterTools(body);
     return prefix + (filtered.includes('messages = flashRequest(options, messages);') ? filtered : addFlash(filtered));
   }
   text = replaceOnce(text, 'function reasoningEffort(effort) {', 'function reasoningEffort(effort) {\n\tif (effort === "ultra") return "max";');
@@ -28,14 +31,21 @@ export function patchDeepSeek(text) {
 }
 // OpenRouter runs through pi-ai: a route whose model offers max also offers Ultra
 // (max on the wire plus the collaboration policy), exactly like the DeepSeek adapter.
+// A profile default the model does not offer (the route's high on a model without
+// reasoning) falls back to the model default, as the model directory already describes
+// it, instead of refusing every request that names no effort.
 export function patchPiAi(text) {
   const marker = '// dscode-pi-ai-ultra-v1';
   const prefix = marker + '\nconst ULTRA_POLICY = ' + JSON.stringify(ULTRA_POLICY) + ';\n' + piAiRequest.toString() + '\n';
+  const routeDefault = 'const reasoning = resolveReasoningLevel(model, options.reasoningEffort ?? profile.reasoning);';
+  const offeredDefault = 'const reasoning = resolveReasoningLevel(model, options.reasoningEffort ?? describableReasoningLevel(model, profile.reasoning));';
+  const fallBack = body => body.includes(offeredDefault) ? body : replaceOnce(body, routeDefault, offeredDefault);
   if (text.startsWith(marker)) {
     const start = text.indexOf('\nimport ');
     if (start < 0) throw new Error('Malformed patched pi-ai module');
-    return prefix + text.slice(start + 1);
+    return prefix + fallBack(text.slice(start + 1));
   }
+  text = fallBack(text);
   text = replaceOnce(text, 'function resolveReasoningLevel(model, effort) {\n\tif (effort === void 0) return void 0;', 'function resolveReasoningLevel(model, effort) {\n\tif (effort === void 0) return void 0;\n\tif (effort === "ultra" && getSupportedThinkingLevels(model).includes("max")) return "max";');
   text = replaceOnce(text, '\t\t\tname: `${level.charAt(0).toUpperCase()}${level.slice(1)}`\n\t\t})),', '\t\t\tname: `${level.charAt(0).toUpperCase()}${level.slice(1)}`\n\t\t})).concat(getSupportedThinkingLevels(model).includes("max") ? [{ id: ReasoningEffortId("ultra"), name: "Ultra", description: "DSCODE: max reasoning plus deliberate subagent collaboration; higher total token use." }] : []),');
   text = replaceOnce(text, 'async *streamWithSnapshot(options, snapshot) {', 'async *streamWithSnapshot(options, snapshot) {\n\t\toptions = piAiRequest(options);');
@@ -71,17 +81,28 @@ export function patchTerminalBash(text) {
     '"--norc",\n\t"+H",\n\t"-i"',
   );
 }
+// Child-effort guidance names no level: any model can delegate, and level names differ per model.
+const CHILD_EFFORT_CHOICE = ' Optionally set reasoning_effort for this child without changing its provider/model. Omit to inherit. Use a level the current model offers: the lowest that fits the task, raised only for difficult work or real uncertainty.';
+const CHILD_EFFORT_PARAMETER = 'Reasoning effort for this child only, validated against its model; use a level that model offers. Omit to inherit. Prefer the lowest level that fits the task and raise it only for difficult work or real uncertainty. Provider/model remain unchanged.';
+// v1 named DeepSeek's low/high/max.
+const CHILD_EFFORT_V1 = [
+  [' Optionally set reasoning_effort for this child without changing its provider/model. Omit to inherit. Choose low for bounded tasks, high for difficult work, and max only when needed; use an effort supported by the current model.', CHILD_EFFORT_CHOICE],
+  ['Reasoning effort for this child only, validated against its model. Omit to inherit. Prefer low for bounded tasks, high for difficult work, max for exceptional uncertainty. Provider/model remain unchanged.', CHILD_EFFORT_PARAMETER],
+];
 function patchSubagentBase(text) {
-  if (!text.includes('// dscode-child-effort-v1')) {
-    text = replaceOnce(text, 'const choiceDescription = !modelSelectionEnabled ? "" :', 'const choiceDescription = !modelSelectionEnabled ? (subagentProvider.capabilities.agentOptions ? " Optionally set reasoning_effort for this child without changing its provider/model. Omit to inherit. Choose low for bounded tasks, high for difficult work, and max only when needed; use an effort supported by the current model." : "") :');
+  if (text.includes('// dscode-child-effort-v1')) {
+    for (const [from, to] of CHILD_EFFORT_V1) text = replaceOnce(text, from, to);
+    text = text.replace('// dscode-child-effort-v1', '// dscode-child-effort-v2');
+  } else if (!text.includes('// dscode-child-effort-v2')) {
+    text = replaceOnce(text, 'const choiceDescription = !modelSelectionEnabled ? "" :', 'const choiceDescription = !modelSelectionEnabled ? (subagentProvider.capabilities.agentOptions ? "' + CHILD_EFFORT_CHOICE + '" : "") :');
     text = replaceOnce(text, '...backgroundEnabled ? { run_in_background:', `...!modelSelectionEnabled && subagentProvider.capabilities.agentOptions ? { reasoning_effort: {
               type: "string",
-              description: "Reasoning effort for this child only, validated against its model. Omit to inherit. Prefer low for bounded tasks, high for difficult work, max for exceptional uncertainty. Provider/model remain unchanged."
+              description: "${CHILD_EFFORT_PARAMETER}"
             } } : {},
             ...backgroundEnabled ? { run_in_background:`);
     text = replaceOnce(text, '} : config.agentOptions, modelRequest, modelSelectionEnabled);', '} : config.agentOptions, modelRequest, modelSelectionEnabled || subagentProvider.capabilities.agentOptions && modelRequest.provider === void 0 && modelRequest.model === void 0);');
     text = replaceOnce(text, 'assertAllowedModelSelection(modelSelectionPolicy, parentOptions, requestedChildAgentOptions, modelRequest);', 'if (modelRequest.provider !== void 0 || modelRequest.model !== void 0) assertAllowedModelSelection(modelSelectionPolicy, parentOptions, requestedChildAgentOptions, modelRequest);');
-    text = '// dscode-child-effort-v1\n' + text;
+    text = '// dscode-child-effort-v2\n' + text;
   }
   if (text.includes('// dscode-child-worktree-v3')) return text;
   if (text.includes('// dscode-child-worktree-v1')) {

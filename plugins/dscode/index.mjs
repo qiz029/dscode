@@ -3,7 +3,7 @@ export const inject = ['systemPrompt', 'tools', 'agents', 'commands', 'terminals
 export const SHELL_POLICY = `Use bash as the persistent shell for reading, searching and modifying files. Prefer rg/rg --files, sed and standard CLI tools. Use apply_patch with a standard unified diff on stdin (git apply format, a/ and b/ paths); apply_patch --check validates before writing. It is not the *** Begin Patch format. Quote heredoc delimiters to avoid shell interpolation.
 Each agent has its own persistent shell, initially in the session workspace. cd, exported variables, functions and background jobs persist only while this shell lives. Timeout, cancellation, exit, /shell reset and process restart discard shell state; resume restores conversation, not an OS process. Never assume an environment from a past session still exists. Inspect pwd when paths matter. Keep long-running processes controlled and clean them up when done.
 Normal bash remains confined by the active sandbox. After a genuine sandbox denial, shell_retry provides a fresh, one-shot shell with the existing approval/escalation mechanism. Set an explicit absolute workdir and reconstruct needed non-secret setup; it does not inherit the persistent shell's cd, exports, functions or jobs. Use existing credential-aware CLIs; never paste secrets into arguments. Approval rejection is final for that action; do not work around it.
-Delegation to child agents (subagent, subagent_fork) exists only at the ultra effort; at low, high and max, do the work in this agent. Ultra adds its own delegation guidance to the request; the preset allows one delegation level and the runtime caps a parent at three concurrently running children.`;
+Delegation to child agents (subagent, subagent_fork) is available at every effort. Below ultra, delegation is the exception: do the work in this agent by default. Delegate only a substantial, independent part of the task whose parallel work clearly shortens completion, or a broad read-only investigation that would otherwise crowd this context; never delegate a bounded edit, a single-file change, a quick lookup, one test run or a routine review. Below ultra run at most one child at a time, give it a bounded objective, choose the lowest reasoning_effort the model offers that fits, and verify and integrate its result yourself. Ultra adds its own delegation guidance to the request; the preset allows one delegation level and the runtime caps a parent at three concurrently running children.`;
 
 /** Child names: 1-10 characters, letters/digits/underscores, starting and ending with a letter. */
 export const CHILD_NAME = /^[A-Za-z](?:[A-Za-z0-9_]{0,8}[A-Za-z])?$/;
@@ -46,19 +46,13 @@ export function apply(ctx) {
     if (exec.name === 'send_message' || exec.name === 'interrupt_agent') exec.arguments.agent_id = resolveAgentPath(owner, exec.arguments.agent_id);
     if (exec.name === 'interrupt_agent') return next();
     if (owner.session.header.origin === 'subagent' && DELEGATION_TOOLS.includes(exec.name)) throw new Error('Child agents cannot delegate again. Complete the assigned work and report to the parent.');
-    const effort = owner.session.requestHeader()?.config?.reasoningEffort ?? owner.options.reasoningEffort;
-    if (effort !== 'ultra') {
-      if (DELEGATION_TOOLS.includes(exec.name)) throw new Error('Child-agent work requires Ultra. Select /effort ultra before delegating.');
-      const target = ctx.agents.get(exec.arguments.agent_id);
-      if (target?.status !== 'running' && target?.session.header.parentSession === owner.session.id) throw new Error('Waking a child agent requires Ultra. Select /effort ultra first.');
-      return next();
-    }
-    if (['workflow', 'ralph'].includes(exec.name)) throw new Error('Use capped subagent/subagent_fork delegation in Ultra; workflow and ralph are unavailable in dscode.');
+    // Delegation is open at every effort: the shell policy keeps it rare below Ultra, and the cap below applies throughout.
+    if (['workflow', 'ralph'].includes(exec.name)) throw new Error('Use capped subagent/subagent_fork delegation; workflow and ralph are unavailable in dscode.');
     const target = exec.name === 'send_message' ? ctx.agents.get(exec.arguments.agent_id) : undefined;
     if (exec.name === 'send_message' && (exec.arguments.agent_id === owner.session.header.parentSession || target?.status === 'running')) return next();
     const id = owner.session.id;
     const running = ctx.agents.list().filter(a => a.session.header.origin === 'subagent' && a.session.header.parentSession === id && a.status === 'running').length;
-    if (running + (reservations.get(id) ?? 0) >= 3) throw new Error('Ultra concurrent child limit reached (3). Wait for a child to settle, then delegate or send more work.');
+    if (running + (reservations.get(id) ?? 0) >= 3) throw new Error('Concurrent child limit reached (3). Wait for a child to settle, then delegate or send more work.');
     const childName = exec.name === 'send_message' ? undefined : exec.arguments.name;
     if (childName !== undefined) {
       if (typeof childName !== 'string' || !CHILD_NAME.test(childName)) throw new Error(CHILD_NAME_RULE);

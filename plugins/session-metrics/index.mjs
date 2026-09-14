@@ -3,6 +3,7 @@ import { appendMetric } from './store.mjs';
 import { estimateCost, priceVersionFor } from './pricing.mjs';
 import { setMetricSource } from './view.mjs';
 import { BALANCE_PROVIDERS, refreshBalance } from './balance.mjs';
+import { refreshOpenRouterPrices } from './openrouter-prices.mjs';
 import { providerSpec } from '../providers/catalog.mjs';
 import { createWindowRate } from './rate.mjs';
 import { currentCharge } from './attribution.mjs';
@@ -37,6 +38,8 @@ export function apply(ctx) {
       const resolved = await credentials?.resolve?.(ref);
       const key = typeof resolved === 'string' ? resolved : resolved?.value;
       await refreshBalance({ provider, key: key ?? process.env[ref] });
+      // OpenRouter list prices need no key, but only a session with an OpenRouter key uses them.
+      if (provider === 'openrouter' && (key ?? process.env[ref])) await refreshOpenRouterPrices({ home });
     } catch {
       /* balance stays unknown */
     }
@@ -73,7 +76,7 @@ export function apply(ctx) {
     } finally {
       if (liveSession) liveRate.calibrate(liveSession, usage?.outputTokens);
       // `time` stays the start (it prices the call); `endTime` and `firstTokenTime` time it.
-      save({ kind: 'end', id, time, endTime: Date.now(), ...(firstTokenTime === undefined ? {} : { firstTokenTime }), usage: usage ?? null, cost: estimateCost(options.provider, options.model, usage, time), priceVersion: priceVersionFor(options.provider) });
+      save({ kind: 'end', id, time, endTime: Date.now(), ...(firstTokenTime === undefined ? {} : { firstTokenTime }), usage: usage ?? null, cost: estimateCost(options.provider, options.model, usage, time), priceVersion: priceVersionFor(options.provider, options.model) });
     }
   });
 }

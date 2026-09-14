@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 
 export const name = 'dscode-exec';
-export const inject = ['agents', 'agentPresets', 'agentDefaultModel', 'permissionPresets'];
+export const inject = ['agents', 'agentPresets', 'agentDefaultModel', 'permissionPresets', 'llm'];
 
 export function apply(ctx) {
   void run(ctx).catch(error => { process.stderr.write(`dscode exec: ${error.message}\n`); ctx.get('appExit')(1); });
@@ -39,6 +39,11 @@ async function run(ctx) {
   const selection = ctx.agentDefaultModel.currentSelection();
   const [provider, model] = options.model ? splitRoute(options.model) : [selection.provider, selection.model];
   const effort = options.effort ?? selection.reasoningEffort;
+  // Levels belong to the model: refuse one it does not offer before the turn, not at its first request.
+  if (options.effort) {
+    const offered = (await ctx.llm.resolveModelInfo(provider, model)).reasoning?.efforts.map(level => level.id) ?? [];
+    if (!offered.includes(options.effort)) throw new Error(`--effort ${options.effort} is not offered by ${provider}/${model}${offered.length ? `; it offers ${offered.join(', ')}` : ', which has no reasoning levels'}`);
+  }
   const agentOptions = { provider, model, ...(effort ? { reasoningEffort: effort } : {}) };
   const setup = async agentCtx => { await ctx.agentPresets.mount(agentCtx, 'dscode'); };
   const handle = options.resume

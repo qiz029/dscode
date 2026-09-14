@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 const fixture = createTestRuntime({ runtime: true });
 const root = fixture.root;
 after(fixture.close);
-import { apply, CHILD_NAME } from '../plugins/dscode/index.mjs';
+import { apply, CHILD_NAME, SHELL_POLICY } from '../plugins/dscode/index.mjs';
 
 
 const { DeepSeekAdapter, resolveAdapterOptions } = await import(pathToFileURL(`${root}/node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js`));
@@ -42,7 +42,7 @@ test('ultra uses native max on the actual wire and adds policy only to agent cal
     assert.equal(payloads[0].reasoning_effort, 'max');
     assert.equal(payloads[0].thinking.type, 'enabled');
     assert.deepEqual(payloads[0].tools.map(tool => tool.function.name), ['bash', 'subagent', 'subagent_fork']);
-    assert.deepEqual(payloads[1].tools.map(tool => tool.function.name), ['bash']);
+    assert.deepEqual(payloads[1].tools.map(tool => tool.function.name), ['bash', 'subagent', 'subagent_fork'], 'delegation is offered below Ultra too');
     assert(JSON.stringify(payloads[0].messages).includes('DSCODE ULTRA'));
     assert(!JSON.stringify(payloads[1].messages).includes('DSCODE ULTRA'));
     assert(!JSON.stringify(payloads[2].messages).includes('DSCODE ULTRA'));
@@ -54,7 +54,7 @@ test('ultra uses native max on the actual wire and adds policy only to agent cal
     assert(JSON.stringify(payloads[7].messages).includes('DSCODE DeepSeek Flash'));
   } finally { globalThis.fetch = original; }
 });
-test('OpenRouter (pi-ai) Ultra sends max with the collaboration policy and hides delegation below Ultra', async () => {
+test('OpenRouter (pi-ai) Ultra sends max with the collaboration policy; delegation is offered at every effort', async () => {
   const { piAiRequest } = await import('../plugins/ultra/policy.mjs');
   const tools = ['bash', 'subagent', 'subagent_fork', 'workflow', 'ralph'].map(name => ({ name, description: name, parameters: { type: 'object', properties: {} } }));
   const base = { provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', tools, messages: [{ role: 'system', content: [{ type: 'text', text: 'Original instructions.' }] }, { role: 'user', content: [{ type: 'text', text: 'Do work.' }] }] };
@@ -72,7 +72,7 @@ test('OpenRouter (pi-ai) Ultra sends max with the collaboration policy and hides
   assert.equal(bare.messages[0].role, 'system');
   const high = piAiRequest({ ...base, reasoningEffort: 'high' });
   assert.equal(high.reasoningEffort, 'high');
-  assert.deepEqual(high.tools.map(tool => tool.name), ['bash']);
+  assert.deepEqual(high.tools.map(tool => tool.name), ['bash', 'subagent', 'subagent_fork']);
   assert(!JSON.stringify(high.messages).includes('DSCODE ULTRA'));
   const compaction = piAiRequest({ ...base, reasoningEffort: 'ultra', purpose: 'compaction' });
   assert.equal(compaction.reasoningEffort, 'max');
@@ -81,24 +81,22 @@ test('OpenRouter (pi-ai) Ultra sends max with the collaboration policy and hides
   assert(text.startsWith('// dscode-pi-ai-ultra-v1'));
   assert(text.includes('options = piAiRequest(options);'));
   assert(text.includes('if (effort === "ultra" && getSupportedThinkingLevels(model).includes("max")) return "max";'));
+  assert(text.includes('options.reasoningEffort ?? describableReasoningLevel(model, profile.reasoning)'), 'a route default the model lacks falls back to the model default');
 });
-test('high and max cannot launch or wake children; Ultra remains available', async () => {
+test('every effort can launch and wake children under the shell policy; workflow and ralph stay unavailable', async () => {
   let execute;
-  let effort = 'high';
+  let effort;
   const owner = { session: { id: 'root', header: {}, requestHeader: () => ({ config: { reasoningEffort: effort } }) }, options: {} };
   const child = { status: 'idle', session: { header: { origin: 'subagent', parentSession: 'root' } } };
   apply({ systemPrompt: { section() {} }, on: (event, cb) => { if (event === 'tools/execute') execute = cb; }, commands: { register() {} }, agents: { list: () => [child], get: () => child } });
-  for (const level of ['low', 'high', 'max']) {
+  assert.match(SHELL_POLICY, /below ultra, delegation is the exception/i);
+  for (const level of [undefined, 'low', 'high', 'max', 'ultra']) {
     effort = level;
-    for (const name of ['subagent', 'subagent_fork', 'workflow', 'ralph']) {
-      await assert.rejects(execute({ name, arguments: {}, agent: owner }, () => assert.fail('must not launch')), /requires Ultra/);
-    }
-    await assert.rejects(execute({ name: 'send_message', arguments: { agent_id: 'child' }, agent: owner }, () => assert.fail('must not wake')), /requires Ultra/);
+    assert.equal(await execute({ name: 'subagent', arguments: {}, agent: owner }, () => 'started'), 'started');
+    assert.equal(await execute({ name: 'subagent_fork', arguments: {}, agent: owner }, () => 'forked'), 'forked');
+    assert.equal(await execute({ name: 'send_message', arguments: { agent_id: 'child' }, agent: owner }, () => 'woken'), 'woken');
+    for (const name of ['workflow', 'ralph']) await assert.rejects(execute({ name, arguments: {}, agent: owner }, () => assert.fail('must not run')), /unavailable in dscode/);
   }
-  child.status = 'running';
-  assert.equal(await execute({ name: 'send_message', arguments: { agent_id: 'child' }, agent: owner }, () => 'message'), 'message');
-  effort = 'ultra';
-  assert.equal(await execute({ name: 'subagent', arguments: {}, agent: owner }, () => 'started'), 'started');
   const nested = { session: { id: 'nested', header: { origin: 'subagent', parentSession: 'root' }, requestHeader: () => ({ config: { reasoningEffort: 'ultra' } }) }, options: {} };
   for (const name of ['subagent', 'subagent_fork', 'workflow', 'ralph']) {
     await assert.rejects(execute({ name, arguments: {}, agent: nested }, () => assert.fail('child must not delegate')), /cannot delegate again/);
