@@ -25,9 +25,6 @@ try {
     if (name === 'launcher') assert.equal(pkg.dependencies['@deepseek-ai/node-addon-system'], '0.1.2');
     else {
       assert.match(readFileSync(join(destination, 'vendor/terminal/index.js'), 'utf8'), /dscode-no-history-expansion-v1/);
-      assert.equal(pkg.dependencies['@deepseek-ai/dsh-subprocess-local'], 'file:vendor/subprocess');
-      const inspector = readdirSync(join(destination, 'vendor/subprocess')).find(entry => entry.endsWith('.js') && readFileSync(join(destination, 'vendor/subprocess', entry), 'utf8').includes('dscode-mac-stdin-wait-v1'));
-      assert(inspector, 'the vendored macOS process inspector must carry the stdin-wait probe');
       assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /dscode-bundle\/terminal/);
       assert.equal(pkg.exports['./code-review'], './plugins/code-review/index.mjs');
       assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/code-review'/);

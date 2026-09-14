@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { patchMacStdin } from './patch-mac-stdin.mjs';
 import { patchStdinStall } from './patch-stdin-stall.mjs';
@@ -145,8 +145,16 @@ export function patchRuntime(root) {
 
 // The macOS process inspector lives in a content-hashed chunk, so find the file
 // that carries the stub instead of pinning its name.
-function patchMacStdinPackage(root) {
+export function patchMacStdinPackage(root) {
   const dir = join(root, 'node_modules/@deepseek-ai/dsh-subprocess-local');
+  // The published bundle installs the registry copy of this package, and a package cannot
+  // depend on a path inside its own tarball (pnpm resolves `file:` against the profile
+  // root), so a staged build legitimately has nothing to patch here. Warn instead of
+  // failing the build, and keep the strict version check whenever the package is present.
+  if (!existsSync(join(dir, 'package.json'))) {
+    process.emitWarning('dsh-subprocess-local is not installed here: the macOS stdin probe was not applied to this tree (the npm/Hub bundle keeps the registry copy).');
+    return 'missing';
+  }
   if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== '0.1.5-rc.1') throw new Error('Revalidate runtime patches before upgrading dsh-subprocess-local');
   const lib = join(dir, 'lib');
   const name = readdirSync(lib).find(entry => entry.endsWith('.js') && readFileSync(join(lib, entry), 'utf8').includes('isStdinWaiting(_pgid, _shellPid)'));
@@ -155,4 +163,5 @@ function patchMacStdinPackage(root) {
   const before = readFileSync(path, 'utf8');
   const after = patchMacStdin(before);
   if (before !== after) writeFileSync(path, after);
+  return 'patched';
 }
