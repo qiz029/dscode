@@ -42,13 +42,15 @@ process.env.FORCE_COLOR = '3';
 try {
   const ui = await import(entry.href);
   const h = ui.react.createElement;
-  assert.equal(ui.DSCODE_SPIN_FRAMES.length, 4, 'Snowflake spinner has four orbit frames');
+  assert.equal(ui.DSCODE_SPIN_FRAMES.length, 10, 'Snowflake spinner has ten orbit frames');
+  const innerRight = new Set(['⠁', '⠃', '⠆', '⡄', '⡀']), innerLeft = new Set(['⢀', '⢠', '⠰', '⠘', '⠈']);
   for (const frame of ui.DSCODE_SPIN_FRAMES) {
-    assert.equal(frame.length, 3);
     assert.equal(frame[1], '❄', 'Snowflake stays in the middle cell');
-    assert.equal(ui.visibleColumns(frame.join('')), 3, 'Spinner frames keep a fixed width');
+    assert.equal(ui.visibleColumns(frame.slice(0, 3).join('')), 3, 'Spinner frames keep a fixed width');
+    if (frame[3] === 'right') assert(frame[0] === ' ' && innerRight.has(frame[2]), 'comet on the right uses the inner dot column');
+    else assert(frame[2] === ' ' && innerLeft.has(frame[0]), 'comet on the left uses the inner dot column');
   }
-  assert.equal(new Set(ui.DSCODE_SPIN_FRAMES.map(frame => frame[0] + frame[2])).size, 4, 'Every orbit frame places the arc differently');
+  assert.equal(new Set(ui.DSCODE_SPIN_FRAMES.map(frame => frame[0] + frame[2])).size, 10, 'Every frame moves the comet');
   assert.match(ui.dscodeActivity([], false), /^Thinking$/);
   assert.match(ui.dscodeActivity([], true), /^Replying$/);
   const tools = [{ kind: 'tool', state: 'running', name: 'shell', arguments: JSON.stringify({ command: 'secret command', description: '验证会话恢复行为' }) }];

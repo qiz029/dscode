@@ -137,11 +137,17 @@ function dscodeTelemetryNodes(value, key) {
 `;
 
 const spinnerSource = `
-// A snowflake with an arc orbiting it clockwise: top-left, top-right, bottom-right, bottom-left.
-const DSCODE_SPIN_FRAMES = [["\u25DC", "\u2744", " "], [" ", "\u2744", "\u25DD"], [" ", "\u2744", "\u25DE"], ["\u25DF", "\u2744", " "]];
+// A comet orbiting the snowflake clockwise. The side cells use only their inner
+// braille dot column, so every position sits one column from the flake on either
+// side and the orbit stays centred: down the right side, then up the left side.
+// Each frame is [left glyph, flake, right glyph, side that carries the comet].
+const DSCODE_SPIN_FRAMES = [
+  [" ", "\u2744", "\u2801", "right"], [" ", "\u2744", "\u2803", "right"], [" ", "\u2744", "\u2806", "right"], [" ", "\u2744", "\u2844", "right"], [" ", "\u2744", "\u2840", "right"],
+  ["\u2880", "\u2744", " ", "left"], ["\u28a0", "\u2744", " ", "left"], ["\u2830", "\u2744", " ", "left"], ["\u2818", "\u2744", " ", "left"], ["\u2808", "\u2744", " ", "left"]
+];
 function DscodeActivityLine({ entries, streaming, since, animated = true }) {
   const columns = useStdout().stdout?.columns ?? 80;
-  const tick = useFrames(animated ? 220 : 1000);
+  const tick = useFrames(animated ? 90 : 1000);
   const elapsed = since > 0 ? Math.max(0, Date.now() - since) : 0;
   const suffix = columns >= 64 ? " · " + dscodeT("activity.turn") + " " + runClock(elapsed) + " · " + dscodeT("activity.interrupt") : " · " + dscodeT("activity.turn") + " " + runClock(elapsed);
   const [left, flake, right] = animated ? DSCODE_SPIN_FRAMES[tick % DSCODE_SPIN_FRAMES.length] : [" ", "\u2744", " "];
