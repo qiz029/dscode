@@ -20,7 +20,7 @@ dscode
 DeepSeek 密钥通过 `/login` 在本地保存，其他模型密钥在 `/model` 配置，或设置 `DEEPSEEK_API_KEY`。辅助功能/录屏权限由 macOS 授予。
 
 ```sh
-dscode update 0.6.0
+dscode update 0.7.0
 dscode history
 dscode rollback
 dscode doctor

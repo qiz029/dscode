@@ -8,13 +8,13 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![npm](https://img.shields.io/npm/v/@toddzheng024/dscode)](https://www.npmjs.com/package/@toddzheng024/dscode)
 
-DSCODE 是基于 DeepSeek Harness 的终端编码 agent。持久 Shell 负责读写代码和执行测试；TUI、CLI 与脚本共用同一个会话运行时。0.6.0 加入非交互的 `dscode exec`、可命名寻址的子 agent、免验证码的 npm 发布，以及重绘的像素雪花界面。
+DSCODE 是基于 DeepSeek Harness 的终端编码 agent。持久 Shell 负责读写代码和执行测试；TUI、CLI 与脚本共用同一个会话运行时。0.7.0 加入六种界面语言、可选中复制的 TUI、verbose 视图、更准的 TPS 口径，以及更稳的代码审查。
 
-[0.6.0 亮点](#-060-亮点) · [安装](#-安装) · [常用命令](#-常用命令) · [权限与配置](#-权限与配置) · [开发与发布](#-开发与发布)
+[0.7.0 亮点](#-070-亮点) · [安装](#-安装) · [常用命令](#-常用命令) · [权限与配置](#-权限与配置) · [开发与发布](#-开发与发布)
 
-## ✨ 0.6.0 亮点
+## ✨ 0.7.0 亮点
 
-`dscode exec "prompt"` 在不打开 TUI 的情况下跑完一轮完整 agent，stdout 只有回复，支持 stdin、`--json` 和 `--resume`。父 agent 给每个子 agent 起名，用 `/name` 发消息或中断，agents 行和 `/agents` 显示路径。欢迎框换成三档色阶的像素雪花，工作时底部有雪花轨道动画，轮次分割线铺满整行。发布脚本可用钥匙串里的 granular token 免登录、免验证码发布。[0.6.0 更新说明 →](docs/releases/0.6.0.md)
+`/language` 在英文、简体中文、繁體中文、日本語、한국어、Español 之间切换界面文案并记住选择。鼠标捕获默认关闭，终端里直接拖选复制，`/mouse` 打开滚轮滚动。`/verbose` 以暗色显示思考和工具调用并记住开关。agent 工作时历史铺满对话区，忙碌行是绕雪花公转的彗星，欢迎框雪花有涟漪。底栏 `current` 按实际生成时长并用结算用量校准，`average` 改为输出 token / LLM 调用总耗时。review 工具在非 Git 目录直接返回 no_repository，模型异常结束时重试一次并说明原因。[0.7.0 更新说明 →](docs/releases/0.7.0.md)
 
 ### 非交互执行：`dscode exec`
 
@@ -99,7 +99,7 @@ TUI 启动时清屏，顶部欢迎框显示 DSCODE、模型、effort、版本和
 
 ### npm + Plugin Hub
 
-> **v0.6.0 已发布。** [npm 启动器](https://www.npmjs.com/package/@toddzheng024/dscode) · [Hub preset](https://dshpluginhub.ai/profiles/dscode) · [GitHub Releases](https://github.com/qiz029/dscode/releases)
+> **v0.7.0 已发布。** [npm 启动器](https://www.npmjs.com/package/@toddzheng024/dscode) · [Hub preset](https://dshpluginhub.ai/profiles/dscode) · [GitHub Releases](https://github.com/qiz029/dscode/releases)
 
 ```sh
 npm install -g @toddzheng024/dscode
@@ -110,7 +110,7 @@ dscode
 如果 npm 包名查询暂时返回 404，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.6.0.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.0.tgz
 dscode
 ```
 
@@ -129,7 +129,7 @@ dscode --continue                     # 继续上次会话
 dscode --resume SESSION_ID            # 恢复指定会话
 dscode --cwd /another/project         # 在指定目录工作
 
-dscode update 0.6.0                   # 升级到 0.6.0
+dscode update 0.7.0                   # 升级到 0.7.0
 dscode history                        # 查看保留的版本记录
 dscode rollback                       # 回到上个 preset 版本
 dscode doctor                         # 分析近期运行日志和 session trace
@@ -138,11 +138,11 @@ dscode doctor                         # 分析近期运行日志和 session trac
 从旧版本升级时，先更新启动器，再更新已安装的 profile：
 
 ```sh
-npm install -g @toddzheng024/dscode@0.6.0
-dscode update 0.6.0
+npm install -g @toddzheng024/dscode@0.7.0
+dscode update 0.7.0
 ```
 
-源码/tar 安装与 npm/Hub 使用不同的数据目录。升级不会自动迁移它们之间的会话和凭据。[0.6.0 更新说明](docs/releases/0.6.0.md)
+源码/tar 安装与 npm/Hub 使用不同的数据目录。升级不会自动迁移它们之间的会话和凭据。[0.7.0 更新说明](docs/releases/0.7.0.md)
 
 ### 从源码运行（现在可用）
 
@@ -163,11 +163,11 @@ npm start -- --cwd /path/to/project
 
 ### tar 包安装（现在可用）
 
-从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.6.0.tar.gz`，然后执行：
+从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.0.tar.gz`，然后执行：
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.6.0.tar.gz -C dscode-install
+tar -xzf dscode-0.7.0.tar.gz -C dscode-install
 sh dscode-install/install.sh
 cd /path/to/project
 dscode
