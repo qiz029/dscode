@@ -93,6 +93,17 @@ export function isGitWorkspaceSync(cwd, run = execFileSync, now = Date.now()) {
   return value;
 }
 
+let gitAvailable;
+/** Whether a git executable runs at all; outside a repository the review snapshots the workspace with it. Cached for the default runner. */
+export function isGitAvailableSync(run = execFileSync) {
+  if (run === execFileSync && gitAvailable !== undefined) return gitAvailable;
+  let value = false;
+  try { run('git', ['--version'], { stdio: 'ignore', timeout: 3000 }); value = true; }
+  catch { value = false; }
+  if (run === execFileSync) gitAvailable = value;
+  return value;
+}
+
 /** HEAD as it was at `time` (ms), read from the reflog (newest first); undefined when the reflog does not reach back that far. */
 async function headAt(cwd, time, signal) {
   let log;

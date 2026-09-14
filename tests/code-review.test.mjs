@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { collectReviewDiff, parseReviewCommand, reviewSpec, gitWorkspace, isGitWorkspaceSync } from '../plugins/code-review/git.mjs';
+import { collectReviewDiff, parseReviewCommand, reviewSpec, gitWorkspace, isGitAvailableSync, isGitWorkspaceSync } from '../plugins/code-review/git.mjs';
+import { baselineStore } from '../plugins/code-review/baseline.mjs';
 import { apply, independentReview } from '../plugins/code-review/index.mjs';
 import { patchReview } from '../scripts/patch-review.mjs';
 
@@ -90,6 +91,7 @@ test('slash review reports findings while partial diffs cannot look clean', asyn
       header: { cwd }, requestHeader: () => ({ config: { provider: 'fixture', model: 'test' } }), snapshotEvents: () => [],
     } };
     const ctx = {
+      on() {},
       commands: { register: value => commands.set(value.name, value) },
       tools: { register: value => tools.set(value.name, value) },
       systemPrompt: { section() {} },
@@ -122,7 +124,7 @@ test('cancelling a stalled reviewer ends the request instead of reporting a clea
 
 test('slash review and model tool share the review registration; TUI patch routes command', () => {
   const commands = new Map(), tools = new Map(), sections = [];
-  apply({ commands: { register: value => commands.set(value.name, value) }, tools: { register: value => tools.set(value.name, value) }, systemPrompt: { section: value => sections.push(value) }, llm: {} });
+  apply({ on() {}, commands: { register: value => commands.set(value.name, value) }, tools: { register: value => tools.set(value.name, value) }, systemPrompt: { section: value => sections.push(value) }, llm: {} });
   assert(commands.has('review'));
   assert(tools.has('review'));
   assert.match(tools.get('review').description, /before your final answer/);
@@ -136,7 +138,7 @@ test('slash review and model tool share the review registration; TUI patch route
   assert.throws(() => patchReview('unknown upstream'), /Unsupported/);
 });
 
-test('review outside a Git repository reports no_repository without a model call and drops the guidance', async () => {
+test('outside a Git repository the guidance points at the snapshot review, and review without a baseline store reports no_repository', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'dscode-review-nogit-'));
   try {
     assert.equal(await gitWorkspace(cwd), null);
@@ -146,11 +148,14 @@ test('review outside a Git repository reports no_repository without a model call
     const result = await independentReview({ llm: { async *stream() { calls++; } } }, agent, {});
     assert.equal(result.status, 'no_repository');
     assert.match(result.report, /not inside a Git repository/);
-    assert.equal(calls, 0, 'no reviewer request outside a repository');
+    assert.equal(calls, 0, 'no reviewer request without a baseline store');
     const sections = [];
-    apply({ commands: { register() {} }, tools: { register() {} }, systemPrompt: { section: value => sections.push(value) }, llm: {} });
-    assert.equal(sections[0].text({ scope: { session: { header: { origin: 'user', agentPreset: 'dscode', cwd } } } }), '');
-    assert.match(sections[0].text({ scope: { session: { header: { origin: 'user', agentPreset: 'dscode', cwd: process.cwd() } } } }), /After you finish code changes/);
+    apply({ on() {}, commands: { register() {} }, tools: { register() {} }, systemPrompt: { section: value => sections.push(value) }, llm: {} });
+    assert.match(sections[0].text({ scope: { session: { header: { origin: 'user', agentPreset: 'dscode', cwd } } } }), /not a Git repository[\s\S]*changed since the task started/);
+    assert.equal(sections[0].text({ scope: { session: { header: { origin: 'subagent', agentPreset: 'dscode', cwd } } } }), '');
+    assert.match(sections[0].text({ scope: { session: { header: { origin: 'user', agentPreset: 'dscode', cwd: process.cwd() } } } }), /commits made since the task started/);
+    assert.equal(isGitAvailableSync(() => { throw Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' }); }), false, 'without git there is no snapshot to review');
+    assert.equal(isGitAvailableSync(() => ''), true);
     assert.equal(isGitWorkspaceSync(join(cwd, 'missing')), false);
     assert.equal(isGitWorkspaceSync(undefined), true);
     let ran = 0;
@@ -159,6 +164,71 @@ test('review outside a Git repository reports no_repository without a model call
     assert.equal(ran, 1, 'the sync check is cached per workspace');
     assert.equal(isGitWorkspaceSync('/cached/fixture', () => { ran++; throw Object.assign(new Error('boom'), { code: 'EACCES' }); }, 100000), false, 'once the cache expires, any git failure drops the guidance');
   } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test('a workspace snapshot diffs the task baseline, leaving out ignored, sensitive and large files', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'dscode-review-snapshot-'));
+  const root = await mkdtemp(join(tmpdir(), 'dscode-review-baselines-'));
+  const limits = { files: 50, bytes: 1024 * 1024, fileBytes: 256 };
+  try {
+    await mkdir(join(cwd, 'node_modules'));
+    await writeFile(join(cwd, 'app.py'), 'print("base")\n');
+    await writeFile(join(cwd, 'node_modules', 'dep.js'), 'base\n');
+    await writeFile(join(cwd, '.env'), 'TOKEN=base\n');
+    const store = baselineStore(root, limits);
+    const task = { session: 'session-1', seq: 4 };
+    assert.equal((await store.collect(cwd, task)).baseline, 'missing', 'no baseline before the first tool call');
+    const first = await store.capture(cwd, task);
+    assert.match(first.tree, /^[0-9a-f]{40,64}$/);
+    assert.equal(await store.capture(cwd, task), first, 'a task takes its baseline once');
+    assert.equal((await store.collect(cwd, task)).diff, '', 'an untouched workspace has nothing to review');
+    await writeFile(join(cwd, 'app.py'), 'print("changed")\n');
+    await writeFile(join(cwd, 'notes.md'), 'new notes\n');
+    await writeFile(join(cwd, 'node_modules', 'dep.js'), 'changed\n');
+    await writeFile(join(cwd, '.env'), 'TOKEN=changed\n');
+    await writeFile(join(cwd, 'data.bin'), 'x'.repeat(1024));
+    const changed = await store.collect(cwd, task);
+    assert.equal(changed.label, 'files changed since this task started (workspace snapshot)');
+    assert.match(changed.diff, /\+print\("changed"\)/);
+    assert.match(changed.diff, /\+new notes/);
+    assert.doesNotMatch(changed.diff, /node_modules|\.env|TOKEN|data\.bin/);
+    assert.doesNotMatch((await store.collect(cwd, task, { path: 'app.py' })).diff, /notes/);
+    await assert.rejects(store.collect(cwd, task, { scope: 'staged' }), /needs a Git repository/);
+    const resumed = baselineStore(root, limits);
+    assert.match((await resumed.collect(cwd, task)).diff, /\+print\("changed"\)/, 'the baseline is a ref, so it survives a restart');
+    await resumed.capture(cwd, { session: 'session-1', seq: 9 });
+    assert.equal((await resumed.collect(cwd, task)).baseline, 'missing', 'a new task replaces the session baseline');
+    assert.equal((await resumed.collect(cwd, { session: 'session-1', seq: 9 })).diff, '');
+    assert.deepEqual(await baselineStore(root, { ...limits, files: 2 }).capture(cwd, { session: 'session-2', seq: 1 }), { skipped: 'more than 2 files' });
+  } finally { await Promise.all([rm(cwd, { recursive: true, force: true }), rm(root, { recursive: true, force: true })]); }
+});
+
+test('outside Git the first tool call of a task takes the baseline that the review tool diffs', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'dscode-review-hook-'));
+  const root = await mkdtemp(join(tmpdir(), 'dscode-review-baselines-'));
+  try {
+    await writeFile(join(cwd, 'main.c'), 'int main() { return 0; }\n');
+    const hooks = {}, tools = new Map(), requests = [];
+    const llm = { async *stream(options) {
+      requests.push(options);
+      yield { type: 'block-start', index: 0, blockType: 'text' };
+      yield { type: 'block-end', index: 0, block: { type: 'text', text: 'No actionable findings in the supplied diff.' } };
+      yield { type: 'finish', reason: { kind: 'stop' } };
+    } };
+    apply({ on: (name, fn) => { hooks[name] = fn; }, commands: { register() {} }, tools: { register: value => tools.set(value.name, value) }, systemPrompt: { section() {} }, llm }, { baselineRoot: root });
+    const events = [{ seq: 3, type: 'user/message', time: Date.now(), data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'Make main fail' }] } }];
+    const agent = { options: {}, session: { id: 'hook-session', header: { cwd, agentPreset: 'dscode', origin: 'user' }, requestHeader: () => ({ config: { provider: 'fixture', model: 'test' } }), snapshotEvents: () => events } };
+    assert.equal((await hooks['tools/pre-execute']({ name: 'bash', agent }, async () => ({ kind: 'allow' }))).kind, 'allow');
+    await writeFile(join(cwd, 'main.c'), 'int main() { return 1; }\n');
+    const result = await tools.get('review').execute({}, { agent, signal: new AbortController().signal });
+    assert.equal(result.status, 'reviewed');
+    assert.match(result.scope, /workspace snapshot/);
+    assert.match(JSON.stringify(requests[0].messages), /\+int main\(\) \{ return 1; \}/);
+    const tooLarge = { collect: async () => ({ diff: '', omitted: [], label: 'files changed since this task started (workspace snapshot)', baseline: 'too_large', reason: 'more than 2 files' }) };
+    const skipped = await independentReview({}, agent, {}, undefined, async () => ({ diff: '', label: 'uncommitted changes', repository: null }), tooLarge);
+    assert.equal(skipped.status, 'no_baseline');
+    assert.match(skipped.report, /too large to snapshot \(more than 2 files\)[\s\S]*Do not call review again/);
+  } finally { await Promise.all([rm(cwd, { recursive: true, force: true }), rm(root, { recursive: true, force: true })]); }
 });
 
 test('review retries once after a non-stop finish, surfaces the provider reason, and marks truncated reports partial', async () => {
