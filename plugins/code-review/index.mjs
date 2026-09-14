@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm';
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { collectReviewDiff, parseReviewCommand } from './git.mjs';
+import { collectReviewDiff, parseReviewCommand, isGitWorkspaceSync } from './git.mjs';
 import { redact } from '../auto-review/policy.mjs';
 
 export const name = 'dscode-code-review';
@@ -20,6 +20,7 @@ export async function independentReview(ctx, agent, options = {}, signal, collec
   const cwd = agent.session.header.cwd ?? process.cwd();
   const collected = await collect(cwd, options, signal);
   const { diff, label, omitted = [] } = collected;
+  if (collected.repository === null) return { status: 'no_repository', scope: label, report: `${cwd} is not inside a Git repository, so there is no diff to review. Do not call review again for this workspace.` };
   if (!diff.trim()) return { status: 'no_changes', scope: label, report: 'No changes in the selected scope; no model review was run.' };
   const route = agent.session.requestHeader()?.config ?? agent.options;
   if (!route?.provider || !route?.model) throw Error('No model route is configured for code review.');
@@ -62,11 +63,12 @@ export async function independentReview(ctx, agent, options = {}, signal, collec
 }
 
 export function apply(ctx) {
-  ctx.systemPrompt.section({ name: 'dscode:review-guidance', order: 1052, text: ({ scope }) => scope?.session?.header?.agentPreset === 'dscode' && scope.session.header.origin !== 'subagent' ? GUIDANCE : '' });
+  // Only workspaces inside a Git repository get the review guidance; elsewhere the tool would only report no_repository.
+  ctx.systemPrompt.section({ name: 'dscode:review-guidance', order: 1052, text: ({ scope }) => scope?.session?.header?.agentPreset === 'dscode' && scope.session.header.origin !== 'subagent' && isGitWorkspaceSync(scope.session.header.cwd) ? GUIDANCE : '' });
   const run = (agent, options, signal) => independentReview(ctx, agent, options, signal);
   ctx.tools.register(defineTool({
     name: 'review',
-    description: 'Run an independent, read-only review of Git changes after code edits and focused checks, before your final answer. Returns actionable findings or an explicit no-findings report. Do not call for read-only turns or repeatedly on an unchanged diff.',
+    description: 'Run an independent, read-only review of Git changes after code edits and focused checks, before your final answer. Returns actionable findings or an explicit no-findings report. Do not call for read-only turns or repeatedly on an unchanged diff. Outside a Git repository it returns status no_repository; do not retry then.',
     parameters: {
       scope: { type: 'string', description: 'working (default, staged+unstaged+untracked), staged, base, or commit' },
       ref: { type: 'string', description: 'Required Git ref for base or commit scope' },

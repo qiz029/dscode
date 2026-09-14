@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { lstat, readFile } from 'node:fs/promises';
 import { join, posix } from 'node:path';
@@ -69,8 +69,35 @@ async function untracked(cwd, path, signal) {
   return { text: chunks.join(''), omitted };
 }
 
+/** The Git work tree containing cwd, or null when cwd is not inside a repository (or git is unavailable). */
+export async function gitWorkspace(cwd, signal) {
+  try { return (await git(cwd, ['rev-parse', '--show-toplevel'], signal)).trim() || null; }
+  catch (error) {
+    if (signal?.aborted) throw error;
+    if (error.code === 'ENOENT' || /not a git repository|cannot change to|No such file/i.test(`${error.stderr ?? ''}${error.message ?? ''}`)) return null;
+    throw error;
+  }
+}
+
+const gitWorkspaceCache = new Map();
+/** Synchronous, briefly cached variant for prompt assembly; unknown cwd counts as a repository. */
+export function isGitWorkspaceSync(cwd, run = execFileSync, now = Date.now()) {
+  if (!cwd) return true;
+  const cached = gitWorkspaceCache.get(cwd);
+  if (cached && now - cached.at < 60_000) return cached.value;
+  // Any failure (no repository, missing directory, git unavailable) means the review tool cannot work here.
+  let value = false;
+  try { run('git', ['rev-parse', '--is-inside-work-tree'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 }); value = true; }
+  catch { value = false; }
+  gitWorkspaceCache.set(cwd, { at: now, value });
+  return value;
+}
+
 export async function collectReviewDiff(cwd, options = {}, signal) {
   const { scope, ref, path } = reviewSpec(options.scope, options.ref, options.path);
+  const label = scope === 'working' ? 'uncommitted changes (tracked and untracked)' : scope === 'staged' ? 'staged changes' : `${scope} ${ref}`;
+  const repository = await gitWorkspace(cwd, signal);
+  if (repository === null) return { scope, ref, path, diff: '', omitted: [], label, repository: null };
   const pathArgs = ['--', ...(path ? [path] : [])];
   let diff, omitted = [];
   if (scope === 'working') {
@@ -91,5 +118,5 @@ export async function collectReviewDiff(cwd, options = {}, signal) {
   else diff = await git(cwd, ['show', '--format=', '--no-ext-diff', '--no-textconv', ref, ...pathArgs], signal);
   if (Buffer.byteLength(diff) > 160 * 1024) throw Error('Review diff exceeds 160 KiB. Use --path to review a smaller part.');
   if (/^Binary files .* differ$/m.test(diff)) omitted.push('tracked binary diff');
-  return { scope, ref, path, diff, omitted, label: scope === 'working' ? 'uncommitted changes (tracked and untracked)' : scope === 'staged' ? 'staged changes' : `${scope} ${ref}` };
+  return { scope, ref, path, diff, omitted, label, repository };
 }

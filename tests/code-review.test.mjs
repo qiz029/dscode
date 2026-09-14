@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { collectReviewDiff, parseReviewCommand, reviewSpec } from '../plugins/code-review/git.mjs';
+import { collectReviewDiff, parseReviewCommand, reviewSpec, gitWorkspace, isGitWorkspaceSync } from '../plugins/code-review/git.mjs';
 import { apply, independentReview } from '../plugins/code-review/index.mjs';
 import { patchReview } from '../scripts/patch-review.mjs';
 
@@ -132,4 +132,29 @@ test('slash review and model tool share the review registration; TUI patch route
   assert.match(after, /dispatch\(text\)/);
   assert.equal(patchReview(after), after);
   assert.throws(() => patchReview('unknown upstream'), /Unsupported/);
+});
+
+test('review outside a Git repository reports no_repository without a model call and drops the guidance', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'dscode-review-nogit-'));
+  try {
+    assert.equal(await gitWorkspace(cwd), null);
+    assert.equal((await collectReviewDiff(cwd)).repository, null);
+    let calls = 0;
+    const agent = { options: {}, session: { header: { cwd }, requestHeader: () => ({ config: { provider: 'fixture', model: 'test' } }), snapshotEvents: () => [] } };
+    const result = await independentReview({ llm: { async *stream() { calls++; } } }, agent, {});
+    assert.equal(result.status, 'no_repository');
+    assert.match(result.report, /not inside a Git repository/);
+    assert.equal(calls, 0, 'no reviewer request outside a repository');
+    const sections = [];
+    apply({ commands: { register() {} }, tools: { register() {} }, systemPrompt: { section: value => sections.push(value) }, llm: {} });
+    assert.equal(sections[0].text({ scope: { session: { header: { origin: 'user', agentPreset: 'dscode', cwd } } } }), '');
+    assert.match(sections[0].text({ scope: { session: { header: { origin: 'user', agentPreset: 'dscode', cwd: process.cwd() } } } }), /After you finish code changes/);
+    assert.equal(isGitWorkspaceSync(join(cwd, 'missing')), false);
+    assert.equal(isGitWorkspaceSync(undefined), true);
+    let ran = 0;
+    assert.equal(isGitWorkspaceSync('/cached/fixture', () => { ran++; return ''; }, 1000), true);
+    assert.equal(isGitWorkspaceSync('/cached/fixture', () => { ran++; return ''; }, 2000), true);
+    assert.equal(ran, 1, 'the sync check is cached per workspace');
+    assert.equal(isGitWorkspaceSync('/cached/fixture', () => { ran++; throw Object.assign(new Error('boom'), { code: 'EACCES' }); }, 100000), false, 'once the cache expires, any git failure drops the guidance');
+  } finally { await rm(cwd, { recursive: true, force: true }); }
 });
