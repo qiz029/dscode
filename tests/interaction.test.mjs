@@ -47,23 +47,23 @@ test('chat hides reasoning and tools by default and shows them dimmed in verbose
   assert.equal(context.dscodeChatLines({ kind: 'assistant', reasoning: 'only thoughts', text: '' }, 80).length, 0);
   assert.equal(entry.reasoning, 'private thinking');
   const tool = context.dscodeChatLines({ kind: 'tool', state: 'done', name: 'bash', preview: 'ls -la', summary: 'total 3\nsrc' }, 80, true);
-  assert.deepEqual([...tool.map(text)], ['· Tool Call: bash ls -la', '  Output: total 3', '  src']);
+  assert.deepEqual([...tool.map(text)], ['· Tool Call: bash ls -la', '  Output: total 3', '  src', ''], 'a blank line separates consecutive verbose blocks');
   assert(tool[0].segments.every(segment => segment.style === 'dim'), 'tool call lines are dim');
   const failed = context.dscodeChatLines({ kind: 'tool', state: 'error', name: 'bash', preview: '', summary: 'exit 1' }, 80, true);
   assert.equal(text(failed[0]), '· Tool Call: bash · error');
   assert.equal(failed[1].segments[0].style, 'error');
   assert.equal(text(context.dscodeChatLines({ kind: 'tool', state: 'running', name: 'review', preview: '' }, 80, true)[0]), '· Tool Call: review · running');
   const verbose = context.dscodeChatLines(entry, 80, true);
-  assert.deepEqual([...verbose.map(text)], ['· Thinking: private thinking', 'body:answer|reasoning:']);
+  assert.deepEqual([...verbose.map(text)], ['· Thinking: private thinking', '', 'body:answer|reasoning:']);
   assert.equal(verbose[0].segments[0].style, 'dimItalic');
-  assert.deepEqual([...context.dscodeChatLines({ kind: 'assistant', reasoning: 'only thoughts', text: '' }, 80, true).map(text)], ['· Thinking: only thoughts']);
+  assert.deepEqual([...context.dscodeChatLines({ kind: 'assistant', reasoning: 'only thoughts', text: '' }, 80, true).map(text)], ['· Thinking: only thoughts', '']);
   // 95 characters of collapsed thinking wrapped at 10 columns is 10 rows: eight stay, a fold marker follows, then the answer.
   const long = context.dscodeChatLines({ kind: 'assistant', reasoning: Array.from({ length: 12 }, (_, i) => 'line ' + i).join('\n'), text: 'x' }, 10, true);
-  assert.equal(long.length, 8 + 1 + 1, 'thinking is capped at eight lines plus a fold marker');
+  assert.equal(long.length, 8 + 1 + 1 + 1, 'thinking is capped at eight lines plus a fold marker, a blank line, then the answer');
   assert.match(text(long[8]), /… 2 more lines · Ctrl\+O/);
   assert(!text(long[1]).includes('\n'), 'thinking newlines collapse into one flowing paragraph');
   assert.equal(patchInteraction(source), source);
-  assert(source.includes('label: "/verbose"') && source.includes('if (text === "/verbose")') && source.includes('notify(dscodeT(next ? "verbose.on" : "verbose.off"))'), 'verbose command, dispatch and localized toggle notice are wired');
+  assert(source.includes('label: "/verbose"') && source.includes('if (text === "/verbose")') && source.includes('dscodeSaveFlag("verbose", next);') && source.includes('useState)(() => dscodeLoadFlag("verbose"))'), 'verbose command, dispatch, persistence and localized toggle notice are wired');
   assert.throws(() => patchInteraction('unknown upstream'), /drift/);
 });
 test('resume supports latest, exact IDs, and remaining launch options', () => {

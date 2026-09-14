@@ -23,6 +23,13 @@ function dscodeSaveLanguage(code) {
   fs.writeFileSync(dscodeLanguageFile(), JSON.stringify({ language: code }, null, 2) + "\\n");
 }
 function dscodePadEnd(text, width) { return text + " ".repeat(Math.max(1, width - visibleColumns(text))); }
+function dscodeFlagFile(name) { return join(homedir(), ".dsh", "dsh-code", name + ".json"); }
+function dscodeLoadFlag(name, fallback = false) {
+  try { const value = JSON.parse(readFileSync(dscodeFlagFile(name), "utf8"))[name]; return typeof value === "boolean" ? value : fallback; } catch { return fallback; }
+}
+function dscodeSaveFlag(name, value) {
+  try { fs.mkdirSync(join(homedir(), ".dsh", "dsh-code"), { recursive: true }); fs.writeFileSync(dscodeFlagFile(name), JSON.stringify({ [name]: value }, null, 2) + "\\n"); } catch {}
+}
 `;
 
 const CATALOG_ANCHOR = '\t{\n\t\tlabel: "/mouse",\n\t\tdescription: "toggle mouse capture: off to select and copy text, on for wheel scrolling"\n\t},\n';
@@ -118,8 +125,9 @@ export function patchLanguage(text) {
   if (text.includes('// dscode-language-v1')) {
     // Refresh the embedded message tables so translation edits reach an already-patched bundle.
     const start = text.indexOf('const DSCODE_LANGUAGES = ');
-    const end = text.indexOf('function dscodePadEnd(', start);
-    const close = text.indexOf('\n', end) + 1;
+    const marker = text.includes('function dscodeSaveFlag(') ? 'function dscodeSaveFlag(' : 'function dscodePadEnd(';
+    const end = text.indexOf(marker, start);
+    const close = marker === 'function dscodeSaveFlag(' ? text.indexOf('\n}\n', end) + 3 : text.indexOf('\n', end) + 1;
     if (start < 0 || end < 0) throw Error('Patched TUI language runtime drift');
     const current = text.slice(start, close);
     if (current !== LANGUAGE_SOURCE) text = text.slice(0, start) + LANGUAGE_SOURCE + text.slice(close);

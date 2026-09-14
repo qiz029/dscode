@@ -16,7 +16,8 @@ export function userBackgroundRows(rows, columns, measure) {
 
 export function patchUserBackground(text) {
   if (text.includes('// dscode-user-background-v1')) return text;
-  text = replaceOnce(text,
+  // The interaction patch's chat-line source already returns user rows through userBackgroundRows; older bundles still need the swap.
+  if (!text.includes('userBackgroundRows(rows, columns, visibleColumns)')) text = replaceOnce(text,
     'return transcriptEntryLines(entry, columns, false, false, false);',
     'const rows = transcriptEntryLines(entry, columns, false, false, false);\n  return entry.kind === "user" && !entry.notice ? userBackgroundRows(rows, columns, visibleColumns) : rows;');
   const start = text.indexOf('function StyledRows({ lines }) {');
