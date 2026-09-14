@@ -18,7 +18,7 @@ const source = readFileSync(new URL('node_modules/dsh-code/lib/index.mjs', root)
 assert.equal(patchStyle(source), source);
 const entry = new URL(`node_modules/dsh-code/lib/.dscode-style-probe-${process.pid}.mjs`, root);
 // Use the actual bundled Ink renderer and theme, with a captured terminal.
-writeFileSync(entry, source + '\nexport { Header, DscodeActivityLine, DSCODE_SPIN_FRAMES, AgentsLine, StatusLine, StyledRows, dscodeChatLines, Box, Text, render, import_react as react, setTheme, visibleColumns, dscodeActivity, dscodeTpsTone, dscodeTelemetryParts, dscodeTelemetryNodes, DEFAULT_STATUSLINE_ITEMS };\n');
+writeFileSync(entry, source + '\nexport { Header, DscodeActivityLine, DSCODE_ORBIT, dscodeSpinnerCells, AgentsLine, getPalette, StatusLine, StyledRows, dscodeChatLines, Box, Text, render, import_react as react, setTheme, visibleColumns, dscodeActivity, dscodeTpsTone, dscodeTelemetryParts, dscodeTelemetryNodes, DEFAULT_STATUSLINE_ITEMS };\n');
 const out = new URL('artifacts/local/tui-style/', root);
 mkdirSync(out, { recursive: true });
 const now = Date.now();
@@ -42,15 +42,23 @@ process.env.FORCE_COLOR = '3';
 try {
   const ui = await import(entry.href);
   const h = ui.react.createElement;
-  assert.equal(ui.DSCODE_SPIN_FRAMES.length, 10, 'Snowflake spinner has ten orbit frames');
-  const innerRight = new Set(['⠁', '⠃', '⠆', '⡄', '⡀']), innerLeft = new Set(['⢀', '⢠', '⠰', '⠘', '⠈']);
-  for (const frame of ui.DSCODE_SPIN_FRAMES) {
-    assert.equal(frame[1], '❄', 'Snowflake stays in the middle cell');
-    assert.equal(ui.visibleColumns(frame.slice(0, 3).join('')), 3, 'Spinner frames keep a fixed width');
-    if (frame[3] === 'right') assert(frame[0] === ' ' && innerRight.has(frame[2]), 'comet on the right uses the inner dot column');
-    else assert(frame[2] === ' ' && innerLeft.has(frame[0]), 'comet on the left uses the inner dot column');
+  assert.equal(ui.DSCODE_ORBIT.length, 8, 'Snowflake comet has eight orbit positions');
+  const palette = ui.getPalette();
+  const seen = new Set();
+  for (let tick = 0; tick < 8; tick++) {
+    const cells = ui.dscodeSpinnerCells(tick, palette);
+    assert.equal(ui.visibleColumns(cells.left.text + '❄' + cells.right.text), 3, 'Spinner keeps a fixed width');
+    const [side] = ui.DSCODE_ORBIT[tick];
+    const other = side === 'right' ? 'left' : 'right';
+    assert.notEqual(cells[side].text, ' ', 'the comet head is on the expected side');
+    assert.deepEqual(cells[side].color, palette.brandMid);
+    if (tick === 0 || tick === 4) { assert.notEqual(cells[other].text, ' ', 'a dim tail lingers across the crossing'); assert.deepEqual(cells[other].color, palette.dim); }
+    else assert.equal(cells[other].text, ' ', 'no tail on the far side mid-orbit');
+    seen.add(cells.left.text + '|' + cells.right.text);
   }
-  assert.equal(new Set(ui.DSCODE_SPIN_FRAMES.map(frame => frame[0] + frame[2])).size, 10, 'Every frame moves the comet');
+  assert.equal(seen.size, 8, 'Every frame differs');
+  assert.deepEqual(ui.dscodeSpinnerCells(0, palette).flake, palette.brandBright, 'flake is brightest at the top of the orbit');
+  assert.deepEqual(ui.dscodeSpinnerCells(4, palette).flake, palette.brandDeep, 'flake is deepest at the bottom of the orbit');
   assert.match(ui.dscodeActivity([], false), /^Thinking$/);
   assert.match(ui.dscodeActivity([], true), /^Replying$/);
   const tools = [{ kind: 'tool', state: 'running', name: 'shell', arguments: JSON.stringify({ command: 'secret command', description: '验证会话恢复行为' }) }];

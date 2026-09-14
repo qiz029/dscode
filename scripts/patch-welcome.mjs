@@ -99,8 +99,9 @@ const LIVE_BUDGET_V1 = 'const liveBudget = dynamicRows === 0 ? 0 : busy || strea
 const LIVE_BUDGET_V2 = 'const liveBudget = dynamicRows === 0 ? 0 : streamingActive ? Math.max(0, dynamicRows - Math.min(streamingDemand, dynamicRows)) : dynamicRows;';
 
 function patchWelcomeScroll(text) {
-  // Live chat lines follow the verbose toggle; a plain string swap keeps every marker generation idempotent.
+  // Live chat lines follow the verbose toggle and the header receives the animations flag; plain string swaps keep every marker generation idempotent.
   text = text.split('dscodeChatLines(entry, Math.max(1, terminalColumns - 2))').join('dscodeChatLines(entry, Math.max(1, terminalColumns - 2), showReasoning)');
+  text = text.split('(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel })').join('(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel, animated: animations })');
   if (text.includes('// dscode-welcome-scroll-v2')) return text;
   if (text.includes('// dscode-welcome-scroll-v1')) {
     text = text.replace('const welcomeMaxRows = welcomeFull ? 13 :', 'const welcomeMaxRows = welcomeFull ? terminalRows >= 26 ? 14 : 13 :');
@@ -143,7 +144,8 @@ function patchWelcomeScroll(text) {
   const renderedSettled = settledViewportRows > 0 ? settledTail.slice(-settledViewportRows) : [];
   const dynamicRows = Math.max(0, settledBudget - settledViewportRows);`;
   text = text.slice(0, start) + layout + text.slice(end);
-  const headerLine = text.split('\n').find(line => line.includes('(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel })'));
+  text = text.split('(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel })').join('(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel, animated: animations })');
+  const headerLine = text.split('\n').find(line => line.includes('(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel, animated: animations })'));
   if (!headerLine || !headerLine.trim().endsWith('"DSCODE"),')) throw Error('Pinned TUI welcome render drift');
   const headerExpression = headerLine.trim().slice(0, -1);
   text = replaceOnce(text, headerLine, `    welcomeRows > 0 ? (0, import_react.createElement)(Box, { height: welcomeRows, overflowY: "hidden", flexDirection: "column", justifyContent: "flex-end", flexShrink: 0 },
@@ -156,7 +158,8 @@ export function patchWelcome(text, version) {
   if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version)) throw Error('Invalid DSCODE version for welcome box');
   const patched = text.includes('// dscode-welcome-v1');
   if (patched) {
-    const start = text.indexOf('function Header({ cwd = "", model = "", effort = "" }) {');
+    // Both header generations start alike; the newer one also takes `animated`.
+    const start = text.indexOf('function Header({ cwd = "", model = "", effort = ""');
     const tail = '}, project))));\n  }';
     const end = text.indexOf(tail, start) + tail.length;
     if (start < 0 || end <= start + tail.length) throw Error('Patched TUI welcome header drift');
@@ -173,14 +176,16 @@ export function patchWelcome(text, version) {
     'const welcomeFull = terminalRows >= 24 && terminalColumns >= 64;\n  const welcomeChromeRows = welcomeFull ? 22 : terminalRows >= 10 ? 13 : 10;\n  const settledBudget = transcriptVisible ? Math.max(0, terminalRows - welcomeChromeRows - composerGutterRows - (composerRows - 1) - menuRows) : 0;');
   text = replaceOnce(text,
     'terminalRows >= 10 ? (0, import_react.createElement)(Header, { resumed: props.resumed, cwd: props.cwd, branch: props.branch, title: view.title })',
-    'terminalRows >= 10 ? (0, import_react.createElement)(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel })');
+    'terminalRows >= 10 ? (0, import_react.createElement)(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel, animated: animations })');
   return patchWelcomeScroll('// dscode-welcome-v1\n// dscode-welcome-v2\n' + welcomePath.toString() + '\nconst WELCOME_ART = ' + JSON.stringify(WELCOME_ART) + ';\nconst WELCOME_ART_SMALL = ' + JSON.stringify(WELCOME_ART_SMALL) + ';\n' + welcomeArtRows.toString() + '\n' + text);
 }
 
 /** Source of the patched welcome header: pixel snowflake on the left, session facts on the right. */
 function welcomeHeaderSource(version) {
-  return `function Header({ cwd = "", model = "", effort = "" }) {
+  return `function Header({ cwd = "", model = "", effort = "", animated = false }) {
     const stdout = useStdout().stdout;
+    const rippleTick = useFrames(animated ? 450 : 3600000);
+    const ripplePhase = animated ? rippleTick % 4 : 3;
     const columns = stdout?.columns ?? 80;
     const full = (stdout?.rows ?? 30) >= 24 && columns >= 64;
     const width = Math.max(1, full ? Math.min(columns - 2, 84) : columns - 4);
@@ -193,6 +198,9 @@ function welcomeHeaderSource(version) {
     const art = (stdout?.rows ?? 30) >= 26 ? WELCOME_ART : WELCOME_ART_SMALL;
     const luminance = ([red, green, blue]) => red * 299 + green * 587 + blue * 114;
     const tones = [palette.brandDeep, palette.brand, palette.brandBright].sort((left, right) => luminance(left) - luminance(right));
+    // Ripple: the bright band moves core → ring → tips, then one resting frame in the base tones.
+    const rippleBand = { 1: 2, 2: 1, 3: 0 };
+    const tone = level => ripplePhase < 3 ? (rippleBand[level] === ripplePhase ? tones[2] : level === 3 ? tones[1] : tones[0]) : tones[level - 1];
     if (!full) return (0, import_react.createElement)(Box, { flexDirection: "column", paddingX: 2, marginBottom: 1 },
       (0, import_react.createElement)(Text, { wrap: "truncate-end" },
         (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright), bold: true }, "❄ DSCODE"),
@@ -202,7 +210,7 @@ function welcomeHeaderSource(version) {
     return (0, import_react.createElement)(Box, { flexDirection: "column", width, borderStyle: "round", borderColor: inkColor(getPalette().brand), paddingX: 1 },
       (0, import_react.createElement)(Box, { flexDirection: "row" },
         (0, import_react.createElement)(Box, { flexDirection: "column", width: 28 },
-          ...welcomeArtRows(art, { "1": inkColor(tones[0]), "2": inkColor(tones[1]), "3": inkColor(tones[2]) }).map((segments, row) => (0, import_react.createElement)(Text, { key: row }, "  ",
+          ...welcomeArtRows(art, { "1": inkColor(tone(1)), "2": inkColor(tone(2)), "3": inkColor(tone(3)) }).map((segments, row) => (0, import_react.createElement)(Text, { key: row }, "  ",
             ...segments.map((segment, index) => (0, import_react.createElement)(Text, { key: index, color: segment.color || void 0, backgroundColor: segment.background || void 0 }, segment.text))))),
         (0, import_react.createElement)(Box, { flexDirection: "column", width: detailsWidth, marginTop: 2 },
           (0, import_react.createElement)(Text, { color: inkColor(getPalette().text), bold: true }, "DSCODE"),

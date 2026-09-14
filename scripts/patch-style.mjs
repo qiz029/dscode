@@ -137,26 +137,36 @@ function dscodeTelemetryNodes(value, key) {
 `;
 
 const spinnerSource = `
-// A comet orbiting the snowflake clockwise. The side cells use only their inner
-// braille dot column, so every position sits one column from the flake on either
-// side and the orbit stays centred: down the right side, then up the left side.
-// Each frame is [left glyph, flake, right glyph, side that carries the comet].
-const DSCODE_SPIN_FRAMES = [
-  [" ", "\u2744", "\u2801", "right"], [" ", "\u2744", "\u2803", "right"], [" ", "\u2744", "\u2806", "right"], [" ", "\u2744", "\u2844", "right"], [" ", "\u2744", "\u2840", "right"],
-  ["\u2880", "\u2744", " ", "left"], ["\u28a0", "\u2744", " ", "left"], ["\u2830", "\u2744", " ", "left"], ["\u2818", "\u2744", " ", "left"], ["\u2808", "\u2744", " ", "left"]
-];
+// A comet orbiting the snowflake clockwise. Each side cell uses only its inner braille
+// dot column (bit masks), so every position is one column from the flake and the orbit
+// stays centred: down the right side, then up the left side. The comet is two dots long;
+// when it crosses under or over the flake the previous dot lingers dimly in the old cell.
+const DSCODE_ORBIT = [["right", 1], ["right", 2], ["right", 4], ["right", 64], ["left", 128], ["left", 32], ["left", 16], ["left", 8]];
+function dscodeMixTone(from, to, amount) { return from.map((value, index) => Math.round(value + (to[index] - value) * amount)); }
+function dscodeSpinnerCells(tick, palette) {
+  const index = ((tick % DSCODE_ORBIT.length) + DSCODE_ORBIT.length) % DSCODE_ORBIT.length;
+  const [side, bit] = DSCODE_ORBIT[index];
+  const [previousSide, previousBit] = DSCODE_ORBIT[(index + DSCODE_ORBIT.length - 1) % DSCODE_ORBIT.length];
+  const cells = { left: { text: " ", color: palette.brandMid }, right: { text: " ", color: palette.brandMid } };
+  if (previousSide === side) cells[side] = { text: String.fromCharCode(0x2800 | bit | previousBit), color: palette.brandMid };
+  else { cells[side] = { text: String.fromCharCode(0x2800 | bit), color: palette.brandMid }; cells[previousSide] = { text: String.fromCharCode(0x2800 | previousBit), color: palette.dim }; }
+  // The flake breathes with the orbit: brightest as the comet passes the top, deepest at the bottom.
+  const flake = dscodeMixTone(palette.brandDeep, palette.brandBright, (Math.cos(2 * Math.PI * index / DSCODE_ORBIT.length) + 1) / 2);
+  return { left: cells.left, flake, right: cells.right };
+}
 function DscodeActivityLine({ entries, streaming, since, animated = true }) {
   const columns = useStdout().stdout?.columns ?? 80;
-  const tick = useFrames(animated ? 90 : 1000);
+  const tick = useFrames(animated ? 100 : 1000);
   const elapsed = since > 0 ? Math.max(0, Date.now() - since) : 0;
   const suffix = columns >= 64 ? " · " + dscodeT("activity.turn") + " " + runClock(elapsed) + " · " + dscodeT("activity.interrupt") : " · " + dscodeT("activity.turn") + " " + runClock(elapsed);
-  const [left, flake, right] = animated ? DSCODE_SPIN_FRAMES[tick % DSCODE_SPIN_FRAMES.length] : [" ", "\u2744", " "];
+  const palette = getPalette();
+  const spinner = animated ? dscodeSpinnerCells(tick, palette) : { left: { text: " ", color: palette.brandMid }, flake: palette.brandBright, right: { text: " ", color: palette.brandMid } };
   const label = truncateColumns(dscodeActivity(entries, streaming), Math.max(1, columns - 9 - visibleColumns(suffix)));
   return (0, import_react.createElement)(Box, { paddingX: 2 },
     (0, import_react.createElement)(Text, { wrap: "truncate-end" },
-      (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandMid) }, left),
-      (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, flake),
-      (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandMid) }, right),
+      (0, import_react.createElement)(Text, { color: inkColor(spinner.left.color) }, spinner.left.text),
+      (0, import_react.createElement)(Text, { color: inkColor(spinner.flake) }, "\u2744"),
+      (0, import_react.createElement)(Text, { color: inkColor(spinner.right.color) }, spinner.right.text),
       (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, " " + label),
       (0, import_react.createElement)(Text, { color: inkColor(getPalette().dim) }, suffix)));
 }
