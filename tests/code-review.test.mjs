@@ -67,6 +67,8 @@ test('independent review uses a separate tool-free model request and caches unch
   assert.equal(first.status, 'reviewed');
   assert.equal(first.usage.inputTokens, 40);
   assert.equal(calls[0].reasoningEffort, 'high');
+  assert.equal(calls[0].purpose, 'review');
+  assert.equal(calls[0].maxTokens, 8192);
   assert.equal(calls[0].tools, undefined);
   assert.match(JSON.stringify(calls[0].messages), /Fix the bug/);
   const second = await independentReview(ctx, agent, {}, undefined, collect);
@@ -157,4 +159,31 @@ test('review outside a Git repository reports no_repository without a model call
     assert.equal(ran, 1, 'the sync check is cached per workspace');
     assert.equal(isGitWorkspaceSync('/cached/fixture', () => { ran++; throw Object.assign(new Error('boom'), { code: 'EACCES' }); }, 100000), false, 'once the cache expires, any git failure drops the guidance');
   } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test('review retries once after a non-stop finish, surfaces the provider reason, and marks truncated reports partial', async () => {
+  const agent = () => ({ options: {}, session: { header: { cwd: '/fixture' }, requestHeader: () => ({ config: { provider: 'fixture', model: 'test' } }), snapshotEvents: () => [] } });
+  const collect = async () => ({ scope: 'working', label: 'uncommitted changes', diff: 'diff --git a/a b/a\n+new\n' });
+  const stream = (...outcomes) => { let n = 0; return { llm: { async *stream() {
+    const outcome = outcomes[Math.min(n++, outcomes.length - 1)];
+    if (outcome.text) { yield { type: 'block-start', index: 0, blockType: 'text' }; yield { type: 'block-end', index: 0, block: { type: 'text', text: outcome.text } }; }
+    yield { type: 'usage', usage: { inputTokens: 1, outputTokens: 1 } };
+    if (outcome.finish) yield { type: 'finish', reason: outcome.finish };
+  } }, logger: { warn() {} }, calls: () => n }; };
+  const overloaded = { finish: { kind: 'error', failure: { message: 'model stopped: insufficient_system_resource', code: 'INSUFFICIENT_SYSTEM_RESOURCE' } } };
+  const recovered = stream(overloaded, { text: 'No actionable findings in the supplied diff.', finish: { kind: 'stop' } });
+  const ok = await independentReview(recovered, agent(), {}, undefined, collect);
+  assert.equal(ok.status, 'reviewed');
+  assert.equal(recovered.calls(), 2, 'one automatic retry');
+  const stuck = stream(overloaded);
+  await assert.rejects(independentReview(stuck, agent(), {}, undefined, collect), /INSUFFICIENT_SYSTEM_RESOURCE.*do not treat it as a clean review/);
+  assert.equal(stuck.calls(), 2, 'no endless retries');
+  const noFinish = stream({ text: 'partial…' });
+  await assert.rejects(independentReview(noFinish, agent(), {}, undefined, collect), /ended without a result/);
+  const truncated = stream({ text: 'Finding: null check missing in a.', finish: { kind: 'max-tokens' } });
+  const cut = await independentReview(truncated, agent(), {}, undefined, collect);
+  assert.equal(cut.status, 'partial');
+  assert.match(cut.report, /Finding: null check missing[\s\S]*hit its output limit/);
+  assert.equal(truncated.calls(), 1, 'a truncated but usable report is not retried');
+  await assert.rejects(independentReview(stream({ finish: { kind: 'max-tokens' } }), agent(), {}, undefined, collect), /ran out of output tokens/);
 });

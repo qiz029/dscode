@@ -28,36 +28,51 @@ export async function independentReview(ctx, agent, options = {}, signal, collec
   const diffHash = createHash('sha256').update(JSON.stringify({ diff, task, label, model: route.model })).digest('hex').slice(0, 16);
   const prior = results.get(agent);
   if (prior?.diffHash === diffHash) return { ...prior.result, cached: true };
-  const assembler = new BlockAssembler();
   const deadline = AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(90000)]);
   const request = { task, scope: label, diff: redact(diff) };
-  const operation = (async () => {
-    let finished = false;
-    for await (const chunk of ctx.llm.stream({
-      provider: route.provider, model: route.model, reasoningEffort: route.reasoningEffort === 'ultra' ? 'high' : route.reasoningEffort,
-      maxTokens: 4096, system: POLICY, messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(request) }], source: { kind: 'plugin', plugin: name } })], signal: deadline,
-    })) {
-      deadline.throwIfAborted();
-      assembler.push(chunk);
-      if (chunk.type === 'finish') finished = true;
-    }
-    return finished;
-  })();
-  let abortListener;
-  const aborted = new Promise((_, reject) => {
-    abortListener = () => reject(deadline.reason);
-    if (deadline.aborted) reject(deadline.reason);
-    else deadline.addEventListener('abort', abortListener, { once: true });
-  });
-  let finished;
-  try { finished = await Promise.race([operation, aborted]); }
-  finally { deadline.removeEventListener('abort', abortListener); }
-  if (!finished || assembler.finish.kind !== 'stop') throw Error('Code review did not finish; do not treat it as a clean review.');
+  // One model attempt: returns the assembler plus whether the stream delivered a finish chunk.
+  const attempt = async () => {
+    const assembler = new BlockAssembler();
+    const operation = (async () => {
+      let finished = false;
+      for await (const chunk of ctx.llm.stream({
+        provider: route.provider, model: route.model, reasoningEffort: route.reasoningEffort === 'ultra' ? 'high' : route.reasoningEffort, purpose: 'review',
+        maxTokens: 8192, system: POLICY, messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(request) }], source: { kind: 'plugin', plugin: name } })], signal: deadline,
+      })) {
+        deadline.throwIfAborted();
+        assembler.push(chunk);
+        if (chunk.type === 'finish') finished = true;
+      }
+      return finished;
+    })();
+    let abortListener;
+    const aborted = new Promise((_, reject) => {
+      abortListener = () => reject(deadline.reason);
+      if (deadline.aborted) reject(deadline.reason);
+      else deadline.addEventListener('abort', abortListener, { once: true });
+    });
+    try { return { assembler, finished: await Promise.race([operation, aborted]) }; }
+    finally { deadline.removeEventListener('abort', abortListener); }
+  };
+  // Providers occasionally end a stream with a non-stop reason (overload, content filter); retry once before reporting it.
+  let { assembler, finished } = await attempt();
+  let finish = finished ? assembler.finish : undefined;
+  if (!finish || finish.kind === 'error') {
+    ctx.logger?.warn?.(`code review attempt ended ${finish ? `with ${finish.failure?.code ?? finish.kind}` : 'without a finish'}; retrying once`);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    deadline.throwIfAborted();
+    ({ assembler, finished } = await attempt());
+    finish = finished ? assembler.finish : undefined;
+  }
+  if (!finish) throw Error('Code review did not finish: the model stream ended without a result; do not treat it as a clean review.');
+  if (finish.kind === 'error') throw Error(`Code review did not finish: ${finish.failure?.message ?? 'the model stopped'} (${finish.failure?.code ?? 'ERROR'}); do not treat it as a clean review.`);
+  if (finish.kind !== 'stop' && finish.kind !== 'max-tokens') throw Error(`Code review did not finish (${finish.kind}); do not treat it as a clean review.`);
+  const truncated = finish.kind === 'max-tokens';
   const blocks = assembler.blocks();
   if (blocks.some(block => !['text', 'reasoning'].includes(block.type))) throw Error('Code reviewer returned unexpected output.');
   const report = blocks.filter(block => block.type === 'text').map(block => block.text).join('').trim();
-  if (!report) throw Error('Code reviewer returned an empty report.');
-  const result = { status: omitted.length ? 'partial' : 'reviewed', scope: label, report: `${redact(report).slice(0, 16000)}${omitted.length ? `\n\nReview incomplete: ${omitted.length} file(s) were omitted or binary and could not be inspected from the diff.` : ''}`, diffHash, usage: assembler.usage ?? null };
+  if (!report) throw Error(truncated ? 'Code reviewer ran out of output tokens before writing the report; narrow the diff with path and retry.' : 'Code reviewer returned an empty report.');
+  const result = { status: omitted.length || truncated ? 'partial' : 'reviewed', scope: label, report: `${redact(report).slice(0, 16000)}${omitted.length ? `\n\nReview incomplete: ${omitted.length} file(s) were omitted or binary and could not be inspected from the diff.` : ''}${truncated ? '\n\nReview incomplete: the reviewer hit its output limit; later findings may be missing. Narrow the diff with path for a complete pass.' : ''}`, diffHash, usage: assembler.usage ?? null };
   results.set(agent, { diffHash, result });
   return result;
 }
