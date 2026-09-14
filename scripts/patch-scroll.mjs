@@ -14,8 +14,12 @@ export function mouseWheelDirection(unit) {
   return button === 64 ? 1 : button === 65 ? -1 : 0;
 }
 
-const MOUSE_TOGGLE_SOURCE = `let dscodeMouseEnabled = true;
-function dscodeSetMouse(enabled) {
+// Capture is off by default so the terminal's own text selection works; /mouse turns wheel scrolling on and the choice is remembered.
+const MOUSE_STATE_V1 = 'let dscodeMouseEnabled = true;\n';
+const MOUSE_STATE_V2 = 'let dscodeMouseEnabled = dscodeLoadFlag("mouse", false);\n';
+const MOUSE_ENABLE_V1 = '(process.stdout.isTTY === true ? DSCODE_MOUSE_ENABLE : "")';
+const MOUSE_ENABLE_V2 = '(process.stdout.isTTY === true && dscodeMouseEnabled ? DSCODE_MOUSE_ENABLE : "")';
+const MOUSE_TOGGLE_SOURCE = `${MOUSE_STATE_V2}function dscodeSetMouse(enabled) {
   dscodeMouseEnabled = enabled;
   if (process.stdout.isTTY === true) process.stdout.write(enabled ? DSCODE_MOUSE_ENABLE : DSCODE_MOUSE_DISABLE);
   return enabled;
@@ -25,15 +29,22 @@ const MOUSE_CATALOG_ANCHOR = '\t{\n\t\tlabel: "/verbose",\n\t\tdescription: "tog
 const MOUSE_CATALOG_ENTRY = '\t{\n\t\tlabel: "/mouse",\n\t\tdescription: "toggle mouse capture: off to select and copy text, on for wheel scrolling"\n\t},\n';
 const MOUSE_DISPATCH_ANCHOR = '\t\t\tif (text === "/todos") {\n\t\t\t\topenTodos();';
 const MOUSE_DISPATCH_V2 = '\t\t\tif (text === "/mouse") {\n\t\t\t\tnotify(dscodeSetMouse(!dscodeMouseEnabled) ? "mouse on: the wheel scrolls the chat · hold Option (iTerm2) or Fn (Terminal) while dragging to select text" : "mouse off: select and copy freely · PageUp/PageDown scroll the chat · /mouse turns capture back on");\n\t\t\t\treturn;\n\t\t\t}\n';
-const MOUSE_DISPATCH_ENTRY = '\t\t\tif (text === "/mouse") {\n\t\t\t\tnotify(dscodeT(dscodeSetMouse(!dscodeMouseEnabled) ? "mouse.on" : "mouse.off"));\n\t\t\t\treturn;\n\t\t\t}\n';
+const MOUSE_DISPATCH_V3 = '\t\t\tif (text === "/mouse") {\n\t\t\t\tnotify(dscodeT(dscodeSetMouse(!dscodeMouseEnabled) ? "mouse.on" : "mouse.off"));\n\t\t\t\treturn;\n\t\t\t}\n';
+const MOUSE_DISPATCH_ENTRY = '\t\t\tif (text === "/mouse") {\n\t\t\t\tconst enabled = dscodeSetMouse(!dscodeMouseEnabled);\n\t\t\t\tdscodeSaveFlag("mouse", enabled);\n\t\t\t\tnotify(dscodeT(enabled ? "mouse.on" : "mouse.off"));\n\t\t\t\treturn;\n\t\t\t}\n';
 
 /** /mouse releases the terminal mouse so text can be selected and copied; safe to apply repeatedly. */
+function withMouseDefaults(text) {
+  text = text.replace(MOUSE_DISPATCH_V2, MOUSE_DISPATCH_ENTRY).replace(MOUSE_DISPATCH_V3, MOUSE_DISPATCH_ENTRY).replace(MOUSE_STATE_V1, MOUSE_STATE_V2).split(MOUSE_ENABLE_V1).join(MOUSE_ENABLE_V2);
+  if (!text.includes(MOUSE_STATE_V2) || !text.includes(MOUSE_ENABLE_V2) || !text.includes(MOUSE_DISPATCH_ENTRY)) throw Error('Pinned TUI mouse toggle drift');
+  return text;
+}
+
 function patchMouseToggle(text) {
-  if (text.includes('// dscode-scroll-v2')) return text.replace(MOUSE_DISPATCH_V2, MOUSE_DISPATCH_ENTRY);
+  if (text.includes('// dscode-scroll-v2')) return withMouseDefaults(text);
   text = replaceOnce(text, 'const dscodeWheelListeners = new Set();\n', 'const dscodeWheelListeners = new Set();\n' + MOUSE_TOGGLE_SOURCE);
   text = replaceOnce(text, MOUSE_CATALOG_ANCHOR, MOUSE_CATALOG_ANCHOR + MOUSE_CATALOG_ENTRY);
   text = replaceOnce(text, MOUSE_DISPATCH_ANCHOR, MOUSE_DISPATCH_ENTRY + MOUSE_DISPATCH_ANCHOR);
-  return '// dscode-scroll-v2\n' + text;
+  return withMouseDefaults('// dscode-scroll-v2\n' + text);
 }
 
 export function patchScroll(text) {

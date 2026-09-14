@@ -31,7 +31,7 @@ export const MESSAGES = {
     'welcome.model': 'model', 'welcome.effort': 'effort', 'welcome.project': 'project',
     'verbose.on': 'verbose on: thinking and tool calls are shown in the chat', 'verbose.off': 'verbose off',
     'mouse.on': 'mouse on: the wheel scrolls the chat · hold Option (iTerm2) or Fn (Terminal) while dragging to select text',
-    'mouse.off': 'mouse off: select and copy freely · PageUp/PageDown scroll the chat · /mouse turns capture back on',
+    'mouse.off': 'mouse off: select and copy freely · PageUp/PageDown scroll the chat · /mouse turns wheel scrolling on',
     'language.current': 'Language: {name} · /language en | zh-CN | zh-TW | ja | ko | es',
     'language.set': 'language → {name}', 'language.title': '/language — interface language', 'language.currentMark': 'current', 'language.unknown': 'Unknown language "{value}". Choose en, zh-CN, zh-TW, ja, ko or es.',
     'language.saveFailed': 'language save failed: {error}',
