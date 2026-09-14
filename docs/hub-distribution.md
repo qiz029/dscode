@@ -20,7 +20,7 @@ dscode
 DeepSeek 与 OpenRouter 密钥通过 `/login`（`/login openrouter`）在本地保存，`/provider` 在两者之间切换；其他模型密钥在 `/model` 配置，或设置 `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY`。辅助功能/录屏权限由 macOS 授予。
 
 ```sh
-dscode update 0.7.2
+dscode update 0.7.3
 dscode history
 dscode rollback
 dscode doctor

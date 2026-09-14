@@ -40,9 +40,9 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
-**0.7.2** — 终端重新掌管滚动、选择和复制。转录改为通过 Ink `Static` 直接落进终端 scrollback，不再用原地视口，滚轮/拖选/复制都是原生行为，`/mouse` 已删除。页脚改成两行：`● <会话标题> ｜ <权限>` 与 `provider: model @ effort | current | average | context | $花费 / $余额 🔥 | cache hit`；macOS 上等待终端输入的命令也不再冻结本轮。
+**0.7.3** — 新增 `/provider`，在 DeepSeek 官方 API 与 OpenRouter 之间切换：首次切换会为 DeepSeek V4 模型配置 OpenRouter 路由、提示输入 key，并保留当前模型与 effort，两边都能用 Ultra。npm 启动器现在带 `dscode exec`；会话费用账本记录每次模型调用的耗时，并把代码审核、记忆、会话卡片和 `/doctor` 的调用计入所属会话；review 工具不再跳过已提交或已合并的改动。
 
-每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.2 更新说明](docs/releases/0.7.2.md)。
+每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.3 更新说明](docs/releases/0.7.3.md)。
 
 ## 🚀 快速开始
 
@@ -83,11 +83,11 @@ npm start -- --cwd /path/to/project
 
 也可复制 `.env.example` 为 `.env`，仅在本机填写密钥；此方式会优先于 `/login` 保存的凭据。
 
-**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.2.tar.gz`，然后执行：
+**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.3.tar.gz`，然后执行：
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.2.tar.gz -C dscode-install
+tar -xzf dscode-0.7.3.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -96,14 +96,14 @@ sh dscode-install/install.sh
 **若 npm 包名查询暂时返回 404**，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.2.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.3.tgz
 ```
 
 **升级** —— 先更新启动器，再更新已安装的 profile：
 
 ```sh
-npm install -g @toddzheng024/dscode@0.7.2
-dscode update 0.7.2
+npm install -g @toddzheng024/dscode@0.7.3
+dscode update 0.7.3
 ```
 
 `dscode history` 查看保留的版本记录，`dscode rollback` 回到上个 preset 版本。源码、tar 与 npm/Hub 使用不同的数据目录，会话和凭据不会互相迁移。详见 [tar 分发说明](docs/distribution.md) 与 [npm + Hub 分发指南](docs/hub-distribution.md)。

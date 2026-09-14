@@ -2,7 +2,7 @@
 
 新增 npm + Hub 发布路径见 [Hub 分发](hub-distribution.md)。以下保留 tar 安装方式。
 
-交付物是可安装的 `dscode-0.7.2.tar.gz`，不是只有配置的 `.dshprofile`。安装后用户直接运行 `dscode`。npm + Hub 安装已提供，tar 包通过 GitHub Releases 分发；尚无 Homebrew formula。
+交付物是可安装的 `dscode-0.7.3.tar.gz`，不是只有配置的 `.dshprofile`。安装后用户直接运行 `dscode`。npm + Hub 安装已提供，tar 包通过 GitHub Releases 分发；尚无 Homebrew formula。
 
 ## 发布者
 
@@ -10,7 +10,7 @@
 npm run dist
 ```
 
-分发 `artifacts/dscode-0.7.2.tar.gz`。包里包含启动器、preset、依赖 manifest 和完整 lockfile，不含模型密钥、本地覆盖配置、会话、node_modules 或研究文件。安装时从 npm 下载锁定依赖，需要联网。
+分发 `artifacts/dscode-0.7.3.tar.gz`。包里包含启动器、preset、依赖 manifest 和完整 lockfile，不含模型密钥、本地覆盖配置、会话、node_modules 或研究文件。安装时从 npm 下载锁定依赖，需要联网。
 
 ## 使用者
 
@@ -18,7 +18,7 @@ npm run dist
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.2.tar.gz -C dscode-install
+tar -xzf dscode-0.7.3.tar.gz -C dscode-install
 sh dscode-install/install.sh
 cd /path/to/project
 dscode

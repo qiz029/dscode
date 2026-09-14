@@ -10,6 +10,8 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes here. -->
 
+## [0.7.3] - 2026-09-14
+
 ### Added
 
 - `/provider [deepseek|openrouter]` switches the session between DeepSeek's official API and OpenRouter; without an argument it opens a picker with each provider's key status. The first OpenRouter switch declares the pi-ai `openrouter` route in the settings document with DeepSeek V4 Flash, V4 Pro and V4 Flash Vision Exp (a profile the user already has is left alone), asks for a missing key and resumes, then lands on the counterpart of the current model with the same effort when the target offers it. The provider catalog ships beside the TUI as `lib/dscode-providers`, so the repository install and the vendored bundle load it the same way.
