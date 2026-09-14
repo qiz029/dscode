@@ -1,8 +1,10 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
-import { patchDeepSeek, patchBash, patchPersistent, patchSubagent, patchSubagentCore, patchSubagentDriver, patchTerminalBash } from '../scripts/patch-runtime.mjs';
-import { patchMacStdin } from '../scripts/patch-mac-stdin.mjs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { patchDeepSeek, patchBash, patchPersistent, patchSubagent, patchSubagentCore, patchSubagentDriver, patchTerminalBash, patchMacStdinPackage } from '../scripts/patch-runtime.mjs';
+import { patchMacStdin, MAC_INSPECTOR_ANCHOR } from '../scripts/patch-mac-stdin.mjs';
 import { createTestRuntime } from '../scripts/test-runtime.mjs';
 import { pathToFileURL } from 'node:url';
 const fixture = createTestRuntime({ runtime: true });
@@ -86,6 +88,21 @@ test('dscode workers do not see delegation tools or delegation prompt sections',
   const root = { scope: { session: { header: { agentPreset: 'dscode' } } } };
   assert.equal(await assemble(base, root, async () => base), base);
 });
+test('the macOS stdin inspector is patched, reported unchanged, or refused loudly', t => {
+  const missing = mkdtempSync(join(tmpdir(), 'dscode-mac-stdin-'));
+  t.after(() => rmSync(missing, { recursive: true, force: true }));
+  assert.throws(() => patchMacStdinPackage(missing), /not installed under/);
+  assert.equal(patchMacStdinPackage(missing, { required: false }), 'missing');
+  const dir = join(missing, 'node_modules/@deepseek-ai/dsh-subprocess-local');
+  mkdirSync(join(dir, 'lib'), { recursive: true });
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-subprocess-local', version: '0.1.5-rc.1' }));
+  const file = join(dir, 'lib/index.js');
+  writeFileSync(file, `class MacProcessInspector {\n${MAC_INSPECTOR_ANCHOR}\n}\n`);
+  assert.equal(patchMacStdinPackage(missing), 'patched');
+  assert.match(readFileSync(file, 'utf8'), /dscode-mac-stdin-wait-v1/);
+  assert.equal(patchMacStdinPackage(missing), 'unchanged');
+});
+
 test('pinned runtime patches are idempotent and reject unknown upstream code', () => {
   for (const [name, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-subagent-in-process-driver', patchSubagentDriver], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash]]) {
     const text = readFileSync(`${root}/node_modules/@deepseek-ai/${name}/lib/index.js`, 'utf8');

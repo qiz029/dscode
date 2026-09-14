@@ -131,7 +131,14 @@ export function patchSubagentDriver(text) {
   if (text.includes('// dscode-child-cwd-v1')) return text;
   return '// dscode-child-cwd-v1\n' + replaceOnce(text, 'meta: childSessionMeta(parent, childDepth, seed !== void 0),', 'meta: childSessionMeta(parent, childDepth, seed !== void 0, request.workspaceCwd),');
 }
-export function patchRuntime(root) {
+/**
+ * Apply the pinned runtime patches to an installed dependency tree.
+ * @param root - install root holding `node_modules`.
+ * @param options - `requireMacStdin` fails when the macOS process inspector is absent
+ * (the repository install); a staged release build passes false, because a published
+ * package cannot carry its own copy of that package.
+ */
+export function patchRuntime(root, { requireMacStdin = true } = {}) {
   for (const [pkg, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-subagent-in-process-driver', patchSubagentDriver], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash]]) {
     const dir = join(root, 'node_modules/@deepseek-ai', pkg);
     if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== '0.1.5-rc.1') throw new Error('Revalidate runtime patches before upgrading ' + pkg);
@@ -140,28 +147,30 @@ export function patchRuntime(root) {
     const after = patch(before);
     if (before !== after) writeFileSync(path, after);
   }
-  patchMacStdinPackage(root);
+  patchMacStdinPackage(root, { required: requireMacStdin });
 }
 
 // The macOS process inspector lives in a content-hashed chunk, so find the file
 // that carries the stub instead of pinning its name.
-export function patchMacStdinPackage(root) {
+export function patchMacStdinPackage(root, { required = true } = {}) {
   const dir = join(root, 'node_modules/@deepseek-ai/dsh-subprocess-local');
-  // The published bundle installs the registry copy of this package, and a package cannot
-  // depend on a path inside its own tarball (pnpm resolves `file:` against the profile
-  // root), so a staged build legitimately has nothing to patch here. Warn instead of
-  // failing the build, and keep the strict version check whenever the package is present.
   if (!existsSync(join(dir, 'package.json'))) {
-    process.emitWarning('dsh-subprocess-local is not installed here: the macOS stdin probe was not applied to this tree (the npm/Hub bundle keeps the registry copy).');
+    const note = `dsh-subprocess-local is not installed under ${root}: the macOS stdin probe was not applied to this tree.`;
+    if (required) throw new Error(`${note} Run npm ci for a repository install, or pass requireMacStdin: false for a staged release build.`);
+    process.emitWarning(note);
     return 'missing';
   }
   if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== '0.1.5-rc.1') throw new Error('Revalidate runtime patches before upgrading dsh-subprocess-local');
   const lib = join(dir, 'lib');
-  const name = readdirSync(lib).find(entry => entry.endsWith('.js') && readFileSync(join(lib, entry), 'utf8').includes('isStdinWaiting(_pgid, _shellPid)'));
+  // An already patched chunk carries the probe signature (and the marker) instead of the
+  // stub, so recognise both: a re-run must report `unchanged`, not drift.
+  const carrier = entry => entry.endsWith('.js') && /isStdinWaiting\(_?pgid, _?shellPid\)|dscode-mac-stdin-wait-v1/.test(readFileSync(join(lib, entry), 'utf8'));
+  const name = readdirSync(lib).find(carrier);
   if (name === undefined) throw new Error('Pinned macOS stdin probe drift: dsh-subprocess-local');
   const path = join(lib, name);
   const before = readFileSync(path, 'utf8');
   const after = patchMacStdin(before);
-  if (before !== after) writeFileSync(path, after);
+  if (before === after) return 'unchanged';
+  writeFileSync(path, after);
   return 'patched';
 }

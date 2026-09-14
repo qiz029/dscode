@@ -89,7 +89,7 @@ const MAC_INSPECTOR_PROBE = [
   '\t}',
 ].join('\n');
 
-const MAC_INSPECTOR_ANCHOR = [
+export const MAC_INSPECTOR_ANCHOR = [
   '\t\t\treturn Number.isSafeInteger(value) && value > 0 ? value : void 0;',
   '\t\t} catch (_missingProcess) {',
   '\t\t\treturn;',

@@ -35,7 +35,7 @@ rmSync(stage, { recursive: true, force: true }); mkdirSync(join(stage, 'node_mod
 for (const pkg of ['@deepseek-ai/dsh-tool-subagent', '@deepseek-ai/dsh-subagent', '@deepseek-ai/dsh-subagent-in-process-driver', '@deepseek-ai/dsh-subagent-spawn-in-process', '@deepseek-ai/dsh-subagent-fork-in-process', 'dsh-code', '@deepseek-ai/dsh-llm-deepseek', '@deepseek-ai/dsh-tool-bash', '@deepseek-ai/dsh-tool-bash-persistent', '@deepseek-ai/dsh-terminal-bash']) {
   copy('node_modules/' + pkg, join(stage, 'node_modules', pkg));
 }
-patchTui(stage); patchRuntime(stage);
+patchTui(stage); patchRuntime(stage, { requireMacStdin: false });
 const notices = [];
 for (const [pkg, dest] of [['@deepseek-ai/dsh-tool-subagent','subagent'], ['@deepseek-ai/dsh-subagent','subagent-core'], ['@deepseek-ai/dsh-subagent-in-process-driver','subagent-driver'], ['@deepseek-ai/dsh-subagent-spawn-in-process','subagent-spawn'], ['@deepseek-ai/dsh-subagent-fork-in-process','subagent-fork'], ['dsh-code','tui'], ['@deepseek-ai/dsh-llm-deepseek','deepseek'], ['@deepseek-ai/dsh-tool-bash','bash'], ['@deepseek-ai/dsh-tool-bash-persistent','persistent'], ['@deepseek-ai/dsh-terminal-bash','terminal']]) {
   const src = join(stage, 'node_modules', pkg);
