@@ -43,7 +43,12 @@ function publish(artifact) {
 if(phase==='bundle') publish(pack);
 else if(phase==='profile') {
   await npmMetadata();
-  await client.package(pack.name); // require Hub discovery before saving a release
+  // Ask the Hub to pull the package from npm now instead of waiting for its hourly sync.
+  const synced=await client.syncPackage(pack.name);
+  if(synced.status!=='accepted') throw Error(`Hub did not sync ${pack.name}: ${synced.reason ?? synced.status}`);
+  console.log(`Hub synced ${synced.slug ?? pack.name}@${synced.latestVersion ?? '?'} (${synced.versionsAdded ?? 0} new versions)`);
+  const known=await client.package(pack.name); // require Hub discovery of this exact version before saving a release
+  if(!(known.versions ?? []).some(v=>(v.version ?? v)===pack.version)) throw Error(`Hub still lists ${pack.name} up to ${known.latestVersion}; ${pack.version} is not visible yet.`);
   await client.saveProfileDraft({...read(join(out,'profile-draft.json')),visibility:'public'});
   console.log(JSON.stringify(await client.publishProfile('dscode',pack.version,true),null,2));
 } else {

@@ -57,7 +57,7 @@ npm run verify:hub
 
 不能在 bundle/Hub release 可用之前发布 launcher，否则用户的首次启动会失败。新的版本必须重新生成包和 release，不能复用旧完整性哈希。`build:packages` 与 `release:hub` 生成候选产物；只有发布并确认公开 registry 后才算完成发布。v0.1.0 已通过 npm + Hub 公开分发。
 
-发布脚本按阶段执行：`npm run publish:hub -- bundle`、`npm run publish:hub -- profile`、`npm run publish:hub -- launcher`。每阶段核对测试产物哈希；launcher 发布前检查公开 Hub release 的确切版本及完整性。Hub 认领仍需发布者控制台操作，登录使用 `dsh-hub login`。
+发布脚本按阶段执行：`npm run publish:hub -- bundle`、`npm run publish:hub -- profile`、`npm run publish:hub -- launcher`。每阶段核对测试产物哈希；launcher 发布前检查公开 Hub release 的确切版本及完整性。 profile 阶段先调用 Hub 的 `sync` 接口（dsh-hub CLI 0.3.0 起提供）让 Hub 立即从 npm 拉取 bundle，不再等整点同步；同步后仍要求 Hub 已列出该精确版本。Hub 认领仍需发布者控制台操作，登录使用 `dsh-hub login`。
 
 ### 免登录发布（本机）
 
