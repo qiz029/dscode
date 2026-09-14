@@ -42,7 +42,8 @@ export function apply(ctx, config) {
     const decision = await next();
     if (decision.kind !== 'allow') return decision;
     if (exec.agent && stateFor(exec.agent).blocked) return { kind: 'deny', reason: 'Automatic review stopped this turn after repeated denials. Wait for user input.' };
-    if (needsMcpApproval(exec.name)) return { kind: 'ask', reason: `Review MCP action ${exec.name} against the user's authorization` };
+    // Under the never policy an ask is rejected before any handler runs, so gating would disable MCP outright.
+    if (needsMcpApproval(exec.name) && (!exec.agent || ctx.approval?.effectivePolicy?.(exec.agent.session) !== 'never')) return { kind: 'ask', reason: `Review MCP action ${exec.name} against the user's authorization` };
     return decision;
   }, { prepend: true });
   ctx.on('tools/result', exec => {

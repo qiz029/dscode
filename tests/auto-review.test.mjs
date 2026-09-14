@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { apply } from '../plugins/auto-review/index.mjs';
 import { escalationDiagnosticGrant, needsMcpApproval, redact, parseDecision } from '../plugins/auto-review/policy.mjs';
 
-function fixture({ decision = 'allow', timeout = false, budget = 2 } = {}) {
+function fixture({ decision = 'allow', timeout = false, budget = 2, policy = 'ask' } = {}) {
   const auditDirectory = mkdtempSync(join(tmpdir(), 'dscode-review-test-'));
   directories.push(auditDirectory);
   const records = () => auditStore(auditDirectory).read('fixture-session');
@@ -20,7 +20,7 @@ function fixture({ decision = 'allow', timeout = false, budget = 2 } = {}) {
   const agent = { session, inject: message => notices.push(message), cancel: cause => { agent.cancelled = cause; } };
   const ctx = {
     on: (name, fn) => { hooks[name] = fn; }, commands: { register: cmd => { commands[cmd.name] = cmd; } },
-    permissionPresets: { current: () => permission }, logger: { info() {} },
+    permissionPresets: { current: () => permission }, approval: { effectivePolicy: () => policy }, logger: { info() {} },
     llm: { async *stream(options) {
       requests.push(options);
       if (timeout) await new Promise(resolve => setTimeout(resolve, 40));
@@ -46,6 +46,15 @@ test('MCP gate trusts only exact reviewed Chrome read methods', () => {
   assert.equal(needsMcpApproval('bash'), false);
   assert.equal(needsMcpApproval('mcp__chrome__take_snapshot'), false);
   for (const name of ['mcp__chrome__evaluate_script', 'mcp__chrome__click', 'mcp__other__list_safe', 'mcp__chrome__take_screenshot']) assert.equal(needsMcpApproval(name), true);
+});
+
+test('MCP actions ask under the ask policy but run under never, which would reject every ask', async () => {
+  const asking = fixture();
+  asking.setMode('danger-full-access');
+  assert.equal((await asking.pending('mcp__chrome__click', {})).gate.kind, 'ask');
+  const never = fixture({ policy: 'never' });
+  never.setMode('danger-full-access');
+  assert.equal((await never.pending('mcp__chrome__click', {})).gate.kind, 'allow');
 });
 
 test('routine operations cost no review; eligible request receives bounded independent context', async () => {
