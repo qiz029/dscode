@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { Logger } from '@deepseek-ai/cordis';
 import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm';
 import { redact } from '../auto-review/policy.mjs';
+import { t, readLanguage } from '../i18n/messages.mjs';
+const L = (key, params) => t(readLanguage(), key, params);
 
 const MAX_LOG_BYTES = 1024 * 1024;
 const MAX_SESSIONS = 6;
@@ -104,7 +106,7 @@ export async function collectDoctorEvidence(ctx, { agent, cwd = agent?.session.h
   }
   const home = process.env.DSH_HOME ?? process.env.DSCODE_HOME;
   return { cwd: safe(cwd), collectedAt: time(Date.now()),
-    logCoverage: home && existsSync(doctorLogPath(home)) ? '仅记录新版 TUI 启动后的 warning/error。' : '日志文件尚未建立；旧版控制台日志未持久化，无法回溯。',
+    logCoverage: home && existsSync(doctorLogPath(home)) ? L('doctor.logs.new') : L('doctor.logs.none'),
     logs: home ? recentRuntimeLogs(home, ctx.logger?.buffer ?? []) : [], traces };
 }
 
@@ -113,13 +115,13 @@ const SYSTEM = `You are DSCODE's self-diagnostic assistant. Analyze only the sup
 export function localDoctorReport(evidence) {
   const local = evidence.traces.flatMap(t => (t.findings ?? []).map(f => `${t.id}: ${f}`));
   const near300 = local.filter(line => /\bbash took 29\d+s\b|\bbash took 30\d+s\b/.test(line));
-  return `诊断证据：${evidence.traces.length} 个近期会话、${evidence.logs.length} 条 warning/error。${evidence.logs.length ? '' : evidence.logCoverage ?? ''}\n${local.length ? local.slice(-8).join('\n') : '近期 trace 中未发现明确的超时、未完成工具调用或错误事件。'}\n${near300.length >= 2 ? `判断：${near300.length} 次 Bash 调用在约 300 秒结束，符合工具超时特征；trace 不能单独证明触发超时的根因。下一步检查这些调用的 shell 完成标记和终端错误。\n` : ''}${evidence.logs.slice(-5).map(l => `${time(l.time)} ${l.level} ${l.source}: ${l.detail}`).join('\n')}`;
+  return `${L('doctor.evidence', { traces: evidence.traces.length, logs: evidence.logs.length })}${evidence.logs.length ? '' : evidence.logCoverage ?? ''}\n${local.length ? local.slice(-8).join('\n') : L('doctor.noFindings')}\n${near300.length >= 2 ? `${L('doctor.nearTimeout', { count: near300.length })}\n` : ''}${evidence.logs.slice(-5).map(l => `${time(l.time)} ${l.level} ${l.source}: ${l.detail}`).join('\n')}`;
 }
 
 export async function analyzeDoctorEvidence(ctx, evidence, route, signal, { model = true } = {}) {
   const fallback = localDoctorReport(evidence);
   if (!model) return fallback;
-  if (!route?.provider || !route?.model) return `${fallback}\n没有可用的模型路由，无法运行模型分析。`;
+  if (!route?.provider || !route?.model) return `${fallback}\n${L('doctor.noRoute')}`;
   const assembler = new BlockAssembler();
   const deadline = AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(45000)]);
   try {
@@ -134,8 +136,8 @@ export async function analyzeDoctorEvidence(ctx, evidence, route, signal, { mode
     if (blocks.some(b => !['text', 'reasoning'].includes(b.type))) throw Error('model returned unexpected tool output');
     const answer = blocks.filter(b => b.type === 'text').map(b => b.text).join('').trim();
     if (!answer) throw Error('model returned no diagnosis');
-    return `${redact(answer).slice(0, 8000)}\n\n证据范围：${evidence.traces.length} 个近期会话、${evidence.logs.length} 条 warning/error；未读取对话正文、工具参数或工具输出。`;
+    return `${redact(answer).slice(0, 8000)}\n\n${L('doctor.scope', { traces: evidence.traces.length, logs: evidence.logs.length })}`;
   } catch (error) {
-    return `${fallback}\n模型分析未完成：${safe(error.message)}。`;
+    return `${fallback}\n${L('doctor.failed', { error: safe(error.message) })}`;
   }
 }

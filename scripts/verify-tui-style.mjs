@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+process.env.DSCODE_LANGUAGE = 'en'; // the verifier asserts English strings regardless of the machine's saved language
 import { WELCOME_ART, welcomeArtRows } from './patch-welcome.mjs';
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
@@ -48,8 +49,8 @@ try {
     assert.equal(ui.visibleColumns(frame.join('')), 3, 'Spinner frames keep a fixed width');
   }
   assert.equal(new Set(ui.DSCODE_SPIN_FRAMES.map(frame => frame[0] + frame[2])).size, 4, 'Every orbit frame places the arc differently');
-  assert.match(ui.dscodeActivity([], false), /正在思考/);
-  assert.match(ui.dscodeActivity([], true), /正在回复/);
+  assert.match(ui.dscodeActivity([], false), /^Thinking$/);
+  assert.match(ui.dscodeActivity([], true), /^Replying$/);
   const tools = [{ kind: 'tool', state: 'running', name: 'shell', arguments: JSON.stringify({ command: 'secret command', description: '验证会话恢复行为' }) }];
   assert(!ui.dscodeActivity(tools, false).includes('secret command'));
   assert(!ui.DEFAULT_STATUSLINE_ITEMS.includes('tokens'));
@@ -111,7 +112,9 @@ try {
       } else assert.match(plain, /❄ DSCODE/);
       assert(!plain.includes('Deep diving'));
       assert(!plain.includes('⠋'), 'Braille spinner should be gone');
-      assert.match(plain, /❄  正在执行/, 'Static snowflake leads the activity line');
+      assert.match(plain, columns >= 64 ? /❄  Running · shell/ : /❄  Runn/, 'Static snowflake leads the activity line (English by default)');
+      if (columns >= 64) assert.match(plain, /Esc to interrupt/); else assert(!plain.includes('Esc to interrupt'), 'the interrupt hint yields to the label on narrow terminals');
+      assert.match(plain, /this turn/, 'activity suffix is localized');
       assert(!plain.includes('secret command'));
       assert.match(plain, /ultra/);
       if (columns >= 80) {

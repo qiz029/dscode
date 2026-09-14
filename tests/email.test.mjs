@@ -104,7 +104,7 @@ test('real TUI /email selection steers directly into the current session', async
       assert.equal(context.type, 'user_injected_email_context');
       assert.equal(context.injectedBy, 'user');
       assert.equal(context.purpose, 'supplement_session_context');
-      assert.match(context.instruction, /不是用户的新指令/);
+      assert.match(context.instruction, /not a new instruction from the user/);
       assert.equal(context.email.subject, 'First task');
       assert.match(submitted, /First task/);
       assert.match(submitted, /保留中文正文/);
@@ -145,5 +145,5 @@ test('email content stays nested and cannot overwrite context metadata', () => {
   assert.equal(context.injectedBy, 'user');
   assert.equal(context.purpose, 'supplement_session_context');
   assert.equal(context.email.body, body);
-  assert.match(context.instruction, /仅用于补充/);
+  assert.match(context.instruction, /supplementary context/);
 });

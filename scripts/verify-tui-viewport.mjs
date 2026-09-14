@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+process.env.DSCODE_LANGUAGE = 'en';
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { stripVTControlCharacters } from 'node:util';

@@ -24,11 +24,12 @@ function dscodeSetMouse(enabled) {
 const MOUSE_CATALOG_ANCHOR = '\t{\n\t\tlabel: "/verbose",\n\t\tdescription: "toggle thinking and tool call details in the chat"\n\t},\n';
 const MOUSE_CATALOG_ENTRY = '\t{\n\t\tlabel: "/mouse",\n\t\tdescription: "toggle mouse capture: off to select and copy text, on for wheel scrolling"\n\t},\n';
 const MOUSE_DISPATCH_ANCHOR = '\t\t\tif (text === "/todos") {\n\t\t\t\topenTodos();';
-const MOUSE_DISPATCH_ENTRY = '\t\t\tif (text === "/mouse") {\n\t\t\t\tnotify(dscodeSetMouse(!dscodeMouseEnabled) ? "mouse on: the wheel scrolls the chat · hold Option (iTerm2) or Fn (Terminal) while dragging to select text" : "mouse off: select and copy freely · PageUp/PageDown scroll the chat · /mouse turns capture back on");\n\t\t\t\treturn;\n\t\t\t}\n';
+const MOUSE_DISPATCH_V2 = '\t\t\tif (text === "/mouse") {\n\t\t\t\tnotify(dscodeSetMouse(!dscodeMouseEnabled) ? "mouse on: the wheel scrolls the chat · hold Option (iTerm2) or Fn (Terminal) while dragging to select text" : "mouse off: select and copy freely · PageUp/PageDown scroll the chat · /mouse turns capture back on");\n\t\t\t\treturn;\n\t\t\t}\n';
+const MOUSE_DISPATCH_ENTRY = '\t\t\tif (text === "/mouse") {\n\t\t\t\tnotify(dscodeT(dscodeSetMouse(!dscodeMouseEnabled) ? "mouse.on" : "mouse.off"));\n\t\t\t\treturn;\n\t\t\t}\n';
 
 /** /mouse releases the terminal mouse so text can be selected and copied; safe to apply repeatedly. */
 function patchMouseToggle(text) {
-  if (text.includes('// dscode-scroll-v2')) return text;
+  if (text.includes('// dscode-scroll-v2')) return text.replace(MOUSE_DISPATCH_V2, MOUSE_DISPATCH_ENTRY);
   text = replaceOnce(text, 'const dscodeWheelListeners = new Set();\n', 'const dscodeWheelListeners = new Set();\n' + MOUSE_TOGGLE_SOURCE);
   text = replaceOnce(text, MOUSE_CATALOG_ANCHOR, MOUSE_CATALOG_ANCHOR + MOUSE_CATALOG_ENTRY);
   text = replaceOnce(text, MOUSE_DISPATCH_ANCHOR, MOUSE_DISPATCH_ENTRY + MOUSE_DISPATCH_ANCHOR);

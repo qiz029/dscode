@@ -63,7 +63,7 @@ test('chat hides reasoning and tools by default and shows them dimmed in verbose
   assert.match(text(long[8]), /… 2 more lines · Ctrl\+O/);
   assert(!text(long[1]).includes('\n'), 'thinking newlines collapse into one flowing paragraph');
   assert.equal(patchInteraction(source), source);
-  assert(source.includes('label: "/verbose"') && source.includes('if (text === "/verbose")') && source.includes('notify(next ? "verbose on'), 'verbose command, dispatch and toggle notice are wired');
+  assert(source.includes('label: "/verbose"') && source.includes('if (text === "/verbose")') && source.includes('notify(dscodeT(next ? "verbose.on" : "verbose.off"))'), 'verbose command, dispatch and localized toggle notice are wired');
   assert.throws(() => patchInteraction('unknown upstream'), /drift/);
 });
 test('resume supports latest, exact IDs, and remaining launch options', () => {

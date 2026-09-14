@@ -13,6 +13,7 @@ import { patchEmail } from './patch-email.mjs';
 import { patchInterrupt } from './patch-interrupt.mjs';
 import { patchScroll } from './patch-scroll.mjs';
 import { patchTurnDivider } from './patch-turn-divider.mjs';
+import { patchLanguage } from './patch-language.mjs';
 import { patchUserBackground } from './patch-user-background.mjs';
 import { patchLargePaste } from './patch-large-paste.mjs';
 import { patchImageMarker } from './patch-image-marker.mjs';
@@ -56,6 +57,7 @@ export function patchTui(root) {
   after = patchImageMarker(after);
   after = patchClipboardImage(after, root);
   after = patchReview(after);
+  after = patchLanguage(after);
   cpSync(new URL('../plugins/email/', import.meta.url), join(dir, 'lib/dscode-email'), { recursive: true });
   if (before !== after) writeFileSync(path, after);
 }

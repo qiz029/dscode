@@ -29,10 +29,11 @@ const DISPATCH_ANCHOR = '\t\t\tif (text === "/todos") {\n\t\t\t\topenTodos();';
 const DISPATCH_ENTRY = '\t\t\tif (text === "/verbose") {\n\t\t\t\ttoggleReasoning();\n\t\t\t\treturn;\n\t\t\t}\n';
 const TOGGLE_V1 = '\t\ttoggleReasoning: () => {\n\t\t\tsetShowReasoning((current) => !current);\n\t\t\trefreshScreen();\n\t\t},';
 const TOGGLE_V2 = '\t\ttoggleReasoning: () => {\n\t\t\tconst next = !showReasoning;\n\t\t\tsetShowReasoning(next);\n\t\t\tnotify(next ? "verbose on: thinking and tool calls are shown in the chat" : "verbose off");\n\t\t\trefreshScreen();\n\t\t},';
+const TOGGLE_V3 = '\t\ttoggleReasoning: () => {\n\t\t\tconst next = !showReasoning;\n\t\t\tsetShowReasoning(next);\n\t\t\tnotify(dscodeT(next ? "verbose.on" : "verbose.off"));\n\t\t\trefreshScreen();\n\t\t},';
 
 /** Upgrade an already-patched bundle to the verbose chat rendering; safe to apply repeatedly. */
 function patchVerbose(text) {
-  if (text.includes('// dscode-interaction-v2')) return text;
+  if (text.includes('// dscode-interaction-v2')) return text.replace(TOGGLE_V2, TOGGLE_V3);
   const start = text.indexOf('function dscodeChatLines(');
   const end = text.indexOf('\n}\n', start) + 3;
   if (start < 0 || end <= start) throw Error('Patched TUI chat lines drift');
@@ -41,7 +42,7 @@ function patchVerbose(text) {
   text = text.split('dscodeChatLines(entry, Math.max(1, terminalColumns - 2))').join('dscodeChatLines(entry, Math.max(1, terminalColumns - 2), showReasoning)');
   text = replaceOnce(text, CATALOG_ANCHOR, CATALOG_ANCHOR + CATALOG_ENTRY);
   text = replaceOnce(text, DISPATCH_ANCHOR, DISPATCH_ENTRY + DISPATCH_ANCHOR);
-  text = replaceOnce(text, TOGGLE_V1, TOGGLE_V2);
+  text = replaceOnce(text, TOGGLE_V1, TOGGLE_V3);
   return '// dscode-interaction-v2\n' + text;
 }
 

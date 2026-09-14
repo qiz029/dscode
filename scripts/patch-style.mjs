@@ -7,7 +7,10 @@ export function patchStyle(text) {
     let patched = text
     .replace('...DEFAULT_STATUSLINE_ITEMS.filter((id) => !seen.has(id))', '...STATUS_ITEMS.map(item => item.id).filter((id) => !seen.has(id))')
     .replace('const summary = "agents " + counts + " · /agents";', agentSummary)
-    .replace(': " · " + runClock(elapsed);', ': " · 本轮 " + runClock(elapsed);')
+    .replace(': " · " + runClock(elapsed);', ': " · " + dscodeT("activity.turn") + " " + runClock(elapsed);')
+    .replace(': " · 本轮 " + runClock(elapsed);', ': " · " + dscodeT("activity.turn") + " " + runClock(elapsed);')
+    .replace(agentSummaryV1, agentSummary)
+    .replace('[running.length + " running", idle ? idle + " idle" : "", done ? done + " done" : "", total > rows.length ? total + " total" : ""]', '[running.length + " " + dscodeT("agents.running"), idle ? idle + " " + dscodeT("agents.idle") : "", done ? done + " " + dscodeT("agents.done") : "", total > rows.length ? total + " " + dscodeT("agents.total") : ""]')
     .replace('Math.floor(columns / 2) - 4', 'Math.min(columns - 8, Math.max(40, Math.floor(columns * 0.8) - 4))')
     .replace('Math.floor(columns * 0.6) - 4', 'Math.min(columns - 8, Math.max(40, Math.floor(columns * 0.8) - 4))')
     .replace('telemetry: columns >= 64 ?', 'telemetry: columns >= 48 ?')
@@ -21,12 +24,13 @@ export function patchStyle(text) {
     .replace('key: key + "divider", color: inkColor(getPalette().dim) }, "｜"));', 'key: key + "divider", color: inkColor(getPalette().dim) }, "｜ "));')
     .replace('const rightParts = [];\n\t\trow.right.forEach', 'const rightParts = [];\n        if (key === "s2" && row.left.length > 0 && row.right.length > 0) rightParts.push((0, import_react.createElement)(Text, { key: key + "divider", color: inkColor(getPalette().dim) }, "｜ "));\n\t\trow.right.forEach');
     if (!patched.includes('// dscode-tps-colors-v1')) patched = patched.replace('function dscodeActivity(entries, streaming) {', tpsColorSource + '\nfunction dscodeActivity(entries, streaming) {');
-    if (!patched.includes('DSCODE_SPIN_FRAMES')) {
-      const start = patched.indexOf('function DscodeActivityLine(');
-      const end = patched.indexOf('\n}', start) + 2;
-      if (start < 0 || end <= start) throw Error('Patched TUI activity line drift');
-      patched = patched.slice(0, start) + spinnerSource.trim() + '\n' + patched.slice(end);
-    }
+    // Resync the activity line with the current source (spinner, translations) whenever it drifted.
+    const activityStart = patched.indexOf('function dscodeActivity(');
+    const activityEnd = patched.indexOf('\n}\n', patched.indexOf('function DscodeActivityLine(')) + 3;
+    if (activityStart < 0 || activityEnd <= activityStart) throw Error('Patched TUI activity line drift');
+    const canonical = activitySource + '\n' + spinnerSource;
+    const activityCurrent = canonical.slice(canonical.indexOf('function dscodeActivity('), canonical.indexOf('\n}\n', canonical.indexOf('function DscodeActivityLine(')) + 3);
+    if (patched.slice(activityStart, activityEnd) !== activityCurrent) patched = patched.slice(0, activityStart) + activityCurrent + patched.slice(activityEnd);
     return patched.replace(telemetryTextAnchor, telemetryColorRender);
   }
   const patch = (from, to) => { text = replaceOnce(text, from, to); };
@@ -63,7 +67,7 @@ export function patchStyle(text) {
     const idle = rows.filter(row => row.state === "idle").length;
     const done = rows.filter(row => row.state === "done").length;
     const active = [...running].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-    const counts = [running.length + " running", idle ? idle + " idle" : "", done ? done + " done" : "", total > rows.length ? total + " total" : ""].filter(Boolean).join(" · ");
+    const counts = [running.length + " " + dscodeT("agents.running"), idle ? idle + " " + dscodeT("agents.idle") : "", done ? done + " " + dscodeT("agents.done") : "", total > rows.length ? total + " " + dscodeT("agents.total") : ""].filter(Boolean).join(" · ");
     ${agentSummary}
     const detail = active && columns >= 80 ? " — " + singleLineText(active.label) + " · " + singleLineText(active.activity) : "";
     return (0, import_react.createElement)(Box, { paddingX: 2 },
@@ -139,9 +143,9 @@ function DscodeActivityLine({ entries, streaming, since, animated = true }) {
   const columns = useStdout().stdout?.columns ?? 80;
   const tick = useFrames(animated ? 220 : 1000);
   const elapsed = since > 0 ? Math.max(0, Date.now() - since) : 0;
-  const suffix = columns >= 48 ? " · 本轮 " + runClock(elapsed) + " · Esc 中断" : " · 本轮 " + runClock(elapsed);
+  const suffix = columns >= 64 ? " · " + dscodeT("activity.turn") + " " + runClock(elapsed) + " · " + dscodeT("activity.interrupt") : " · " + dscodeT("activity.turn") + " " + runClock(elapsed);
   const [left, flake, right] = animated ? DSCODE_SPIN_FRAMES[tick % DSCODE_SPIN_FRAMES.length] : [" ", "\u2744", " "];
-  const label = truncateColumns(dscodeActivity(entries, streaming), Math.max(1, columns - 8 - visibleColumns(suffix)));
+  const label = truncateColumns(dscodeActivity(entries, streaming), Math.max(1, columns - 9 - visibleColumns(suffix)));
   return (0, import_react.createElement)(Box, { paddingX: 2 },
     (0, import_react.createElement)(Text, { wrap: "truncate-end" },
       (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandMid) }, left),
@@ -156,7 +160,7 @@ const activitySource = `
 function dscodeActivity(entries, streaming) {
   const running = entries.filter(entry => entry.kind === "tool" && entry.state === "running");
   const tool = running.at(-1);
-  if (!tool) return streaming ? "正在回复" : "正在思考";
+  if (!tool) return streaming ? dscodeT("activity.replying") : dscodeT("activity.thinking");
   let description = "";
   try {
     if (typeof tool.arguments === "string" && tool.arguments.length <= 4096) {
@@ -166,9 +170,10 @@ function dscodeActivity(entries, streaming) {
   } catch {}
   // No raw argument/command dump in the chat chrome. A supplied description
   // is a task label, not a claim that the command succeeded.
-  return "正在执行 · " + singleLineText(tool.name) + (running.length > 1 ? " +" + (running.length - 1) : "") +
+  return dscodeT("activity.running") + " · " + singleLineText(tool.name) + (running.length > 1 ? " +" + (running.length - 1) : "") +
     (description ? " · " + truncateColumns(singleLineText(description), 56) : "");
 }
 `;
 
-const agentSummary = 'const summary = "agents " + (columns < 60 ? running.length + " running" : counts) + " · /agents";';
+const agentSummary = 'const summary = "agents " + (columns < 60 ? running.length + " " + dscodeT("agents.running") : counts) + " · /agents";';
+const agentSummaryV1 = 'const summary = "agents " + (columns < 60 ? running.length + " running" : counts) + " · /agents";';

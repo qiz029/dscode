@@ -48,6 +48,6 @@ test('doctor collects current and recent persisted sessions and falls back when 
   }, logger: { buffer: [] } };
   const evidence = await collectDoctorEvidence(ctx, { agent: { session: current }, cwd: '/work' });
   assert.deepEqual(evidence.traces.map(t => t.id), ['current', 'older']);
-  assert.match(await analyzeDoctorEvidence(ctx, evidence, undefined), /没有可用的模型路由/);
+  assert.match(await analyzeDoctorEvidence(ctx, evidence, undefined), /No model route is available/);
   assert.match(doctorOverlay('/path/to/doctor-cli.mjs'), /dscode-doctor-cli/);
 });

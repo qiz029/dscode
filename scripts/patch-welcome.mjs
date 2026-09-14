@@ -208,10 +208,10 @@ function welcomeHeaderSource(version) {
           (0, import_react.createElement)(Text, { color: inkColor(getPalette().text), bold: true }, "DSCODE"),
           (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandDeep) }, "────────────"),
           (0, import_react.createElement)(Text, { color: inkColor(getPalette().dim) }, "v${version}"),
-          (0, import_react.createElement)(Text, { wrap: "truncate-end" }, truncateColumns("model    " + modelName, detailsWidth)),
-          (0, import_react.createElement)(Text, { wrap: "truncate-end" }, truncateColumns("effort   " + effortName, detailsWidth)),
+          (0, import_react.createElement)(Text, { wrap: "truncate-end" }, truncateColumns(dscodePadEnd(dscodeT("welcome.model"), 9) + modelName, detailsWidth)),
+          (0, import_react.createElement)(Text, { wrap: "truncate-end" }, truncateColumns(dscodePadEnd(dscodeT("welcome.effort"), 9) + effortName, detailsWidth)),
           (0, import_react.createElement)(Text, null, " "),
-          (0, import_react.createElement)(Text, { color: inkColor(getPalette().dim) }, "project"),
+          (0, import_react.createElement)(Text, { color: inkColor(getPalette().dim) }, dscodeT("welcome.project")),
           (0, import_react.createElement)(Text, { wrap: "truncate-end" }, project))));
   }`;
 }
