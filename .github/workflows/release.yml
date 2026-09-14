@@ -47,14 +47,16 @@ jobs:
           npm run release:hub
           npm run dist
       - run: npm run verify:hub
+      # One tarball keeps the exact layout: upload-artifact roots the archive at the
+      # least common ancestor of its paths, which silently dropped the `artifacts/`
+      # prefix and left the publish job without bundle-pack.json.
+      - name: Pack the verified artifacts for the publish job
+        run: tar -czf release-candidates.tar.gz artifacts/npm artifacts/local/hub-verification.json artifacts/dscode-*.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: release-candidates
           if-no-files-found: error
-          path: |
-            artifacts/npm
-            artifacts/local/hub-verification.json
-            artifacts/dscode-*.tar.gz
+          path: release-candidates.tar.gz
 
   publish:
     needs: build
@@ -74,6 +76,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: release-candidates
+      - name: Restore the verified artifacts
+        run: |
+          tar -xzf release-candidates.tar.gz
+          test -f artifacts/npm/bundle-pack.json || { echo "::error::the release candidate archive is incomplete"; exit 1; }
+          test -f artifacts/local/hub-verification.json || { echo "::error::the hub verification record is missing"; exit 1; }
       # Read-only: both tokens authenticate and this version is still free. A manual
       # dispatch with verify_credentials stops here.
       - name: Check the publishing credentials
