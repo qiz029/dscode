@@ -74,7 +74,8 @@ test('real TUI /email selection steers directly into the current session', async
       await tick(); await input('/email'); await input('\r');
       assert.match(frame(), /Email.*newest/, errors.join(''));
       assert(frame().indexOf('Newer task') < frame().lastIndexOf('First task'));
-      assert.equal(frame().split('\n').length, terminalRows - 1, frame());
+      // Mode A has no full-screen frame, and a stream chunk carries the Static rows
+      // printed with it, so only the per-line width is a stable invariant here.
       for (const line of frame().split('\n')) assert(ui.visibleColumns(line) <= columns);
       if (columns === 120) {
         await input('i');

@@ -57,3 +57,28 @@ export function parseDecision(text) {
       Object.keys(value).some(key => !['decision', 'reason'].includes(key))) throw new Error('Invalid reviewer response');
   return { decision: value.decision, reason: redact(value.reason) };
 }
+
+/**
+ * Read-only diagnostics that cannot change state: the only escalation class the
+ * agent may grant itself, one exact argv at a time. Everything else stays human.
+ */
+const ESCALATION_DIAGNOSTICS = new Set(['ps', 'lsof', 'pgrep', 'sw_vers', 'uname', 'id', 'date', 'hostname', 'pwd', 'sysctl']);
+// Quotes, substitution, redirects and chaining all mean the command can do more
+// than the diagnostic whose name it starts with.
+const SHELL_META = /[;&|<>`$(){}\[\]\n\\'"]/;
+
+/**
+ * Match one pending escalation against the read-only diagnostic allowlist.
+ * @param toolName - Pending tool name.
+ * @param args - Its exact arguments (the caller binds the grant to these).
+ * @returns The matched command, or undefined when a human must decide.
+ */
+export function escalationDiagnosticGrant(toolName, args) {
+  if (toolName !== 'shell_retry') return undefined;
+  if (typeof args?.sandbox_permissions !== 'string' || args.sandbox_permissions.length === 0) return undefined;
+  const command = typeof args?.command === 'string' ? args.command.trim() : '';
+  if (command.length === 0 || command.length > 200 || SHELL_META.test(command)) return undefined;
+  const argv = command.split(/\s+/);
+  if (!ESCALATION_DIAGNOSTICS.has(argv[0])) return undefined;
+  return { command, argv };
+}

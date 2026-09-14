@@ -1,5 +1,46 @@
 import { replaceOnce } from './patch-runtime.mjs';
 
+// The footer's second row leads with the model (`provider: model @ effort`), while the
+// status line's first row leads with the session title — falling back to the model while
+// the session has no title yet.
+export const FOOTER_ROWS_SOURCE = `
+function dscodeFooterHeader(facts, stats) {
+  const raw = typeof facts?.model === "string" ? facts.model : "";
+  if (raw === "") return "";
+  const cut = raw.indexOf("/");
+  const provider = cut > 0 ? raw.slice(0, cut) : "";
+  const model = cut > 0 ? raw.slice(cut + 1) : raw;
+  const effort = typeof facts?.effort === "string" && facts.effort !== "" ? facts.effort : (typeof stats?.reasoningEffort === "string" ? stats.reasoningEffort : "");
+  return (provider === "" ? model : provider + ": " + model) + (effort === "" ? "" : " @ " + effort);
+}
+function dscodeStatusLead(facts, model, effort) {
+  const source = facts?.title !== void 0 && facts.title !== "" ? facts.title : facts?.sessionId;
+  const title = source === void 0 || source === "" ? "" : truncateColumns(safe(source), TITLE_BUDGET);
+  if (title !== "") return title;
+  return effort === "" ? model : model + " \uff5c " + effort;
+}
+`;
+const FOOTER_ROW_ANCHORS = {
+  modelGuard: '\tif (model !== "" && enabled.has("model")) {',
+  modelText: [
+    '\t\t\ttext: effort === "" ? model : `${model}@${effort}`,',
+    '\t\t\ttext: effort === "" ? model : `${model} \uff5c ${effort}`,',
+  ],
+  titleRow: '\tconst label = truncateColumns(safe(facts.title !== void 0 && facts.title !== "" ? facts.title : facts.sessionId), TITLE_BUDGET);\n\tif (label !== "" && enabled.has("title")) row2.push({\n\t\tgroup: { spans: [{\n\t\t\ttext: label,\n\t\t\ttone: "meta"\n\t\t}] },\n\t\trank: RANK_TITLE,\n\t\tid: "title"\n\t});',
+  permission: '\tif (permission !== "" && enabled.has("permission")) {\n\t\tright.push({\n\t\t\tspan: {\n\t\t\t\ttext: permission,\n\t\t\t\ttone: permissionTone(permission)\n\t\t\t},\n\t\t\trank: RANK_BADGE,\n\t\t\tid: "permission"\n\t\t});\n\t\tbadge = right.length - 1;\n\t}',
+};
+const PERMISSION_LEFT = '\tif (permission !== "" && enabled.has("permission")) {\n\t\t// dscode-footer-rows-v1: the permission rides row 1 next to the title.\n\t\tleft.push({\n\t\t\tgroup: { spans: [{\n\t\t\t\ttext: permission,\n\t\t\t\ttone: permissionTone(permission)\n\t\t\t}] },\n\t\t\trank: RANK_BADGE,\n\t\t\tid: "permission"\n\t\t});\n\t\tbadge = left.length - 1;\n\t}';
+/** Row 1 carries `title | permission`; the model moves into the footer telemetry header. */
+export function footerRows(text) {
+  if (text.includes('// dscode-footer-rows-v1')) return text;
+  const forms = FOOTER_ROW_ANCHORS.modelText.filter(candidate => text.includes(candidate));
+  if (forms.length !== 1) throw new Error('Unsupported DSH-Code status line anchors; refusing an ambiguous footer row patch');
+  text = replaceOnce(text, FOOTER_ROW_ANCHORS.modelGuard, '\t// dscode-footer-rows-v1: the title leads row 1, the model rides the footer header.\n\tif ((model !== "" && enabled.has("model")) || enabled.has("title")) {');
+  text = replaceOnce(text, forms[0], '\t\t\ttext: dscodeStatusLead(facts, model, effort),');
+  text = replaceOnce(text, FOOTER_ROW_ANCHORS.titleRow, '\t// dscode-footer-rows-v1: the title moved to the identity lead on row 1.');
+  return replaceOnce(text, FOOTER_ROW_ANCHORS.permission, PERMISSION_LEFT);
+}
+
 // Keep the presentation changes together; patch the pinned upstream renderer
 // without adding a second UI framework or touching its input/IME ownership.
 export function patchStyle(text) {
@@ -24,6 +65,11 @@ export function patchStyle(text) {
     .replace('key: key + "divider", color: inkColor(getPalette().dim) }, "｜"));', 'key: key + "divider", color: inkColor(getPalette().dim) }, "｜ "));')
     .replace('const rightParts = [];\n\t\trow.right.forEach', 'const rightParts = [];\n        if (key === "s2" && row.left.length > 0 && row.right.length > 0) rightParts.push((0, import_react.createElement)(Text, { key: key + "divider", color: inkColor(getPalette().dim) }, "｜ "));\n\t\trow.right.forEach');
     if (!patched.includes('// dscode-tps-colors-v1')) patched = patched.replace('function dscodeActivity(entries, streaming) {', tpsColorSource + '\nfunction dscodeActivity(entries, streaming) {');
+    if (!patched.includes('// dscode-footer-rows-v1')) {
+      if (!patched.includes('function dscodeFooterHeader(')) patched = FOOTER_ROWS_SOURCE + '\n' + patched;
+      patched = patched.replace('dscodeFooterFor(facts.fullSessionId, stats, Math.max(1, Math.min(columns - 8, Math.max(40, Math.floor(columns * 0.8) - 4))))', 'dscodeFooterFor(facts.fullSessionId, stats, Math.max(1, Math.min(columns - 8, Math.max(40, Math.floor(columns * 0.8) - 4))), dscodeFooterHeader(facts, stats))');
+      patched = footerRows(patched);
+    }
     // Resync the activity line with the current source (spinner, translations) whenever it drifted.
     const activityStart = patched.indexOf('function dscodeActivity(');
     const activityEnd = patched.indexOf('\n}\n', patched.indexOf('function DscodeActivityLine(')) + 3;
@@ -82,7 +128,7 @@ export function patchStyle(text) {
   patch('`${model}@${effort}`', '`${model} ｜ ${effort}`');
   patch('\t\t\tmodel: modelLabel,', '\t\t\tmodel: modelLabel,\n            effort: effortLabel,');
   patch('\t\tfacts.model,', '\t\tfacts.model,\n        facts.effort,');
-  patch('facts = { ...facts, telemetry: dscodeFooterFor(facts.fullSessionId, stats, Math.max(1, columns - 6)) };', 'facts = { ...facts, telemetry: columns >= 48 ? dscodeFooterFor(facts.fullSessionId, stats, Math.max(1, Math.min(columns - 8, Math.max(40, Math.floor(columns * 0.8) - 4)))) : "" };');
+  patch('facts = { ...facts, telemetry: dscodeFooterFor(facts.fullSessionId, stats, Math.max(1, columns - 6)) };', 'facts = { ...facts, telemetry: columns >= 48 ? dscodeFooterFor(facts.fullSessionId, stats, Math.max(1, Math.min(columns - 8, Math.max(40, Math.floor(columns * 0.8) - 4))), dscodeFooterHeader(facts, stats)) : "" };');
   patch('right: facts.telemetry ? [{ text: facts.telemetry, tone: "value" }] : [],', 'right: facts.telemetry ? [{ text: facts.telemetry, tone: "meta" }] : [],');
   patch('const STATUS_ITEM_SEPARATOR = " · ";', 'const STATUS_ITEM_SEPARATOR = " ｜ ";');
   patch('function sep() {\n\treturn {\n\t\ttext: " · ",', 'function sep() {\n\treturn {\n\t\ttext: " ｜ ",');
@@ -95,7 +141,8 @@ export function patchStyle(text) {
   // One animation owns the running state; the editor remains a stable target.
   patch('busy ? (0, import_react.createElement)(BusyChase, { animated: animations })', 'busy ? (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright) }, "› ")');
   patch('active: waveTier !== null && waveStyle !== null && !busy && !preparingImages && animations && waveArmed,', 'active: false, // DSCODE keeps the input band stable');
-  return '// dscode-style-v1\n' + tpsColorSource + '\n' + activitySource + '\n' + spinnerSource + '\n' + text;
+  text = footerRows(text);
+  return '// dscode-style-v1\n' + FOOTER_ROWS_SOURCE + '\n' + tpsColorSource + '\n' + activitySource + '\n' + spinnerSource + '\n' + text;
 }
 
 const telemetryTextAnchor = '}, span.text));\n\t\t});\n\t\tif (row.hint)';
@@ -110,8 +157,18 @@ function dscodeTpsTone(rate) {
   if (rate <= 250) return "blue";
   return "purple";
 }
+// Cache hit rate: red under 90, yellow to 95, green to 98, blue above.
+const dscodeCacheLabels = ["cache hit", "\u7f13\u5b58\u547d\u4e2d", "\u5feb\u53d6\u547d\u4e2d", "\u30ad\u30e3\u30c3\u30b7\u30e5\u30d2\u30c3\u30c8", "\uce90\uc2dc \uc801\uc911", "\u00e9xitos de cach\u00e9"];
+function dscodeCacheTone(rate) {
+  if (!Number.isFinite(rate) || rate < 0) return null;
+  if (rate < 90) return "red";
+  if (rate < 95) return "yellow";
+  if (rate < 98) return "green";
+  return "blue";
+}
 function dscodeTpsInkColor(tone) {
   const palette = getPalette();
+  if (tone === "red") return inkColor(getTheme() === "light" ? [185, 28, 28] : [248, 113, 113]);
   if (tone === "yellow") return inkColor(palette.warn);
   if (tone === "green") return inkColor(palette.success);
   if (tone === "blue") return inkColor(palette.brandBright);
@@ -120,14 +177,25 @@ function dscodeTpsInkColor(tone) {
 }
 function dscodeTelemetryParts(value) {
   const result = [];
-  for (const [index, part] of value.split(" ｜ ").entries()) {
-    if (index > 0) result.push({ text: " ｜ ", tone: null });
+  const parts = String(value).split(" | ");
+  for (const [index, part] of parts.entries()) {
+    if (index > 0) result.push({ text: " | ", tone: null });
     const match = /^(.+?: )(~?(?:\\d+(?:\\.\\d+)?|--)) tps$/.exec(part);
-    if (!match) { result.push({ text: part, tone: null }); continue; }
-    const prefix = match[1];
-    const display = match[2];
-    const rate = Number(display.startsWith("~") ? display.slice(1) : display);
-    result.push({ text: prefix, tone: null }, { text: display + " tps", tone: display && dscodeTpsTone(rate) });
+    if (match) {
+      const display = match[2];
+      const rate = Number(display.startsWith("~") ? display.slice(1) : display);
+      result.push({ text: match[1], tone: null }, { text: display + " tps", tone: display && dscodeTpsTone(rate) });
+      continue;
+    }
+    // The cache hit rate is the last segment of the telemetry line.
+    // The cache hit rate closes the telemetry line; only a recognised cache label is tinted.
+    const labelled = index === parts.length - 1 ? /^(.*?)(\\d+(?:\\.\\d+)?)%$/.exec(part) : null;
+    const cache = labelled && dscodeCacheLabels.includes(labelled[1].replace(/:\\s*$/, "").trim().toLowerCase()) ? labelled : null;
+    if (cache) {
+      result.push({ text: cache[1], tone: null }, { text: cache[2] + "%", tone: dscodeCacheTone(Number(cache[2])) });
+      continue;
+    }
+    result.push({ text: part, tone: null });
   }
   return result;
 }

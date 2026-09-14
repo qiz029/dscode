@@ -17,7 +17,7 @@ export const CHAT_LINES_SOURCE = `function dscodeChatLines(entry, columns, verbo
     return [...thinking, ...transcriptEntryLines({ ...entry, reasoning: "" }, columns, false, false, false)];
   }
   const rows = transcriptEntryLines(entry, columns, false, false, false);
-  return entry.kind === "user" && !entry.notice ? userBackgroundRows(rows, columns, visibleColumns) : rows;
+  return entry.kind === "user" && !entry.notice ? [...userBackgroundRows(rows, columns, visibleColumns), { segments: [] }] : rows;
 }
 function dscodeThinkingLines(reasoning, width) {
   const lines = hangingTextLines("Thinking: " + reasoning.replace(/\\s+/g, " ").trim(), width, "· ", "dimItalic", "  ");
@@ -63,8 +63,19 @@ function patchVerbose(text) {
   return withVerbosePersistence('// dscode-interaction-v2\n' + text);
 }
 
+// The live reasoning tail returns to verbose runs: upstream keeps rows for it,
+// DSCODE used to zero them. The tail takes the live stream budget while the model
+// is still thinking and gives way to the answer as soon as text arrives.
+const LIVE_STREAMING_ACTIVE = 'const streamingActive = view.streaming !== "" || showReasoning && view.streamingReasoning !== "";';
+const LIVE_REASONING_ROWS = 'const reasoningRows = !showReasoning || view.streamingReasoning === "" || view.streaming !== "" ? 0 : streamRows;';
+const ZEROED_STREAMING_ACTIVE = 'const streamingActive = view.streaming !== "";';
+const ZEROED_REASONING_ROWS = 'const reasoningRows = 0;';
+/** Upgrade a bundle patched by an earlier DSCODE to the live reasoning tail. */
+export function withLiveReasoning(text) {
+  return text.replace(ZEROED_STREAMING_ACTIVE, LIVE_STREAMING_ACTIVE).replace(ZEROED_REASONING_ROWS, LIVE_REASONING_ROWS);
+}
 export function patchInteraction(text) {
-  if (text.includes('// dscode-interaction-v1')) return patchVerbose(text.replace('runSlash("/shell " + line.slice(1))', 'runSlash("/shell-exec " + line.slice(1))'));
+  if (text.includes('// dscode-interaction-v1')) return patchVerbose(withLiveReasoning(text.replace('runSlash("/shell " + line.slice(1))', 'runSlash("/shell-exec " + line.slice(1))')));
   const patch = (from, to) => { text = replaceOnce(text, from, to); };
   patch('if (ctrl) return "\\n";\n\t\tif (alt)', 'if (ctrl || shift) return "\\n";\n\t\tif (alt)');
   patch('function normalizeKeyboardChunk(chunk) {', 'function normalizeKeyboardChunk(chunk) {\n\tchunk = chunk.replace(/\\x1b\\[27;2;13~/g, "\\n");');
@@ -74,10 +85,10 @@ export function patchInteraction(text) {
   // Keep the raw projection intact for export and the explicit history inspector.
   patch('function settledEntryLines(entry, columns, showReasoning) {\n\treturn transcriptEntryLines(entry, columns, showReasoning, false, showReasoning);', 'function settledEntryLines(entry, columns, showReasoning) {\n\treturn dscodeChatLines(entry, columns);');
   patch('transcriptEntryLines(entry, Math.max(1, terminalColumns - 2), showReasoning)', 'dscodeChatLines(entry, Math.max(1, terminalColumns - 2))');
-  patch('const streamingActive = view.streaming !== "" || view.streamingReasoning !== "";', 'const streamingActive = view.streaming !== "";');
+  patch('const streamingActive = view.streaming !== "" || view.streamingReasoning !== "";', LIVE_STREAMING_ACTIVE);
   const reasoning = text.match(/const reasoningRows = [^\n]+;/)?.[0];
   if (!reasoning) throw Error('Missing reasoning allocation');
-  patch(reasoning, 'const reasoningRows = 0;');
+  patch(reasoning, LIVE_REASONING_ROWS);
   patch('text: "✻ Thinking… (Ctrl/Alt+R to expand)"', 'text: "Working…"');
   patch('transcriptVisible ? (0, import_react.createElement)(TodoPanel, { todos: view.todos }) : void 0', 'transcriptVisible && busy ? (0, import_react.createElement)(Text, { dimColor: true, wrap: "truncate-end" }, view.entries.filter(entry => entry.kind === "tool" && entry.state === "running").map(entry => "● " + entry.name).join(" · ")) : void 0');
   return patchVerbose('// dscode-interaction-v1\nfunction dscodeChatLines(entry, columns) {\n  if (entry.kind === "tool") return [];\n}\n' + text);

@@ -2,9 +2,11 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { replaceOnce } from './patch-runtime.mjs';
 export function patchFooter(text, root) {
-  if (!text.includes('// dscode-footer-align')) text = replaceOnce(text,
-    'justifyContent: rightParts.length > 0 ? "space-between" : void 0',
-    'justifyContent: rightParts.length > 0 ? (leftParts.length > 0 ? "space-between" : "flex-end") : void 0 // dscode-footer-align');
+  // Both footer rows now lead with their own left content, so upstream's space-between
+  // (a lone child stays at the start) is exactly the alignment the two rows want.
+  if (text.includes('// dscode-footer-align')) text = replaceOnce(text,
+    'justifyContent: rightParts.length > 0 ? (leftParts.length > 0 ? "space-between" : "flex-end") : void 0 // dscode-footer-align',
+    'justifyContent: rightParts.length > 0 ? "space-between" : void 0');
   if (!text.includes('// dscode-footer-width')) text = replaceOnce(text,
     'paddingLeft: 2 + indent,',
     'paddingLeft: 2 + indent,\n        width: columns, // dscode-footer-width');

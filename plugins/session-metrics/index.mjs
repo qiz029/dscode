@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { appendMetric } from './store.mjs';
 import { estimateCost, PRICE_VERSION } from './pricing.mjs';
 import { setMetricSource } from './view.mjs';
+import { refreshBalance } from './balance.mjs';
 import { createWindowRate } from './rate.mjs';
 export const name = 'dscode-session-metrics';
 export const inject = ['llm', 'agents', 'tokenMeter', 'sessionProjections'];
@@ -21,6 +22,23 @@ export function apply(ctx) {
     return { ...value, currentTps: liveRate.get(session) };
   }));
   const home = process.env.DSH_HOME;
+  // Remaining balance is best-effort decoration: resolve the key lazily (never
+  // inject the credentials service, so a missing one cannot fail startup), keep
+  // the request on a five-minute cache, and never let it reach the render path.
+  const credentials = ctx.get?.('credentials');
+  const refresh = async () => {
+    try {
+      const resolved = await credentials?.resolve?.('DEEPSEEK_API_KEY');
+      const key = typeof resolved === 'string' ? resolved : resolved?.value;
+      await refreshBalance({ key: key ?? process.env.DEEPSEEK_API_KEY });
+    } catch {
+      /* balance stays unknown */
+    }
+  };
+  refresh();
+  const balanceTimer = setInterval(refresh, 5 * 60 * 1000);
+  if (typeof balanceTimer.unref === 'function') balanceTimer.unref();
+  ctx.effect(() => () => clearInterval(balanceTimer));
   const record = (id, entry) => { try { appendMetric(home, id, entry); } catch { ctx.logger.warn('Session cost telemetry could not be saved.'); } };
   ctx.on('llm/stream', async function* (options, next) {
     if (!options.sessionId || !home) { yield* next(); return; }

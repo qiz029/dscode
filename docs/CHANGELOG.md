@@ -8,6 +8,21 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 ## [Unreleased]
 
+### Changed
+
+- The TUI hands the terminal back its own scrolling, selection and copy. The 0.7.x in-place viewport drew a full-screen frame, wiped the terminal scrollback and had to capture the mouse to make the wheel work; now the settled transcript is printed once through Ink's Static output, so it lands in the terminal's scrollback and the wheel, drag-selection and copy stay native. `PageUp`/`PageDown` in-app scrolling and the `/mouse` command are gone with it. The welcome box is now the first scrollback row and scrolls away with the session; the per-turn rule rides each finished entry. Installs still carrying the in-place generation must refresh their dependencies (`npm ci`) — the launcher refuses to patch that text in place.
+
+### Fixed
+
+- On macOS a command that waits for terminal input no longer freezes the turn until the 300 second deadline. The pinned inspector reports "input waiting" by reading the process table (`ps`) on a throttle — the foreground group of the shell's terminal must be asleep with its CPU time frozen and hold no socket — and the persistent shell interrupts such a command after five seconds of silence, reporting the exit status and why. Linux keeps its precise `/proc` syscall probe; macOS has no wait channel to read (`ps -o wchan` prints `-`), so a silent command that is only sleeping in a timer or disk wait can be interrupted too. The npm/Hub bundle now vendors its own patched copy of the inspector (`file:vendor/subprocess`); the registry build still answers "not waiting".
+
+### Changed
+
+- The transcript breathes: every finished turn draws one blank line above and below its separator rule, and each user message is followed by one blank line. A turn's rule and its blanks land together, so a viewport with no room for the three rows still shows the answer instead of the rule.
+- The footer is two rows: row 1 is `● <session title> ｜ <permission>` (falling back to `model ｜ effort` until the session has a title) with the cycle hint still pinned right, and row 2 leads with `provider: model @ effort` followed by the telemetry — `current | average | context | $spend / $balance 🔥 | cache hit`. A row that runs out of width sheds its quietest figures first (average, cache hit, current), then falls back to the bare `model @ effort` header, then drops context, and only then the header itself: the running cost is the last thing standing. The footer now follows the interface language (`/language`) as well; it was pinned to English before.
+
+- Verbose streams the live thinking text again. While the model reasons, the reasoning tail types out in the live area (taking the rows the streaming answer uses, and handing them over as soon as the answer starts); before this the tail was disabled, so thinking only arrived as one finished block per step.
+
 ## [0.7.1] - 2026-09-14
 
 ### Added

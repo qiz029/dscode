@@ -37,14 +37,13 @@ export function patchEmail(text) {
   patch(': !modelOpen && !helpOpen', ': !emailOpen && !modelOpen && !helpOpen');
   patch('const transcriptVisible = !modelOpen', 'const transcriptVisible = !emailOpen && !modelOpen');
   patch('const modalVisible = modelOpen', 'const modalVisible = emailOpen || modelOpen');
-  patch('terminalRows >= 10 ? (0, import_react.createElement)(Header,', '!emailOpen && terminalRows >= 10 ? (0, import_react.createElement)(Header,');
   patch('if (!approvalPending && !questionPending) return;', 'if (!approvalPending && !questionPending) return;\n        setEmailOpen(false);');
-  patch('transcriptVisible && settledViewportRows > 0 ?', `emailOpen && !approvalPending && !questionPending ? (0, import_react.createElement)(DscodeEmailPanel, {
+  patch('transcriptVisible ? (0, import_react.createElement)(Box, { flexDirection: "column" }, auditedLiveLines.length === 0', `emailOpen && !approvalPending && !questionPending ? (0, import_react.createElement)(DscodeEmailPanel, {
       columns: terminalColumns, rows: Math.max(3, terminalRows - 8 - composerGutterRows - composerRows),
       close: () => setEmailOpen(false),
       pick: mail => { setEmailFill({ text: dscodeEmailPrompt(mail), sessionKey: props.sessionKey }); setEmailOpen(false); }
     }) : void 0,
-    transcriptVisible && settledViewportRows > 0 ?`);
+    transcriptVisible ? (0, import_react.createElement)(Box, { flexDirection: "column" }, auditedLiveLines.length === 0`);
   patch('openLogin: () => {', 'openEmail: () => setEmailOpen(true),\n        emailFill, emailConsumed,\n        openLogin: () => {');
   return addSteer(addImap(addGmail('// dscode-email-v1\nimport { createEmailInbox as dscodeCreateEmailInbox, emailKey as dscodeEmailKey, emailPrompt as dscodeEmailPrompt, emailText as dscodeEmailText } from "./dscode-email.mjs";\n' + DscodeEmailPanel.toString() + '\n' + text)));
 }

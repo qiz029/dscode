@@ -68,12 +68,14 @@ try {
   for (const [rate, tone] of [[0, 'yellow'], [74.9, 'yellow'], [75, 'green'], [149.9, 'green'], [150, 'blue'], [250, 'blue'], [250.1, 'purple'], [NaN, null], [-1, null]]) {
     assert.equal(ui.dscodeTpsTone(rate), tone);
   }
-  assert.deepEqual(ui.dscodeTelemetryParts('current: ~74.9 tps ｜ average: 150.0 tps ｜ context: 43%'), [
+  assert.deepEqual(ui.dscodeTelemetryParts('current: ~74.9 tps | average: 150.0 tps | context: 43%'), [
     { text: 'current: ', tone: null }, { text: '~74.9 tps', tone: 'yellow' },
-    { text: ' ｜ ', tone: null }, { text: 'average: ', tone: null }, { text: '150.0 tps', tone: 'blue' },
-    { text: ' ｜ ', tone: null }, { text: 'context: 43%', tone: null },
+    { text: ' | ', tone: null }, { text: 'average: ', tone: null }, { text: '150.0 tps', tone: 'blue' },
+    { text: ' | ', tone: null }, { text: 'context: 43%', tone: null },
   ]);
-  assert.equal(ui.dscodeTelemetryParts('current: -- tps ｜ average: -- tps').filter(part => part.text.endsWith(' tps')).every(part => part.tone === null), true);
+  assert.deepEqual(ui.dscodeTelemetryParts('average: 100.0 tps | cache hit: 91.2%').at(-1), { text: '91.2%', tone: 'yellow' }, 'a cache hit rate is tinted by tier');
+  assert.deepEqual(ui.dscodeTelemetryParts('average: 100.0 tps | context: 43%').at(-1), { text: 'context: 43%', tone: null }, 'a bare percentage is not mistaken for the cache');
+  assert.equal(ui.dscodeTelemetryParts('current: -- tps | average: -- tps').filter(part => part.text.endsWith(' tps')).every(part => part.tone === null), true);
   const agents = [
     { label: '消息队列测试', state: 'running', activity: 'tool shell', updatedAt: 3 },
     { label: '检查取消行为', state: 'idle', activity: 'waiting', updatedAt: 4 },
@@ -82,8 +84,9 @@ try {
   for (const theme of ['dark', 'light']) for (const columns of [32, 48, 60, 64, 80, 120]) {
     ui.setTheme(theme);
     const userRows = ui.dscodeChatLines({ kind: 'user', text: '请检查这段用户输入的背景。\n第二行继续。', notice: false }, columns - 2);
-    assert(userRows.length >= 2);
-    assert(userRows.every(row => row.background === 'user' && row.segments.reduce((width, segment) => width + ui.visibleColumns(segment.text), 0) === columns - 2));
+    assert(userRows.length >= 3, 'three rows: two content rows and the blank one under the prompt');
+    assert.deepEqual(userRows.at(-1).segments, [], 'the prompt block closes with one blank row');
+    assert(userRows.slice(0, -1).every(row => row.background === 'user' && row.segments.reduce((width, segment) => width + ui.visibleColumns(segment.text), 0) === columns - 2));
     assert.equal(ui.dscodeChatLines({ kind: 'user', text: 'system notice', notice: true }, columns - 2)[0].background, undefined);
     const stdout = new PassThrough();
     Object.assign(stdout, { columns, rows: 30, isTTY: true });
@@ -132,15 +135,21 @@ try {
         assert.match(plain, /1 running · 1 idle · 1 done/);
         assert.match(plain, /消息队列测试/);
       }
-      if (columns < 48) assert(!plain.includes('context: '));
-      if (columns >= 48) assert.match(plain, /current: ~28\.4 tps ｜ average: 4\.0 tps/);
-      if (columns >= 80) assert.match(plain, /deepseek-flash ｜ ultra/);
-      if (columns === 80) assert.match(plain, /context: 43%/);
-      if (columns === 80) assert.match(plain, /Session 间消息投递\s+｜ current:/);
-      if (columns === 80) {
+      if (columns < 48) {
+        assert(!plain.includes('context: '), 'the telemetry row needs 48 columns');
+        assert(!plain.includes('deepseek-flash @ ultra'), 'no telemetry row on very narrow terminals');
+      }
+      assert.match(plain, /● Session 间消息投递\s*｜\s*auto/, 'row 1 leads with the session title and the permission badge');
+      assert(!plain.includes('● deepseek-flash'), 'the model must not stay on row 1');
+      const telemetry = plain.split('\n').find(line => line.includes('deepseek-flash @ ultra'));
+      if (columns >= 48) assert(telemetry, 'the model leads the footer telemetry row');
+      if (columns >= 48 && columns <= 64) assert.match(telemetry, /deepseek-flash @ ultra \| \$0\.00 \/ \$--/, 'a narrow telemetry row keeps the model and the money');
+      if (columns === 80) assert.match(telemetry, /deepseek-flash @ ultra \| context: 43% \| \$0\.00 \/ \$--/, 'context returns before the rates');
+      if (columns >= 120) assert.match(telemetry, /deepseek-flash @ ultra \| current: ~28\.4 tps \| context: 43% \| \$0\.00 \/ \$--/, 'a wide terminal adds the current rate');
+      if (columns >= 48) assert(!telemetry.includes('average: '), 'the provider form and the average stay out until the terminal can afford them');
+      if (columns === 120) {
         const yellow = theme === 'light' ? '180;83;9' : '245;158;11';
         assert.match(frame, new RegExp(`\\x1b\\[38;2;${yellow}m~28\\.4 tps`));
-        assert.match(frame, new RegExp(`\\x1b\\[38;2;${yellow}m4\\.0 tps`));
       }
       for (const line of plain.split('\n')) assert(ui.visibleColumns(line) <= columns, `Overflow ${theme} ${columns}: ${line}`);
       writeFileSync(new URL(`${theme}-${columns}.ansi`, out), frame);
@@ -159,8 +168,8 @@ try {
     const stdin = new PassThrough();
     const stderr = new PassThrough();
     const app = h(ui.Box, { flexDirection: 'column' },
-      h(ui.Text, null, ...ui.dscodeTelemetryNodes('current: ~74.9 tps ｜ average: 75.0 tps', 'probe-a')),
-      h(ui.Text, null, ...ui.dscodeTelemetryNodes('current: ~250.0 tps ｜ average: 250.1 tps', 'probe-b')));
+      h(ui.Text, null, ...ui.dscodeTelemetryNodes('current: ~74.9 tps | average: 75.0 tps', 'probe-a')),
+      h(ui.Text, null, ...ui.dscodeTelemetryNodes('current: ~250.0 tps | average: 250.1 tps', 'probe-b')));
     const mounted = ui.render(app, { stdout, stderr, stdin, debug: true, patchConsole: false, exitOnCtrlC: false });
     try {
       await new Promise(resolve => setTimeout(resolve, 30));

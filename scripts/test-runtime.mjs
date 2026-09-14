@@ -9,6 +9,9 @@ import { patchRuntime } from './patch-runtime.mjs';
 const root = resolve(import.meta.dirname, '..');
 const lock = JSON.parse(readFileSync(join(root, 'package-lock.json'), 'utf8'));
 export const upstreamPackages = ['dsh-code', ...['dsh-tool-subagent', 'dsh-subagent', 'dsh-subagent-in-process-driver', 'dsh-llm-deepseek', 'dsh-tool-bash', 'dsh-tool-bash-persistent', 'dsh-terminal-bash'].map(name => '@deepseek-ai/' + name)];
+// The macOS process inspector is patched inside a content-hashed runner chunk
+// rather than lib/index.js, so fixtures need it without joining the index-only list.
+export const fixturePackages = [...upstreamPackages, '@deepseek-ai/dsh-subprocess-local'];
 const cache = join(root, 'artifacts/local/test-upstream');
 
 // Keep exact upstream tarballs, verified against the checked-in lock. An
@@ -49,7 +52,7 @@ export function createTestRuntime({ tui = false, runtime = false, patched = true
   const directory = mkdtempSync(join(tmpdir(), 'dscode-test-runtime-'));
   const modules = join(directory, 'node_modules');
   mkdirSync(modules);
-  const selected = upstreamPackages.filter(name => name === 'dsh-code' ? tui : runtime);
+  const selected = fixturePackages.filter(name => name === 'dsh-code' ? tui : runtime);
   try {
     for (const name of selected) {
       const destination = join(modules, name);

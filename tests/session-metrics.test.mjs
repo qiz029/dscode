@@ -34,7 +34,7 @@ test('session totals weight input tokens, retain unknowns and survive replay', (
   assert(summarize([...rows, { kind: 'end', id: 'failed', cost: null }]).unknown);
   assert.equal(summarize([...rows, { kind: 'end', id: 'failed', cost: null }]).cache, null);
   for (const columns of [20, 32, 48, 80, 120]) assert(formatFooter(summary, 43.2, columns).length <= columns);
-  assert.match(formatFooter(summary, 43.2), /context: 43%.*~\$0.0030.*cache 9.0%/);
+  assert.match(formatFooter(summary, 43.2), /context: 43%.*\$0\.00 \/ \$(?:--|\d+\.\d{2}).*cache hit: 9\.0%/);
 });
 test('live TPS divides by the time the window actually spans, restarts after a pause, and calibrates to settled usage', () => {
   const session = {}, other = {};
@@ -87,17 +87,28 @@ test('session average is output tokens over summed LLM call time, excluding tool
   assert.equal(sessionAverageTps([...events, { type: 'assistant/message', time: 102000, data: { turn: 2, step: 1 } }]), null, 'a message without usage makes the average unknown');
   assert.equal(sessionAverageTps([...events, { type: 'assistant/message', time: 102000, data: { turn: 9, step: 9, usage: { outputTokens: 5 } } }]), null, 'a message without its step start makes the average unknown');
 });
-test('footer prioritizes both TPS values within narrow telemetry budgets', () => {
+test('footer protects the money and the context, dropping the rates first', () => {
   const metrics = { cost: 0.003, unknown: false, pending: 0, cache: 90 };
   const rates = { current: 12.3, average: 2.4 };
-  for (const columns of [24, 28, 36, 40, 44, 56, 80]) {
-    const line = formatFooter(metrics, 43, columns, rates);
-    assert(line.length + [...line.matchAll(/｜/g)].length <= columns);
-    assert.match(line, /^current: ~12\.3 tps/);
-    if (columns >= 40) assert.match(line, / ｜ average: 2\.4 tps/);
-  }
-  assert.match(formatFooter(metrics, 43, 56, rates), /｜ context: 43%/);
-  assert.match(formatFooter(metrics, 43, 80, rates), /｜ ~\$0\.0030/);
+  const money = "\\$0\\.00 \\/ \\$-- ";
+  for (const columns of [24, 28, 36, 40, 44, 56, 80, 100]) assert(formatFooter(metrics, 43, columns, rates).length <= columns);
+  assert.match(formatFooter(metrics, 43, 24, rates), /^\$0\.00 \/ \$-- /, 'a very narrow footer keeps the money alone');
+  assert.match(formatFooter(metrics, 43, 36, rates), new RegExp('^context: 43% \\| ' + money), 'context and money outrank the rates');
+  assert.match(formatFooter(metrics, 43, 56, rates), new RegExp('^current: ~12\\.3 tps \\| context: 43% \\| ' + money), 'the current rate returns before the average');
+  assert.match(formatFooter(metrics, 43, 80, rates), new RegExp('^current: ~12\\.3 tps \\| context: 43% \\| ' + money + '.*\\| cache hit: 90\\.0%$'), 'the cache rate returns last');
+  assert.match(formatFooter(metrics, 43, 100, rates), /^current: ~12\.3 tps \| average: 2\.4 tps \| context: 43% \| \$0\.00 \/ \$-- .* \| cache hit: 90\.0%$/, 'both rates fit on a wide terminal');
+});
+test('the model header leads the footer and sheds the provider before the money', () => {
+  const metrics = { cost: 0.003, unknown: false, pending: 0, cache: 90 };
+  const rates = { current: 12.3, average: 2.4 };
+  const long = 'deepseek-official: deepseek-flash @ ultra';
+  const line = columns => formatFooter(metrics, 43, columns, rates, 'en', long);
+  assert(line(140).startsWith(long + ' | current: ~12.3 tps | average: 2.4 tps'), 'the full header leads a wide footer');
+  assert.match(line(92), /^deepseek-flash @ ultra \| current: ~12\.3 tps \| context: 43% \| \$0\.00/, 'the bare model keeps a rate the provider form cannot afford');
+  assert.match(line(74), new RegExp('^' + long.replace(/[.:]/g, '\\$&') + ' \\| context: 43% \\| \\$0\\.00'), 'the provider form returns as soon as it fits again');
+  assert.match(line(60), /^deepseek-flash @ ultra \| context: 43% \| \$0\.00/, 'the bare model and the context still fit at 60 columns');
+  assert.match(line(40), /^deepseek-flash @ ultra \| \$0\.00 \/ \$--/, 'a narrow footer keeps the model and the money');
+  assert.match(line(20), /^\$0\.00 \/ \$--/, 'the money is the last thing standing');
 });
 test('collector streaming deltas reach the live footer', async () => {
   const home = mkdtempSync(join(tmpdir(), 'dscode-live-rate-'));
@@ -122,8 +133,8 @@ test('collector streaming deltas reach the live footer', async () => {
       yield { type: 'text-delta', text: 'a'.repeat(40) };
       yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 10, cacheReadTokens: 0 } };
     })) {}
-    const line = footerFor('root', { contextWindow: 100 }, 80);
-    assert.match(line, /current: ~20\.0 tps ｜ average: 4\.0 tps/, 'ten estimated tokens over the half-second minimum span; 20 settled tokens over a five-second call');
+    const line = footerFor('root', { contextWindow: 100 }, 100);
+    assert.match(line, /current: ~20\.0 tps \| average: 4\.0 tps/, 'ten estimated tokens over the half-second minimum span; 20 settled tokens over a five-second call');
     assert.match(line, /context: 43%/);
   } finally {
     dispose?.();
@@ -157,10 +168,10 @@ test('footer labels follow the interface language and wide characters count as t
   const rates = { current: 12.3, average: 2.4 };
   assert.equal(displayWidth('context: 43%'), 12);
   assert.equal(displayWidth('上下文: 43%'), 11);
-  assert.equal(displayWidth(' ｜ '), 4);
-  const zh = formatFooter(metrics, 43, 80, rates, 'zh-CN');
-  assert.match(zh, /^当前: ~12\.3 tps ｜ 平均: 2\.4 tps ｜ 上下文: 43% ｜ ~\$0\.0030 ｜ 缓存 90\.0%$/);
-  assert.match(formatFooter(metrics, 43, 80, rates, 'ja'), /^現在: ~12\.3 tps ｜ 平均: 2\.4 tps ｜ コンテキスト: 43%/);
+  assert.equal(displayWidth(' | '), 3);
+  const zh = formatFooter(metrics, 43, 240, rates, 'zh-CN');
+  assert.match(zh, /^当前: ~12\.3 tps | 平均: 2\.4 tps | 上下文: 43% | \$0\.00 \/ \$(?:--|\d+\.\d{2}).*缓存命中: 90\.0%$/);
+  assert.match(formatFooter(metrics, 43, 80, rates, 'ja'), /^現在: ~12\.3 tps | 平均: 2\.4 tps | コンテキスト: 43%/);
   for (const columns of [20, 24, 30, 40, 60]) assert(displayWidth(formatFooter(metrics, 43, columns, rates, 'ko')) <= columns, `fits ${columns}`);
   assert.equal(formatFooter(metrics, 43, 80, rates, 'xx'), formatFooter(metrics, 43, 80, rates), 'unknown locale falls back to English');
 });

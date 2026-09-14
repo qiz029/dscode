@@ -1,7 +1,8 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { patchDeepSeek, patchBash, patchPersistent, patchSubagent, patchSubagentCore, patchSubagentDriver, patchTerminalBash } from '../scripts/patch-runtime.mjs';
+import { patchMacStdin } from '../scripts/patch-mac-stdin.mjs';
 import { createTestRuntime } from '../scripts/test-runtime.mjs';
 import { pathToFileURL } from 'node:url';
 const fixture = createTestRuntime({ runtime: true });
@@ -91,6 +92,12 @@ test('pinned runtime patches are idempotent and reject unknown upstream code', (
     assert.equal(patch(text), text);
     assert.throws(() => patch('unknown upstream'));
   }
+  const macLib = `${root}/node_modules/@deepseek-ai/dsh-subprocess-local/lib`;
+  const macFile = readdirSync(macLib).find(entry => entry.endsWith('.js') && readFileSync(`${macLib}/${entry}`, 'utf8').includes('// dscode-mac-stdin-wait-v1'));
+  assert.notEqual(macFile, undefined, 'the macOS inspector chunk is patched');
+  const macText = readFileSync(`${macLib}/${macFile}`, 'utf8');
+  assert.equal(patchMacStdin(macText), macText);
+  assert.throws(() => patchMacStdin('unknown upstream'));
 });
 test('ultra reserves concurrent admissions and frees slots after failed launches', async () => {
   let execute;

@@ -7,7 +7,7 @@ const directories = [];
 after(() => directories.forEach(path => rmSync(path, { recursive: true, force: true })));
 import assert from 'node:assert/strict';
 import { apply } from '../plugins/auto-review/index.mjs';
-import { needsMcpApproval, redact, parseDecision } from '../plugins/auto-review/policy.mjs';
+import { escalationDiagnosticGrant, needsMcpApproval, redact, parseDecision } from '../plugins/auto-review/policy.mjs';
 
 function fixture({ decision = 'allow', timeout = false, budget = 2 } = {}) {
   const auditDirectory = mkdtempSync(join(tmpdir(), 'dscode-review-test-'));
@@ -169,4 +169,48 @@ test('a session preset change while queued sends the request to human', async ()
   assert.equal(await result, 'allowed-once');
   assert.equal(f.requests.length, 0);
   assert.equal(f.human(), 1);
+});
+
+test('read-only diagnostic escalations are granted once without the human or the reviewer', async () => {
+  const f = fixture();
+  f.setMode('ask');
+  const { req } = await f.pending('shell_retry', { command: 'ps -o pid=,wchan= -p 1', sandbox_permissions: 'danger-full-access' });
+  assert.equal(await f.answer(req), 'allowed-once');
+  assert.equal(f.human(), 0, 'the human must not be asked');
+  assert.equal(f.requests.length, 0, 'the reviewer model must not be called for the allowlist class');
+  assert.equal(f.records().at(-1).policy, 'escalation-allowlist');
+  assert.match(JSON.stringify(f.notices), /read-only diagnostic/);
+});
+
+test('escalations that could change state stay with the human', async () => {
+  const f = fixture();
+  f.setMode('ask');
+  const commands = ['cat > /tmp/probe.txt', 'ps; rm -rf /tmp/x', 'node -e "evil()"', 'lsof -p 1 | mail', 'ps "$(whoami)"'];
+  for (const command of commands) {
+    const { req } = await f.pending('shell_retry', { command, sandbox_permissions: 'danger-full-access' });
+    assert.equal(await f.answer(req), 'allowed-once');
+  }
+  assert.equal(f.human(), commands.length);
+  assert.equal(f.requests.length, 0);
+  assert(!f.records().some(record => record.policy === 'escalation-allowlist'));
+});
+
+test('escalation grants are budgeted per turn', async () => {
+  const f = fixture();
+  f.setMode('ask');
+  for (let index = 0; index < 2; index++) {
+    const { req } = await f.pending('shell_retry', { command: `ps -p ${index + 1}`, sandbox_permissions: 'danger-full-access' });
+    assert.equal(await f.answer(req), 'allowed-once');
+    assert.equal(f.human(), 0);
+  }
+  const { req } = await f.pending('shell_retry', { command: 'ps -p 9', sandbox_permissions: 'danger-full-access' });
+  assert.equal(await f.answer(req), 'allowed-once');
+  assert.match(JSON.stringify(f.notices), /Escalation budget reached/);
+});
+
+test('the diagnostic allowlist never spans shell metacharacters or interpreters', async () => {
+  for (const command of ['ps -p 1', 'lsof -nP -a -p 1 -i', 'sysctl -n kern.ostype']) assert(escalationDiagnosticGrant('shell_retry', { command, sandbox_permissions: 'danger-full-access' }));
+  for (const command of ['', 'ps; rm -rf /', 'ps && rm -rf /', 'ps > /tmp/x', 'bash -c ps', 'python3 probe.py', 'cat /etc/passwd', 'ps `id`', "ps '$(id)'"]) assert.equal(escalationDiagnosticGrant('shell_retry', { command, sandbox_permissions: 'danger-full-access' }), undefined, command);
+  assert.equal(escalationDiagnosticGrant('shell_retry', { command: 'ps -p 1' }), undefined, 'routine calls without escalation are not grants');
+  assert.equal(escalationDiagnosticGrant('bash', { command: 'ps -p 1', sandbox_permissions: 'danger-full-access' }), undefined, 'only the retry shell escalates');
 });

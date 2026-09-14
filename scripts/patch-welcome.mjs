@@ -13,11 +13,6 @@ export function welcomePath(path, width) {
   return suffix ? '…' + suffix : '…' + truncateColumns(segments.at(-1) || full, Math.max(1, width - 1));
 }
 
-export function welcomeVisibleRows(capacity, maximum, demand, canScroll = true) {
-  if (!canScroll || capacity < maximum) return maximum;
-  return Math.max(0, Math.min(maximum, capacity - demand));
-}
-
 /** Pixel rows of the welcome snowflake for terminals of 26+ rows: "." is transparent, "1"-"3" are dark-to-bright brand tones. */
 export const WELCOME_ART = [
   "...........1.1..........",
@@ -95,63 +90,9 @@ export function welcomeArtRows(grid, tones) {
 }
 
 const LIVE_BUDGET_V1 = 'const liveBudget = dynamicRows === 0 ? 0 : busy || streamingActive ? Math.max(1, Math.floor(dynamicRows / 3)) : Math.max(0, dynamicRows - (deepDivingVisible ? 1 : 0));';
-// Within the live rows the streaming answer comes first; unsettled entries get the remainder.
-const LIVE_BUDGET_V2 = 'const liveBudget = dynamicRows === 0 ? 0 : streamingActive ? Math.max(0, dynamicRows - Math.min(streamingDemand, dynamicRows)) : dynamicRows;';
-
 function patchWelcomeScroll(text) {
-  // Live chat lines follow the verbose toggle and the header receives the animations flag; plain string swaps keep every marker generation idempotent.
-  text = text.split('dscodeChatLines(entry, Math.max(1, terminalColumns - 2))').join('dscodeChatLines(entry, Math.max(1, terminalColumns - 2), showReasoning)');
-  text = text.split('(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel })').join('(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel, animated: animations })');
-  if (text.includes('// dscode-welcome-scroll-v2')) return text;
-  if (text.includes('// dscode-welcome-scroll-v1')) {
-    text = text.replace('const welcomeMaxRows = welcomeFull ? 13 :', 'const welcomeMaxRows = welcomeFull ? terminalRows >= 26 ? 14 : 13 :');
-    text = replaceOnce(text, '  const settledViewportRows = busy || streamingActive ? Math.floor(settledBudget / 3) : settledBudget;', `  const liveDemand = allLiveLines.length + streamingDemand;
-  const liveCap = busy || streamingActive ? Math.max(1, Math.floor(settledBudget * 2 / 3)) : 0;
-  const liveRows = Math.min(liveDemand, liveCap);
-  const settledViewportRows = Math.max(0, settledBudget - liveRows);`);
-    return '// dscode-welcome-scroll-v2\n' + replaceOnce(text, LIVE_BUDGET_V1, LIVE_BUDGET_V2);
-  }
-  const start = text.indexOf('const welcomeFull = terminalRows >= 24 && terminalColumns >= 64;');
-  const end = text.indexOf('\n\tconst liveBudget =', start);
-  if (start < 0 || end < 0) throw Error('Pinned TUI welcome viewport drift');
-  const previous = text.slice(start, end);
-  for (const anchor of ['const settledBudget =', 'const renderedSettled =', 'const allLiveLines =', 'const streamingActive =']) {
-    if (!previous.includes(anchor)) throw Error(`Pinned TUI welcome viewport missing ${anchor}`);
-  }
-  const layout = `const welcomeFull = terminalRows >= 24 && terminalColumns >= 64;
-  const welcomeMaxRows = welcomeFull ? terminalRows >= 26 ? 14 : 13 : terminalRows >= 10 ? 4 : 1;
-  // The nine fixed rows belong to the composer, footer and their gutters.
-  const transcriptCapacity = transcriptVisible ? Math.max(0, terminalRows - 9 - composerGutterRows - (composerRows - 1) - menuRows) : 0;
-  const streamingActive = view.streaming !== "";
-  const deepDivingVisible = busy;
-  const allLiveLines = (0, import_react.useMemo)(() => view.entries.slice(settled).flatMap((entry) => dscodeChatLines(entry, Math.max(1, terminalColumns - 2), showReasoning)), [
-    view.entries,
-    settled,
-    terminalColumns,
-    showReasoning
-  ]);
-  const settledTail = (0, import_react.useMemo)(() => visibleSettledLines(view.entries, settled, transcriptCapacity, terminalColumns, showReasoning, settledEntryLines), [settled, view.entries[settled - 1], transcriptCapacity, terminalColumns, showReasoning]);
-  const streamingDemand = streamingActive ? textLines(view.streaming.slice(-Math.max(1, terminalColumns * transcriptCapacity)), Math.max(10, terminalColumns - 2)).length : 0;
-  const demand = settledTail.length + allLiveLines.length + streamingDemand + (busy ? 1 : 0) + (agentRows.length > 0 ? 1 : 0);
-  const welcomeRows = welcomeVisibleRows(transcriptCapacity, welcomeMaxRows, demand, transcriptVisible);
-  const settledBudget = transcriptVisible ? Math.max(0, transcriptCapacity - welcomeRows) : 0;
-  // Live rows (unsettled entries plus the streaming answer) take only what they need, capped at two
-  // thirds of the budget; settled history fills the rest instead of a fixed third.
-  const liveDemand = allLiveLines.length + streamingDemand;
-  const liveCap = busy || streamingActive ? Math.max(1, Math.floor(settledBudget * 2 / 3)) : 0;
-  const liveRows = Math.min(liveDemand, liveCap);
-  const settledViewportRows = Math.max(0, settledBudget - liveRows);
-  const renderedSettled = settledViewportRows > 0 ? settledTail.slice(-settledViewportRows) : [];
-  const dynamicRows = Math.max(0, settledBudget - settledViewportRows);`;
-  text = text.slice(0, start) + layout + text.slice(end);
-  text = text.split('(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel })').join('(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel, animated: animations })');
-  const headerLine = text.split('\n').find(line => line.includes('(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel, animated: animations })'));
-  if (!headerLine || !headerLine.trim().endsWith('"DSCODE"),')) throw Error('Pinned TUI welcome render drift');
-  const headerExpression = headerLine.trim().slice(0, -1);
-  text = replaceOnce(text, headerLine, `    welcomeRows > 0 ? (0, import_react.createElement)(Box, { height: welcomeRows, overflowY: "hidden", flexDirection: "column", justifyContent: "flex-end", flexShrink: 0 },
-      (0, import_react.createElement)(Box, { flexShrink: 0 }, ${headerExpression})) : void 0,`);
-  text = replaceOnce(text, LIVE_BUDGET_V1, LIVE_BUDGET_V2);
-  return '// dscode-welcome-scroll-v1\n// dscode-welcome-scroll-v2\n' + welcomeVisibleRows.toString() + '\n' + text;
+  // Live chat lines follow the verbose toggle.
+  return text.split('dscodeChatLines(entry, Math.max(1, terminalColumns - 2))').join('dscodeChatLines(entry, Math.max(1, terminalColumns - 2), showReasoning)');
 }
 
 export function patchWelcome(text, version) {
@@ -171,12 +112,11 @@ export function patchWelcome(text, version) {
   const end = text.indexOf('\n}', start) + 2;
   if (start < 0 || end <= start) throw Error('Pinned TUI welcome header drift');
   text = text.slice(0, start) + welcomeHeaderSource(version) + text.slice(end);
+  // Mode A: the header is the first Static row, so patch-style already threads
+  // headerFacts through; give it the snowflake header's own fields.
   text = replaceOnce(text,
-    'const settledBudget = transcriptVisible ? Math.max(0, terminalRows - 12 - composerGutterRows - (composerRows - 1) - menuRows) : 0;',
-    'const welcomeFull = terminalRows >= 24 && terminalColumns >= 64;\n  const welcomeChromeRows = welcomeFull ? 22 : terminalRows >= 10 ? 13 : 10;\n  const settledBudget = transcriptVisible ? Math.max(0, terminalRows - welcomeChromeRows - composerGutterRows - (composerRows - 1) - menuRows) : 0;');
-  text = replaceOnce(text,
-    'terminalRows >= 10 ? (0, import_react.createElement)(Header, { resumed: props.resumed, cwd: props.cwd, branch: props.branch, title: view.title })',
-    'terminalRows >= 10 ? (0, import_react.createElement)(Header, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel, animated: animations })');
+    'SETTLED_ROW_CAP, { cwd: props.cwd, branch: props.branch, title: view.title });',
+    'SETTLED_ROW_CAP, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel, animated: animations });');
   return patchWelcomeScroll('// dscode-welcome-v1\n// dscode-welcome-v2\n' + welcomePath.toString() + '\nconst WELCOME_ART = ' + JSON.stringify(WELCOME_ART) + ';\nconst WELCOME_ART_SMALL = ' + JSON.stringify(WELCOME_ART_SMALL) + ';\n' + welcomeArtRows.toString() + '\n' + text);
 }
 

@@ -6,12 +6,10 @@ import { patchFooter } from './patch-footer.mjs';
 import { patchSessionBridge } from './patch-session-bridge.mjs';
 import { patchStyle } from './patch-style.mjs';
 import { patchLogin } from './patch-login.mjs';
-import { patchViewport } from './patch-viewport.mjs';
 import { patchWelcome } from './patch-welcome.mjs';
 import { patchEffort } from './patch-effort.mjs';
 import { patchEmail } from './patch-email.mjs';
 import { patchInterrupt } from './patch-interrupt.mjs';
-import { patchScroll } from './patch-scroll.mjs';
 import { patchTurnDivider } from './patch-turn-divider.mjs';
 import { patchLanguage } from './patch-language.mjs';
 import { patchUserBackground } from './patch-user-background.mjs';
@@ -33,6 +31,9 @@ export function patchTui(root) {
   const path = join(dir, 'lib/index.mjs');
   const before = readFileSync(path, 'utf8');
   let after = patchText(before);
+  // The 0.7.x generation patched the TUI into a full-screen in-place viewport and
+  // deleted the upstream Static rows; that text cannot be repaired in place.
+  if (after.includes('// dscode-viewport-v1')) throw new Error('This installation carries the DSCODE in-place viewport generation; refresh the dependencies (npm ci) before starting the native-scrollback build.');
   const anchor = 'const LOCAL_COMMANDS = [';
   if (!after.includes('// dscode: startup command discovery')) {
     if (after.split(anchor).length !== 2) throw new Error('Unsupported TUI command catalog');
@@ -45,12 +46,10 @@ export function patchTui(root) {
   after = patchFooter(after, root);
   after = patchStyle(after);
   after = patchLogin(after);
-  after = patchViewport(after);
   after = patchWelcome(after, JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version);
   after = patchEffort(after);
   after = patchEmail(after);
   after = patchInterrupt(after);
-  after = patchScroll(after);
   after = patchTurnDivider(after);
   after = patchUserBackground(after);
   after = patchLargePaste(after);

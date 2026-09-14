@@ -42,7 +42,7 @@ test('the language is stored per machine and DSCODE_LANGUAGE overrides it', () =
 });
 
 test('the TUI patch embeds the tables, adds /language, and refreshes an already-patched bundle', () => {
-  const upstream = ['\t{\n\t\tlabel: "/mouse",\n\t\tdescription: "toggle mouse capture: off to select and copy text, on for wheel scrolling"\n\t},\n',
+  const upstream = ['\t{\n\t\tlabel: "/verbose",\n\t\tdescription: "toggle thinking and tool call details in the chat"\n\t},\n',
     'function Input({ openStatusline, openTheme, openHistory, notify, refresh }) {\n\t\t\tif (text === "/todos") {\n\t\t\t\topenTodos();\n',
     '\tconst [themeOpen, setThemeOpen] = (0, import_react.useState)(false);\n',
     'const inputActive = !themeOpen && x;\nconst transcriptVisible = !themeOpen && y;\nconst modalVisible = themeOpen || z;\n',

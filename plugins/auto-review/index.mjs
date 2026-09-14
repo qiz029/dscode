@@ -1,6 +1,6 @@
 import z from '@deepseek-ai/schemastery';
 import { BlockAssembler, createSystemMessage, createUserMessage } from '@deepseek-ai/dsh-llm';
-import { REVIEW_POLICY, needsMcpApproval, redact, fingerprint, contextFor, parseDecision } from './policy.mjs';
+import { REVIEW_POLICY, escalationDiagnosticGrant, needsMcpApproval, redact, fingerprint, contextFor, parseDecision } from './policy.mjs';
 import { join, resolve } from 'node:path';
 import { auditStore } from './audit.mjs';
 
@@ -11,6 +11,7 @@ export const Config = z.object({
   timeoutMs: z.number().min(100).max(120000).default(30000),
   maxOutputTokens: z.number().step(1).min(128).max(2048).default(768),
   maxReviewsPerTurn: z.number().step(1).min(1).max(100).default(20),
+  maxEscalationGrantsPerTurn: z.number().step(1).min(0).max(10).default(2),
   auditDirectory: z.string(),
 });
 
@@ -26,7 +27,7 @@ export function apply(ctx, config) {
     const turn = events.findLast(e => e.type === 'turn/start')?.seq;
     let state = budgets.get(agent);
     if (!state || state.turn !== turn) {
-      state = { turn, reviews: 0, denials: 0, blocked: false, denied: new Map(), tail: Promise.resolve() };
+      state = { turn, reviews: 0, grants: 0, denials: 0, blocked: false, denied: new Map(), tail: Promise.resolve() };
       budgets.set(agent, state);
     }
     return state;
@@ -164,7 +165,24 @@ export function apply(ctx, config) {
 
   ctx.on('approval/request', (req, next) => {
     // OS/application access and sensitive Computer Use confirmations remain human.
-    if (mode(req.agent) !== 'auto' || req.toolName.startsWith('computer_')) return next();
+    if (req.toolName.startsWith('computer_')) return next();
+    // Sandbox escalation: only a single, unquoted read-only diagnostic may leave the
+    // sandbox without a human. The grant binds to the exact pending arguments, is
+    // budgeted per turn, and is audited; anything else keeps asking the user.
+    const escalating = calls.get(req.agent)?.get(req.callId);
+    const grant = escalating === undefined ? undefined : escalationDiagnosticGrant(escalating.name, escalating.arguments);
+    if (grant !== undefined && ctx.approval?.effectivePolicy?.(req.agent.session) !== 'never') {
+      const state = stateFor(req.agent);
+      const grantBudget = config.maxEscalationGrantsPerTurn ?? 2;
+      if (state.grants < grantBudget) {
+        state.grants++;
+        record(req, { decision: 'allowed-once', policy: 'escalation-allowlist', reason: `Read-only diagnostic escalation: ${grant.argv[0]}`, actionHash: fingerprint({ tool: escalating.name, arguments: escalating.arguments }) });
+        announce(req.agent, `Escalation granted once for the read-only diagnostic \`${grant.command}\`.`);
+        return 'allowed-once';
+      }
+      announce(req.agent, `Escalation budget reached (${grantBudget} per turn); asking the user.`);
+    }
+    if (mode(req.agent) !== 'auto') return next();
     const state = stateFor(req.agent);
     // Serialize per agent so simultaneous calls cannot race the denial budget.
     const pending = state.tail.then(() => review(req, next, state));

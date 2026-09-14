@@ -6,18 +6,20 @@ import { stripVTControlCharacters } from 'node:util';
 import { patchTui } from './patch-tui.mjs';
 
 const root = new URL('../', import.meta.url);
-const version = JSON.parse(readFileSync(new URL('package.json', root), 'utf8')).version;
 patchTui(root.pathname);
 const source = readFileSync(new URL('node_modules/dsh-code/lib/index.mjs', root), 'utf8');
-assert(source.includes('height: Math.max(1, terminalRows - 1)'));
-assert(source.includes('process.stdout.isTTY === true) process.stdout.write("\\x1B[r\\x1B[0m\\x1B[H\\x1B[2J\\x1B[3J\\x1B[H")'));
-const entry = new URL(`node_modules/dsh-code/lib/.dscode-viewport-probe-${process.pid}.mjs`, root);
-writeFileSync(entry, source + '\nexport { App, Box, render, import_react as react, visibleSettledLines, welcomePath, createSplitStdin };\n');
+
+// Mode A: history is printed once into the terminal's own scrollback, so scrolling,
+// selection and copy all stay the terminal's job and the app never captures the mouse.
+assert(source.includes('MemoStaticTranscript'), 'settled history must ride Ink Static');
+assert(!source.includes('DSCODE_MOUSE_ENABLE'), 'the TUI must not enable mouse capture');
+assert(!source.includes('height: Math.max(1, terminalRows - 1)'), 'the TUI must not draw a full-screen frame');
+assert(!source.includes('function dscodeQueueWheel('), 'the TUI must not queue wheel reports');
+
+const entry = new URL(`node_modules/dsh-code/lib/.dscode-scrollback-probe-${process.pid}.mjs`, root);
+writeFileSync(entry, source + '\nexport { App, Box, render, import_react as react };\n');
 try {
   const ui = await import(entry.href);
-  const rows = ui.visibleSettledLines(['a', 'b', 'c'], 3, 2, 80, false, value => [{ segments: [{ text: value }] }]);
-  assert.deepEqual(rows.map(row => row.segments[0].text), ['b', 'c']);
-  assert.equal(ui.welcomePath('/very-long-parent/second/project', 17), '…/second/project');
   const inert = snapshot => ({ subscribe: () => () => {}, getSnapshot: () => snapshot });
   const view = { entries: [], busy: false, streaming: '', streamingReasoning: '', busySince: 0, title: 'New session', stats: { usage: {}, contextWindow: 100000 }, permission: '', todos: [] };
   const props = {
@@ -32,122 +34,37 @@ try {
     history: [], statusline: undefined, animations: false, resumed: false,
     loadModels: async () => ({ rows: [] }), onBridgeReady: () => {},
   };
-  const replyCounts = new Map();
-  for (const height of [8, 12, 16, 21, 22, 24, 40]) for (const state of ['empty', 'settled', 'streaming']) {
-    view.entries = state === 'empty' ? [] : Array.from({ length: 30 }, (_, index) => ({ kind: 'assistant', text: `Reply number ${index + 1}`, reasoning: '' }));
-    view.busy = state === 'streaming';
-    view.streaming = state === 'streaming' ? 'A live answer stays above the composer.' : '';
-    view.busySince = view.busy ? Date.now() - 1000 : 0;
+  const settle = () => new Promise(resolve => setTimeout(resolve, 80));
+  const render = async entries => {
+    view.entries = entries;
     const stdout = new PassThrough();
-    Object.assign(stdout, { columns: 80, rows: height, isTTY: true });
+    Object.assign(stdout, { columns: 80, rows: 24, isTTY: true });
     const stderr = new PassThrough();
     const stdin = new PassThrough();
     Object.assign(stdin, { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
-    const frames = [];
-    const errors = [];
-    stdout.on('data', data => frames.push(data.toString()));
-    stderr.on('data', data => errors.push(data.toString()));
+    const chunks = [];
+    stdout.on('data', data => chunks.push(data.toString()));
     const mounted = ui.render(ui.react.createElement(ui.App, props), { stdout, stderr, stdin, debug: true, patchConsole: false, exitOnCtrlC: false });
     try {
-      await new Promise(resolve => setTimeout(resolve, 50));
-      const frame = stripVTControlCharacters(frames.at(-1) ?? '');
-      const lines = frame.split('\n');
-      const inputIndex = lines.findIndex(line => line.includes('type a message') || line.trim() === '›');
-      assert(inputIndex >= 0, `Missing input at ${height} rows: ${frame}\n${errors.join('')}`);
-      assert.equal(lines.length, height - 1, `Frame height at ${height} rows`);
-      assert(inputIndex >= height - 6, `Composer drifted above bottom at ${height} rows: ${inputIndex}`);
-      const headerVisible = state === 'empty' || height <= 12;
-      if (headerVisible) assert(lines.some(line => line.includes('DSCODE')), `Missing welcome content at ${height} rows: ${frame}`);
-      else assert(!lines.some(line => line.includes('DSCODE')), `Welcome remained pinned above conversation at ${height} rows: ${frame}`);
-      if (headerVisible && height >= 10) {
-        assert(frame.includes(`v${version}`), `Missing DSCODE version at ${height} rows`);
-        assert(frame.includes('deepseek-chat'), `Missing model at ${height} rows`);
-        assert(frame.includes('high'), `Missing effort at ${height} rows`);
-        assert(frame.includes('/workspace/dsh-code'), `Missing project path at ${height} rows`);
-      }
-      const visibleReplies = (frame.match(/Reply number \d+/g) ?? []).length;
-      if (state === 'settled') replyCounts.set(height, visibleReplies);
-      if (state === 'streaming' && height >= 24) {
-        assert(frame.includes('A live answer stays above the composer'), `Streaming answer missing at ${height} rows`);
-        assert(visibleReplies >= replyCounts.get(height) - 2, `Streaming shrank history at ${height} rows: ${visibleReplies} of ${replyCounts.get(height)} settled replies visible`);
-      }
-      if (state === 'settled' && height >= 24) {
-        assert(frame.includes('Reply number 30'), `Newest settled reply missing at ${height} rows`);
-        if (height <= 24) assert(!/Reply number 1(?!\d)/.test(frame), `Old reply overflowed viewport at ${height} rows`);
-      }
-    } finally { mounted.unmount(); mounted.cleanup(); stdout.destroy(); stderr.destroy(); stdin.destroy(); }
-  }
-  const artworkRows = [];
-  for (const count of [0, 8, 11, 30]) {
-    view.entries = Array.from({ length: count }, (_, index) => ({ kind: 'assistant', text: `Reply number ${index + 1}`, reasoning: '', turnEnded: count === 8 && index === count - 1 }));
-    view.busy = false;
-    view.streaming = '';
-    const stdout = new PassThrough();
-    Object.assign(stdout, { columns: 80, rows: 30, isTTY: true });
-    const stderr = new PassThrough();
-    const stdin = new PassThrough();
-    Object.assign(stdin, { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
-    const frames = [];
-    stdout.on('data', data => frames.push(data.toString()));
-    const mounted = ui.render(ui.react.createElement(ui.App, props), { stdout, stderr, stdin, debug: true, patchConsole: false, exitOnCtrlC: false });
-    try {
-      await new Promise(resolve => setTimeout(resolve, 50));
-      const frame = stripVTControlCharacters(frames.filter(chunk => chunk.includes('type a message')).at(-1) ?? '');
-      assert(frame.includes('type a message'), `Missing composer with ${count} replies`);
-      if (count) assert(frame.includes(`Reply number ${count}`), `Newest reply missing with ${count} replies`);
-      if (count === 8) assert(frame.includes('─'.repeat(8)), 'Completed turn divider missing from the rendered frame');
-      artworkRows.push(frame.split('\n').filter(line => /[▀▄█╭╰]/.test(line)).length);
-    } finally { mounted.unmount(); mounted.cleanup(); stdout.destroy(); stderr.destroy(); stdin.destroy(); }
-  }
-  assert(artworkRows[0] > artworkRows[1] && artworkRows[1] > artworkRows[2] && artworkRows[2] > artworkRows[3], `Welcome did not scroll upward row by row: ${artworkRows}`);
-  assert.equal(artworkRows[3], 0);
-  view.entries = Array.from({ length: 40 }, (_, index) => ({ kind: 'assistant', text: `Reply number ${index + 1}`, reasoning: '' }));
-  const sourceInput = new PassThrough();
-  Object.assign(sourceInput, { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
-  const split = ui.createSplitStdin(sourceInput);
-  const stdout = new PassThrough();
-  Object.assign(stdout, { columns: 80, rows: 24, isTTY: true });
-  const stderr = new PassThrough();
-  const frames = [];
-  stdout.on('data', data => frames.push(stripVTControlCharacters(data.toString())));
-  const mounted = ui.render(ui.react.createElement(ui.App, props), { stdout, stderr, stdin: split.stdin, debug: true, patchConsole: false, exitOnCtrlC: false });
-  try {
-    const frame = () => frames.filter(chunk => chunk.includes('type a message')).at(-1) ?? '';
-    const settle = () => new Promise(resolve => setTimeout(resolve, 70));
-    await settle();
-    assert(frame().includes('Reply number 40'), 'initial viewport must show latest reply');
-    sourceInput.write('\x1b[5~');
-    await settle();
-    assert(!frame().includes('Reply number 40'), 'PageUp must reveal older replies');
-    sourceInput.write('\x1b[6~');
-    await settle();
-    assert(frame().includes('Reply number 40'), 'PageDown must return to latest reply');
-    sourceInput.write('\x1b[<64;20;12M');
-    await settle();
-    assert(!frame().includes('Reply number 40'), 'mouse wheel up must reveal older replies');
-    assert(frame().includes('Reply number 39'), 'one wheel notch must move exactly one row');
-    const browsing = frame().match(/Reply number \d+/g);
-    view.entries = [...view.entries, { kind: 'assistant', text: 'Reply number 41', reasoning: '' }];
-    mounted.rerender(ui.react.createElement(ui.App, { ...props }));
-    await settle();
-    assert.deepEqual(frame().match(/Reply number \d+/g), browsing, 'new replies must not shift the reading position');
-    sourceInput.write('\x1b[<65;20;12M');
-    sourceInput.write('\x1b[<65;20;12M');
-    await settle();
-    assert(frame().includes('Reply number 41'), 'mouse wheel down must return to latest reply');
-    view.entries = [...view.entries, { kind: 'assistant', text: 'Reply number 42', reasoning: '' }];
-    mounted.rerender(ui.react.createElement(ui.App, { ...props }));
-    await settle();
-    assert(frame().includes('Reply number 42'), 'viewport must follow new replies after returning to bottom');
-    sourceInput.write('\x1b[<64;20;12M');
-    sourceInput.write('\x1b[<64;20;12M');
-    sourceInput.write('\x1b[<64;20;12M');
-    await settle();
-    assert(!/Reply number 4[012]/.test(frame()), 'three wheel notches in one frame must scroll three rows');
-    assert(frame().includes('Reply number 39'), 'the burst must stop one row short of skipping a fourth reply');
-    assert(frame().includes('type a message'), 'mouse report must not enter composer');
-  } finally {
-    mounted.unmount(); mounted.cleanup(); split.dispose(); sourceInput.destroy(); stdout.destroy(); stderr.destroy();
-  }
-  console.log('TUI viewport passed: welcome, bounded history, PageUp/PageDown, per-row coalesced mouse wheel and bottom composer at 8/12/16/21/22/24/40 rows.');
+      await settle();
+      return { raw: chunks.join(''), plain: stripVTControlCharacters(chunks.join('')) };
+    } finally { mounted.unmount(); mounted.cleanup(); stdout.destroy(); stdin.destroy(); stderr.destroy(); }
+  };
+
+  const settled = await render([
+    { kind: 'user', text: 'first prompt', notice: false },
+    { kind: 'assistant', text: 'Reply number 1', reasoning: '', turnEnded: true },
+  ]);
+  assert(settled.plain.includes('first prompt') && settled.plain.includes('Reply number 1'), 'settled history must be written to the scrollback stream');
+  assert(settled.plain.includes('─'.repeat(8)), 'a finished turn keeps its rule');
+  assert(settled.plain.includes('type a message'), 'the composer stays under the history');
+  assert(!settled.raw.includes('\x1b[?1000h'), 'no mouse capture may be enabled');
+
+  view.busy = true;
+  view.streamingReasoning = 'LIVE_THINKING_TAIL';
+  view.streaming = 'live answer';
+  const live = await render([{ kind: 'user', text: 'first prompt', notice: false }]);
+  assert(live.plain.includes('LIVE_THINKING_TAIL') || live.plain.includes('live answer'), 'the live stream must render below the history');
+  assert(!live.raw.includes('\x1b[?1000h'), 'no mouse capture while streaming');
+  console.log('TUI scrollback passed: Ink Static history, per-turn rule, no mouse capture, composer and live tails intact.');
 } finally { rmSync(entry, { force: true }); }

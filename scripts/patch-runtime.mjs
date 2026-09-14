@@ -1,5 +1,7 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { patchMacStdin } from './patch-mac-stdin.mjs';
+import { patchStdinStall } from './patch-stdin-stall.mjs';
 import { ULTRA_POLICY, ultraRequest, FLASH_POLICY, flashRequest } from '../plugins/ultra/policy.mjs';
 
 export function replaceOnce(text, from, to) {
@@ -34,11 +36,16 @@ export function patchBash(text) {
   return '// dscode-named-shell-v1\n' + text;
 }
 export function patchPersistent(text) {
-  if (text.includes('// dscode-shell-reset-v1')) return text;
-  return '// dscode-shell-reset-v1\n' + replaceOnce(text, 'const existing = pending.get(owner);', `const liveId = live.get(owner);
+  if (!text.includes('// dscode-shell-reset-v1')) {
+    text = '// dscode-shell-reset-v1\n' + replaceOnce(text, 'const existing = pending.get(owner);', `const liveId = live.get(owner);
       if (liveId !== undefined && !ctx.terminals.list(owner).some(s => s.sessionId === liveId && s.status.kind !== "exited")) { pending.delete(owner); live.delete(owner); }
       const existing = pending.get(owner);`);
+  }
+  return patchStdinStall(text);
 }
+
+export { STDIN_STALL_MS, STDIN_STALL_NOTE, patchStdinStall } from './patch-stdin-stall.mjs';
+
 export function patchTerminalBash(text) {
   if (text.includes('// dscode-no-history-expansion-v1')) return text;
   // The persistent tool sends one interactive Bash line. History expansion on
@@ -133,4 +140,19 @@ export function patchRuntime(root) {
     const after = patch(before);
     if (before !== after) writeFileSync(path, after);
   }
+  patchMacStdinPackage(root);
+}
+
+// The macOS process inspector lives in a content-hashed chunk, so find the file
+// that carries the stub instead of pinning its name.
+function patchMacStdinPackage(root) {
+  const dir = join(root, 'node_modules/@deepseek-ai/dsh-subprocess-local');
+  if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== '0.1.5-rc.1') throw new Error('Revalidate runtime patches before upgrading dsh-subprocess-local');
+  const lib = join(dir, 'lib');
+  const name = readdirSync(lib).find(entry => entry.endsWith('.js') && readFileSync(join(lib, entry), 'utf8').includes('isStdinWaiting(_pgid, _shellPid)'));
+  if (name === undefined) throw new Error('Pinned macOS stdin probe drift: dsh-subprocess-local');
+  const path = join(lib, name);
+  const before = readFileSync(path, 'utf8');
+  const after = patchMacStdin(before);
+  if (before !== after) writeFileSync(path, after);
 }

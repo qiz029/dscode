@@ -1,6 +1,7 @@
 import { readMetrics } from './store.mjs';
 import { t } from '../i18n/messages.mjs';
-import { estimateCost } from './pricing.mjs';
+import { estimateCost, peakEmoji } from './pricing.mjs';
+import { balanceNow, trustedNow } from './balance.mjs';
 import { sessionAverageTps } from './rate.mjs';
 let source;
 export function setMetricSource(next) { source = next; return () => { if (source === next) source = undefined; }; }
@@ -37,31 +38,49 @@ export function summarize(rows, events = [], corrupt = false) {
   }
   return { cost, unknown, calls, pending, cache: input > 0 && !cacheUnknown ? Math.min(100, hit / input * 100) : null };
 }
-/** Terminal columns of a string: East Asian wide characters (including the ｜ separator) take two. */
+/** Terminal columns of a string: East Asian wide characters (such as the cache label's CJK glyphs) take two. */
 export function displayWidth(text) {
   let width = 0;
-  for (const char of text) width += /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/.test(char) ? 2 : 1;
+  for (const char of text) width += /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u2600-\u27bf\u{1f300}-\u{1faff}]/u.test(char) ? 2 : 1;
   return width;
 }
-export function formatFooter(metrics, context, columns = 80, rates, locale = 'en') {
+export function formatFooter(metrics, context, columns = 80, rates, locale = 'en', header = '') {
   const label = key => t(locale, key);
   const ctx = Number.isFinite(context) ? `${Math.round(context)}%` : '--';
   const cache = metrics.cache === null ? '--' : `${metrics.cache.toFixed(1)}%`;
-  const dollars = metrics.unknown && metrics.cost === 0 ? '--' : `~$${metrics.cost.toFixed(metrics.cost < 1 ? 4 : 2)}${metrics.unknown ? '+' : ''}${metrics.pending ? '…' : ''}`;
-  const parts = rates ? [
+  const balance = balanceNow();
+  const spend = metrics.unknown && metrics.cost === 0 ? '--' : `$${metrics.cost.toFixed(2)}${metrics.unknown ? '+' : ''}${metrics.pending ? '…' : ''}`;
+  const dollars = `${spend} / ${balance === null ? '$--' : '$' + balance.toFixed(2)} ${peakEmoji(trustedNow())}`;
+  const base = rates ? [
     `${label('footer.current')}: ${Number.isFinite(rates.current) ? '~' + rates.current.toFixed(1) : '--'} tps`,
     `${label('footer.average')}: ${Number.isFinite(rates.average) ? rates.average.toFixed(1) : '--'} tps`,
-    `${label('footer.context')}: ${ctx}`, dollars, `${label('footer.cache')} ${cache}`,
-  ] : [`${label('footer.context')}: ${ctx}`, dollars, `${label('footer.cache')} ${cache}`];
-  for (let count = parts.length; count > 0; count--) {
-    const value = parts.slice(0, count).join(' ｜ ');
-    if (displayWidth(value) <= columns) return value;
+    `${label('footer.context')}: ${ctx}`, dollars, `${label('footer.cache')}: ${cache}`,
+  ] : [`${label('footer.context')}: ${ctx}`, dollars, `${label('footer.cache')}: ${cache}`];
+  // Narrow terminals shed the quietest figures first: average, cache hit, current. The
+  // model header then falls back to its bare `model @ effort` form, then context goes,
+  // and only then the header itself — the running cost is the last thing standing.
+  const drops = rates ? [1, 4, 0, 2] : [2, 0];
+  const offset = header === '' ? 0 : 1;
+  const parts = header === '' ? base : [header, ...base];
+  const short = header.replace(/^[^:]+: /, '');
+  const heads = header === '' ? [''] : short === header ? [header] : [header, short];
+  const render = ({ omit, head }) => parts
+    .map((part, index) => (index === 0 && header !== '' ? head : part))
+    .filter((part, index) => part !== '' && !omit.has(index))
+    .join(' | ');
+  for (let dropped = 0; dropped <= drops.length; dropped++) {
+    const omit = new Set(drops.slice(0, dropped).map(index => index + offset));
+    for (const head of heads) {
+      const value = render({ omit, head });
+      if (displayWidth(value) <= columns) return value;
+    }
   }
+  const floor = render({ omit: new Set(drops.map(index => index + offset)), head: '' });
   let clipped = '';
-  for (const char of parts[0]) { if (displayWidth(clipped + char) > columns) break; clipped += char; }
+  for (const char of floor) { if (displayWidth(clipped + char) > columns) break; clipped += char; }
   return clipped;
 }
-export function footerFor(id, stats, columns, locale = 'en') {
+export function footerFor(id, stats, columns, header = '', locale = 'en') {
   try {
     const data = id ? source?.(id) : undefined;
     const ledger = id && process.env.DSH_HOME ? readMetrics(process.env.DSH_HOME, id) : { rows: [], corrupt: false };
@@ -69,6 +88,6 @@ export function footerFor(id, stats, columns, locale = 'en') {
     const used = data?.used;
     const capacity = data?.capacity ?? stats.contextWindow;
     const average = sessionAverageTps(data?.events ?? []);
-    return formatFooter(summary, Number.isFinite(used) && capacity > 0 ? used / capacity * 100 : undefined, columns, { current: data?.currentTps, average }, locale);
-  } catch { return formatFooter({ cost: 0, unknown: true, cache: null }, undefined, columns, { current: null, average: null }, locale); }
+    return formatFooter(summary, Number.isFinite(used) && capacity > 0 ? used / capacity * 100 : undefined, columns, { current: data?.currentTps, average }, locale, header);
+  } catch { return formatFooter({ cost: 0, unknown: true, cache: null }, undefined, columns, { current: null, average: null }, locale, header); }
 }

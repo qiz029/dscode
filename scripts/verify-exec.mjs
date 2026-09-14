@@ -41,6 +41,20 @@ try {
   assert.equal(result.type, 'result'); assert.equal(result.reason, 'completed'); assert.match(result.text, /^fixture reply:/);
   assert.equal(result.sessionId, lines[0].sessionId);
 
+  // A command that only terminal input could finish used to hold the turn until
+  // the 300s deadline; the macOS probe settles it as a stdin wait and interrupts it.
+  const blockingStarted = Date.now();
+  const blocking = await run([...base, 'USE_BLOCKING_TOOL']);
+  const blockingElapsed = Date.now() - blockingStarted;
+  // A confined environment that denies PTY allocation cannot reach the terminal
+  // backend at all; say so instead of failing every such sandbox.
+  if (blocking.stdout.includes('no pty')) console.log('EXEC_PROBE_SKIPPED: this environment denies PTY allocation, so the terminal-blocking command was not exercised');
+  else {
+    assert.equal(blocking.code, 0, `blocking command did not settle in ${blockingElapsed}ms: ${blocking.stderr}`);
+    assert.equal(blocking.stdout, 'fixture reply: stall noted\n', 'the tool result must report the interrupted stdin wait');
+    assert(blockingElapsed < 60000, `blocking command took ${blockingElapsed}ms`);
+  }
+
   const resumed = await run([...base, '--resume', result.sessionId, 'again']);
   assert.equal(resumed.code, 0, resumed.stderr);
   assert.equal(resumed.stdout, 'fixture reply: again\n');
@@ -50,5 +64,5 @@ try {
   assert.equal(empty.code, 1); assert.match(empty.stderr, /Prompt is empty/);
   const bad = await run(['--effort', 'medium', 'x']);
   assert.equal(bad.code, 1); assert.match(bad.stderr, /--effort expects/);
-  console.log('EXEC_PROBE_PASSED: argument prompt, stdin prompt, --quiet, --json with a tool call, --resume, empty prompt and bad option exits');
+  console.log('EXEC_PROBE_PASSED: argument prompt, stdin prompt, --quiet, --json with a tool call, a terminal-blocking command, --resume, empty prompt and bad option exits');
 } finally { rmSync(home, { recursive: true, force: true }); }

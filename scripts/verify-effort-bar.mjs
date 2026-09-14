@@ -141,7 +141,8 @@ try {
     stdin.write('\r'); await tick(500);
     const selected = frames.map(value => stripVTControlCharacters(value)).filter(value => value.includes('Faster')).at(-1) ?? '';
     assert.match(selected, /Faster.*Smarter/, JSON.stringify(modelActions) + errors.join('') + '\n' + frames.slice(-2).map(value => stripVTControlCharacters(value)).join('\n'));
-    assert(selected.indexOf('Faster') < selected.indexOf('deepseek-flash ｜ high'), 'Effort selector should sit above the status line');
+    assert(selected.indexOf('Faster') < selected.indexOf('deepseek-flash @ high'), 'Effort selector should sit above the footer');
+    assert.match(selected, /○ New session\s*｜\s*ask/, 'row 1 keeps the title and the permission while the selector is open');
     assert(!selected.includes('type a message'), 'Effort selector must replace the chat composer');
     stdin.write('\x1b'); await tick(60);
     const restored = frames.map(value => stripVTControlCharacters(value)).filter(value => value.includes('type a message')).at(-1) ?? '';

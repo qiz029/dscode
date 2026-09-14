@@ -32,7 +32,8 @@ function dscodeSaveFlag(name, value) {
 }
 `;
 
-const CATALOG_ANCHOR = '\t{\n\t\tlabel: "/mouse",\n\t\tdescription: "toggle mouse capture: off to select and copy text, on for wheel scrolling"\n\t},\n';
+// Mode A owns the whole terminal: there is no mouse command, so the language entry rides the verbose entry.
+const CATALOG_ANCHOR = '\t{\n\t\tlabel: "/verbose",\n\t\tdescription: "toggle thinking and tool call details in the chat"\n\t},\n';
 const CATALOG_ENTRY = '\t{\n\t\tlabel: "/language",\n\t\tdescription: "show or set the interface language: en, zh-CN, zh-TW, ja, ko, es"\n\t},\n';
 const DISPATCH_ANCHOR = '\t\t\tif (text === "/todos") {\n\t\t\t\topenTodos();';
 const NOARG_V1 = '\t\t\t\tif (!wanted) { notify(dscodeT("language.current", { name: dscodeLanguageName(dscodeLocale) })); return; }';
