@@ -87,7 +87,9 @@ npm 已宣布带 bypass 2FA 的 token 直接发布将在 2027 年 1 月停用；
 
 发布按文档顺序分三段执行，每段都重新核对上面验过的哈希：`publish:hub -- bundle` → `publish:hub -- profile`（先让 Hub 从 npm 同步，再要求该精确版本可解析）→ `publish:hub -- launcher`。**launcher 永远在 bundle 与 public Hub release 之后**，否则用户首次启动会失败。新包在 Hub 控制台的认领（claim）仍需人工完成；tag 与 `package.json` 版本不一致时 `build` job 直接失败，不会发布。
 
-手动 dry run：Actions → Release → Run workflow，`publish` 保持 `false`，只构建并验证候选产物、不发布。
+手动 dry run：Actions → Release → Run workflow，两个开关都保持 `false`，只构建并验证候选产物、不发布。
+
+只验凭据：Actions → Release → Run workflow，勾选 `verify_credentials`。它跑完整 `build` job 后进入 `publish` job，用 `node scripts/check-publish-credentials.mjs` 做**只读**检查——npm token 是否以 `toddzheng024` 身份通过认证、Hub token 能否读到 `dscode` profile、以及当前版本号在 npm 上是否还空着——然后停止，不发布任何东西。版本已在 npm 上时这个检查会失败，正好拦住「忘记 bump 版本就推 tag」。
 
 
 

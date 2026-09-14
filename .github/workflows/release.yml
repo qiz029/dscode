@@ -10,6 +10,10 @@ on:
         description: Publish the verified packages to npm and the Hub
         type: boolean
         default: false
+      verify_credentials:
+        description: Only check the npm and Hub credentials and stop (implies the publish job)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -52,7 +56,7 @@ jobs:
 
   publish:
     needs: build
-    if: github.ref_type == 'tag' || inputs.publish
+    if: github.ref_type == 'tag' || inputs.publish || inputs.verify_credentials
     runs-on: macos-14
     timeout-minutes: 60
     environment: release
@@ -66,24 +70,30 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: release-candidates
-      - name: Require the publishing credentials
+      # Read-only: both tokens authenticate and this version is still free. A manual
+      # dispatch with verify_credentials stops here.
+      - name: Check the publishing credentials
         env:
           NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
           DSH_HUB_TOKEN: ${{ secrets.DSH_HUB_TOKEN }}
         run: |
           test -n "$NPM_PUBLISH_TOKEN" || { echo "::error::add the NPM_PUBLISH_TOKEN secret (granular npm token with bypass 2FA for @toddzheng024/dscode and @toddzheng024/dscode-bundle)"; exit 1; }
           test -n "$DSH_HUB_TOKEN" || { echo "::error::add the DSH_HUB_TOKEN secret (Hub CI token)"; exit 1; }
+          node scripts/check-publish-credentials.mjs
       # Never publish the launcher before its Hub release resolves: the three
       # phases each re-check the artifact hashes they verified above.
       - name: Publish the bundle to npm
+        if: github.ref_type == 'tag' || inputs.publish
         env:
           NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
         run: npm run publish:hub -- bundle
       - name: Sync npm and publish the Hub profile
+        if: github.ref_type == 'tag' || inputs.publish
         env:
           DSH_HUB_TOKEN: ${{ secrets.DSH_HUB_TOKEN }}
         run: npm run publish:hub -- profile
       - name: Publish the launcher to npm
+        if: github.ref_type == 'tag' || inputs.publish
         env:
           NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
         run: npm run publish:hub -- launcher
