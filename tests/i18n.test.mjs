@@ -42,14 +42,28 @@ test('the language is stored per machine and DSCODE_LANGUAGE overrides it', () =
 });
 
 test('the TUI patch embeds the tables, adds /language, and refreshes an already-patched bundle', () => {
-  const upstream = '\t{\n\t\tlabel: "/mouse",\n\t\tdescription: "toggle mouse capture: off to select and copy text, on for wheel scrolling"\n\t},\n\t\t\tif (text === "/todos") {\n\t\t\t\topenTodos();';
+  const upstream = ['\t{\n\t\tlabel: "/mouse",\n\t\tdescription: "toggle mouse capture: off to select and copy text, on for wheel scrolling"\n\t},\n',
+    'function Input({ openStatusline, openTheme, openHistory, notify, refresh }) {\n\t\t\tif (text === "/todos") {\n\t\t\t\topenTodos();\n',
+    '\tconst [themeOpen, setThemeOpen] = (0, import_react.useState)(false);\n',
+    'const inputActive = !themeOpen && x;\nconst transcriptVisible = !themeOpen && y;\nconst modalVisible = themeOpen || z;\n',
+    '\t\tsetThemeOpen(false);\n\t\tsetHistoryOpen(false);\n\t\topenTheme: () => setThemeOpen(true),\n',
+    '}) : void 0, historyOpen && !approvalPending && !questionPending ? (0, import_react.createElement)(HistoryPanel, {\n',
+    'function ThemePanel({ current, select, close }) {\n'].join('');
   const once = patchLanguage(upstream);
-  assert(once.startsWith('// dscode-language-v1\n'));
+  assert(once.startsWith('// dscode-language-v2\n// dscode-language-v1\n'));
   assert(once.includes('label: "/language"') && once.includes('if (text === "/language" || text.startsWith("/language "))'));
+  assert(once.includes('if (!wanted) { openLanguage(); return; }'), 'bare /language opens the picker');
+  assert(once.includes('function LanguagePanel({ current, select, close })') && once.includes('createElement)(LanguagePanel, {'));
+  assert(once.includes('const inputActive = !themeOpen && !languageOpen && x;') && once.includes('const modalVisible = themeOpen || languageOpen || z;'));
+  assert(once.includes('openStatusline, openTheme, openLanguage, openHistory,') && once.includes('openLanguage: () => setLanguageOpen(true),') && once.includes('\t\tsetLanguageOpen(false);\n'));
   assert(once.includes(LANGUAGE_SOURCE));
   assert.equal(patchLanguage(once), once);
   const stale = once.replace('"activity.running":"Running"', '"activity.running":"Old"');
   assert.notEqual(stale, once);
   assert.equal(patchLanguage(stale), once, 'embedded translations resync to the current tables');
+  const v1 = once.replace('// dscode-language-v2\n', '').replace('if (!wanted) { openLanguage(); return; }', 'if (!wanted) { notify(dscodeT("language.current", { name: dscodeLanguageName(dscodeLocale) })); return; }');
+  assert(!v1.includes('LanguagePanel') || v1.includes('createElement)(LanguagePanel'), 'fixture sanity');
+  const upgraded = patchLanguage(v1.replace(/function LanguagePanel[\s\S]*?\n}\n/, '').replace(/}\) : void 0, languageOpen[\s\S]*?HistoryPanel, \{/, '}) : void 0, historyOpen && !approvalPending && !questionPending ? (0, import_react.createElement)(HistoryPanel, {').replace(' && !languageOpen', '').replace(' && !languageOpen', '').replace('themeOpen || languageOpen ||', 'themeOpen ||').replace('\t\tsetLanguageOpen(false);\n', '').replace('\t\topenLanguage: () => setLanguageOpen(true),\n', '').replace('openTheme, openLanguage, openHistory,', 'openTheme, openHistory,').replace('\tconst [languageOpen, setLanguageOpen] = (0, import_react.useState)(false);\n', ''));
+  assert.equal(upgraded, once, 'a v1-patched bundle upgrades to the picker');
   assert.throws(() => patchLanguage('unknown upstream'), /drift/);
 });
