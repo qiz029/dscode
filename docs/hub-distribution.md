@@ -17,7 +17,7 @@ dscode
 
 首次安装联网从 Hub/npm 获取代码。需要 macOS 14+、Node 22.19+（22.x）或 24+、Git、Chrome。安装依赖使用 ignore-scripts，与已验证的预编译模块路径一致，不自动执行第三方安装脚本。正常 agent shell 不强制这个 npm 选项。
 
-DeepSeek 密钥通过 `/login` 在本地保存，其他模型密钥在 `/model` 配置，或设置 `DEEPSEEK_API_KEY`。辅助功能/录屏权限由 macOS 授予。
+DeepSeek 与 OpenRouter 密钥通过 `/login`（`/login openrouter`）在本地保存，`/provider` 在两者之间切换；其他模型密钥在 `/model` 配置，或设置 `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY`。辅助功能/录屏权限由 macOS 授予。
 
 ```sh
 dscode update 0.7.2

@@ -16,13 +16,16 @@ try {
     const unpack = spawnSync('tar', ['-xzf', tarball, '-C', destination, '--strip-components=1'], { encoding: 'utf8' });
     assert.equal(unpack.status, 0, unpack.stderr);
     const pkg = JSON.parse(readFileSync(join(destination, 'package.json'), 'utf8'));
-    const entries = name === 'launcher' ? ['cli.mjs', 'manager.mjs', 'locks.mjs', 'session-bridge/client.mjs'] : Object.values(pkg.exports).filter(path => path.endsWith('.mjs') || path.endsWith('.js'));
+    const entries = name === 'launcher' ? ['cli.mjs', 'manager.mjs', 'locks.mjs', 'session-bridge/client.mjs', 'exec/cli.mjs'] : Object.values(pkg.exports).filter(path => path.endsWith('.mjs') || path.endsWith('.js'));
     for (const entry of entries) {
       assert(existsSync(join(destination, entry)), `Missing packaged entry: ${entry}`);
       const check = spawnSync(process.execPath, ['--check', join(destination, entry)], { encoding: 'utf8' });
       assert.equal(check.status, 0, check.stderr);
     }
-    if (name === 'launcher') assert.equal(pkg.dependencies['@deepseek-ai/node-addon-system'], '0.1.2');
+    if (name === 'launcher') {
+      assert.equal(pkg.dependencies['@deepseek-ai/node-addon-system'], '0.1.2');
+      assert.match(readFileSync(join(destination, 'manager.mjs'), 'utf8'), /'\.\/exec\/cli\.mjs'/, 'the launcher loads its own exec CLI');
+    }
     else {
       assert.match(readFileSync(join(destination, 'vendor/terminal/index.js'), 'utf8'), /dscode-no-history-expansion-v1/);
       assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /dscode-bundle\/terminal/);
@@ -33,6 +36,11 @@ try {
       assert.match(readFileSync(join(destination, 'vendor/subagent-core/index.js'), 'utf8'), /workspaceCwd/);
       assert.match(readFileSync(join(destination, 'vendor/subagent-driver/index.js'), 'utf8'), /request\.workspaceCwd/);
       assert.match(readFileSync(join(destination, 'cordis.patch.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/subagent-core'/);
+      assert.match(readFileSync(join(destination, 'vendor/pi-ai/index.js'), 'utf8'), /^\/\/ dscode-pi-ai-ultra-v1/);
+      assert.match(readFileSync(join(destination, 'vendor/tui/index.mjs'), 'utf8'), /dscode-provider-v1/);
+      assert(existsSync(join(destination, 'vendor/tui/dscode-providers/catalog.mjs')));
+      assert.match(readFileSync(join(destination, 'cordis.patch.yml'), 'utf8'), /- id: llm-pi-ai\n  disabled: true\n[\s\S]*name: '@toddzheng024\/dscode-bundle\/pi-ai'/);
+      assert(pkg.dependencies['@earendil-works/pi-ai'], 'the vendored pi-ai adapter needs its catalog package');
       assert(existsSync(join(destination, 'plugins/worktree-subagent/worktree.mjs')));
       assert(existsSync(join(destination, 'plugins/session-metrics/rate.mjs')));
       assert(existsSync(join(destination, 'plugins/tui-tools/doctor.mjs')));

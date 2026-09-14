@@ -187,3 +187,47 @@ test('review retries once after a non-stop finish, surfaces the provider reason,
   assert.equal(truncated.calls(), 1, 'a truncated but usable report is not retried');
   await assert.rejects(independentReview(stream({ finish: { kind: 'max-tokens' } }), agent(), {}, undefined, collect), /ran out of output tokens/);
 });
+
+test('review covers a merge commit and the commits a task made when nothing is left uncommitted', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'dscode-review-merge-'));
+  try {
+    await git(cwd, 'init', '-q', '-b', 'main');
+    await git(cwd, 'config', 'user.email', 'fixture@example.test');
+    await git(cwd, 'config', 'user.name', 'Fixture');
+    await writeFile(join(cwd, 'app.txt'), 'base\n');
+    await git(cwd, 'add', '.'); await git(cwd, 'commit', '-qm', 'base');
+    // Reflog times are whole seconds: start the task in a later second than the base commit and commit later still.
+    await new Promise(resolve => setTimeout(resolve, 1100));
+    const since = Date.now();
+    await new Promise(resolve => setTimeout(resolve, 1100));
+    await git(cwd, 'checkout', '-qb', 'feature');
+    await writeFile(join(cwd, 'app.txt'), 'feature change\n');
+    await writeFile(join(cwd, 'notes.txt'), 'notes\n');
+    await git(cwd, 'add', '.'); await git(cwd, 'commit', '-qm', 'feature');
+    await git(cwd, 'checkout', '-q', 'main');
+    await git(cwd, 'merge', '-q', '--no-ff', 'feature', '-m', 'merge feature');
+    assert.equal((await collectReviewDiff(cwd)).diff, '', 'without a task start the clean tree has nothing to review');
+    const task = await collectReviewDiff(cwd, { since });
+    assert.match(task.label, /^commits made since this task started \([0-9a-f]{12}\.\.HEAD\)$/);
+    assert.match(task.diff, /\+feature change/);
+    assert.match(task.diff, /\+notes/);
+    assert.doesNotMatch((await collectReviewDiff(cwd, { since, path: 'app.txt' })).diff, /notes/);
+    assert.equal((await collectReviewDiff(cwd, { since: Date.now() })).diff, '', 'a task that has not moved HEAD reviews nothing');
+    assert.equal((await collectReviewDiff(cwd, { since: 0 })).diff, '', 'a start older than the reflog is not guessed');
+    const merge = await collectReviewDiff(cwd, { scope: 'commit', ref: 'HEAD' });
+    assert.match(merge.diff, /\+feature change/, 'a clean merge commit is reviewed against its first parent');
+    await writeFile(join(cwd, 'app.txt'), 'uncommitted\n');
+    assert.match((await collectReviewDiff(cwd, { since })).diff, /\+uncommitted/);
+    assert.doesNotMatch((await collectReviewDiff(cwd, { since })).label, /commits made/, 'uncommitted work keeps the working scope');
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test('the review tool passes the task start, never a caller-supplied one, to the diff collector', async () => {
+  const seen = [];
+  const agent = { options: {}, session: { id: 's', header: { cwd: '/tmp' }, requestHeader: () => undefined,
+    snapshotEvents: () => [{ type: 'user/message', time: 123456, data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'task' }] } }] } };
+  const collect = async (_cwd, options) => { seen.push(options); return { label: 'uncommitted changes', diff: '', repository: '/tmp' }; };
+  const result = await independentReview({}, agent, { scope: 'working', path: 'src', since: 1 }, undefined, collect);
+  assert.equal(result.status, 'no_changes');
+  assert.deepEqual(seen, [{ scope: 'working', ref: undefined, path: 'src', since: 123456 }]);
+});

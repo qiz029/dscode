@@ -1,6 +1,6 @@
 // Host-side half of `dscode exec`: one prompt, one turn, streamed to stdout,
 // then the Host exits with a code that reflects how the turn ended. Loaded
-// through a --patch overlay; the CLI half lives in scripts/exec.mjs.
+// through a --patch overlay; the CLI half lives in scripts/exec.mjs and packages/launcher/manager.mjs.
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';

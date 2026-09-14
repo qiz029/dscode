@@ -93,9 +93,21 @@ export function isGitWorkspaceSync(cwd, run = execFileSync, now = Date.now()) {
   return value;
 }
 
+/** HEAD as it was at `time` (ms), read from the reflog (newest first); undefined when the reflog does not reach back that far. */
+async function headAt(cwd, time, signal) {
+  let log;
+  try { log = await git(cwd, ['reflog', 'show', '--date=unix', '--format=%H %gd', 'HEAD'], signal); }
+  catch (error) { if (signal?.aborted) throw error; return undefined; }
+  for (const line of log.split('\n')) {
+    const match = line.match(/^([0-9a-f]{40,64}) HEAD@\{(\d+)\}$/);
+    if (match && Number(match[2]) * 1000 <= time) return match[1];
+  }
+  return undefined;
+}
+
 export async function collectReviewDiff(cwd, options = {}, signal) {
   const { scope, ref, path } = reviewSpec(options.scope, options.ref, options.path);
-  const label = scope === 'working' ? 'uncommitted changes (tracked and untracked)' : scope === 'staged' ? 'staged changes' : `${scope} ${ref}`;
+  let label = scope === 'working' ? 'uncommitted changes (tracked and untracked)' : scope === 'staged' ? 'staged changes' : `${scope} ${ref}`;
   const repository = await gitWorkspace(cwd, signal);
   if (repository === null) return { scope, ref, path, diff: '', omitted: [], label, repository: null };
   const pathArgs = ['--', ...(path ? [path] : [])];
@@ -113,9 +125,19 @@ export async function collectReviewDiff(cwd, options = {}, signal) {
     }
     const extra = await untracked(cwd, path, signal);
     diff += extra.text; omitted = extra.omitted;
+    // A task that committed or merged its work leaves nothing uncommitted: review the commits made since it started.
+    if (!diff.trim() && Number.isFinite(options.since)) {
+      const start = await headAt(cwd, options.since, signal);
+      const head = start && (await git(cwd, ['rev-parse', 'HEAD'], signal)).trim();
+      if (start && head !== start) {
+        diff = await git(cwd, ['diff', '--no-ext-diff', '--no-textconv', start, 'HEAD', ...pathArgs], signal);
+        label = `commits made since this task started (${start.slice(0, 12)}..HEAD)`;
+      }
+    }
   } else if (scope === 'staged') diff = await git(cwd, ['diff', '--no-ext-diff', '--no-textconv', '--cached', ...pathArgs], signal);
   else if (scope === 'base') diff = await git(cwd, ['diff', '--no-ext-diff', '--no-textconv', `${ref}...HEAD`, ...pathArgs], signal);
-  else diff = await git(cwd, ['show', '--format=', '--no-ext-diff', '--no-textconv', ref, ...pathArgs], signal);
+  // Plain `git show` prints a merge as a combined diff, which is empty for a clean merge; review it against its first parent.
+  else diff = await git(cwd, ['show', '--format=', '--diff-merges=first-parent', '--no-ext-diff', '--no-textconv', ref, ...pathArgs], signal);
   if (Buffer.byteLength(diff) > 160 * 1024) throw Error('Review diff exceeds 160 KiB. Use --path to review a smaller part.');
   if (/^Binary files .* differ$/m.test(diff)) omitted.push('tracked binary diff');
   return { scope, ref, path, diff, omitted, label, repository };

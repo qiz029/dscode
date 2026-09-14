@@ -3,6 +3,7 @@ import { t } from '../i18n/messages.mjs';
 import { estimateCost, peakEmoji } from './pricing.mjs';
 import { balanceNow, trustedNow } from './balance.mjs';
 import { sessionAverageTps } from './rate.mjs';
+import { providerOfHeader } from '../providers/catalog.mjs';
 let source;
 export function setMetricSource(next) { source = next; return () => { if (source === next) source = undefined; }; }
 export function summarize(rows, events = [], corrupt = false) {
@@ -44,13 +45,14 @@ export function displayWidth(text) {
   for (const char of text) width += /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u2600-\u27bf\u{1f300}-\u{1faff}]/u.test(char) ? 2 : 1;
   return width;
 }
-export function formatFooter(metrics, context, columns = 80, rates, locale = 'en', header = '') {
+export function formatFooter(metrics, context, columns = 80, rates, locale = 'en', header = '', provider = providerOfHeader(header) ?? 'deepseek-official') {
   const label = key => t(locale, key);
   const ctx = Number.isFinite(context) ? `${Math.round(context)}%` : '--';
   const cache = metrics.cache === null ? '--' : `${metrics.cache.toFixed(1)}%`;
-  const balance = balanceNow();
+  // The balance belongs to the provider the header names; only DeepSeek's official route bills by a peak window.
+  const balance = balanceNow(provider);
   const spend = metrics.unknown && metrics.cost === 0 ? '--' : `$${metrics.cost.toFixed(2)}${metrics.unknown ? '+' : ''}${metrics.pending ? '…' : ''}`;
-  const dollars = `${spend} / ${balance === null ? '$--' : '$' + balance.toFixed(2)} ${peakEmoji(trustedNow())}`;
+  const dollars = `${spend} / ${balance === null ? '$--' : '$' + balance.toFixed(2)}${provider === 'deepseek-official' ? ' ' + peakEmoji(trustedNow()) : ''}`;
   const base = rates ? [
     `${label('footer.current')}: ${Number.isFinite(rates.current) ? '~' + rates.current.toFixed(1) : '--'} tps`,
     `${label('footer.average')}: ${Number.isFinite(rates.average) ? rates.average.toFixed(1) : '--'} tps`,

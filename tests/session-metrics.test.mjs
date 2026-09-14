@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { estimateCost } from '../plugins/session-metrics/pricing.mjs';
+import { estimateCost, priceVersionFor } from '../plugins/session-metrics/pricing.mjs';
 import { summarize, formatFooter, footerFor, displayWidth } from '../plugins/session-metrics/view.mjs';
 import { apply } from '../plugins/session-metrics/index.mjs';
 import { readMetrics } from '../plugins/session-metrics/store.mjs';
+import { chargeTo } from '../plugins/session-metrics/attribution.mjs';
 import { createWindowRate, estimatedDeltaTokens, sessionAverageTps } from '../plugins/session-metrics/rate.mjs';
 const usage = { inputTokens: 1e6, outputTokens: 1e6, cacheReadTokens: 1e6 };
 test('official prices use UTC weekday windows and announced Pro migration', () => {
@@ -19,6 +20,16 @@ test('official prices use UTC weekday windows and announced Pro migration', () =
   assert.equal(price('unknown', '2026-09-11T01:00Z'), null);
   assert.equal(price('deepseek-flash', '2026-09-10T01:00Z'), null);
   assert.equal(estimateCost('proxy', 'deepseek-flash', usage, Date.now()), null);
+});
+test('OpenRouter prices the declared DeepSeek models at list price with no peak window', () => {
+  const peak = Date.parse('2026-09-14T02:00Z'), quiet = Date.parse('2026-09-14T12:00Z');
+  assert.equal(estimateCost('openrouter', 'deepseek/deepseek-v4-flash', usage, peak), estimateCost('openrouter', 'deepseek/deepseek-v4-flash', usage, quiet));
+  assert.equal(Math.round(estimateCost('openrouter', 'deepseek/deepseek-v4-flash', usage, peak) * 1e6), 272832);
+  assert.equal(Math.round(estimateCost('openrouter', 'deepseek/deepseek-v4-pro', usage, peak) * 1e6), 2745270);
+  assert.equal(estimateCost('openrouter', 'deepseek/deepseek-v4-flash', { ...usage, cacheWriteTokens: 1 }, peak), null);
+  assert.equal(estimateCost('openrouter', 'anthropic/claude-sonnet-4.5', usage, peak), null);
+  assert.equal(priceVersionFor('openrouter'), 'openrouter-pi-ai-0.85.1');
+  assert.equal(priceVersionFor('deepseek-official'), 'deepseek-2026-09-11');
 });
 test('session totals weight input tokens, retain unknowns and survive replay', () => {
   const rows = [
@@ -174,4 +185,35 @@ test('footer labels follow the interface language and wide characters count as t
   assert.match(formatFooter(metrics, 43, 80, rates, 'ja'), /^現在: ~12\.3 tps | 平均: 2\.4 tps | コンテキスト: 43%/);
   for (const columns of [20, 24, 30, 40, 60]) assert(displayWidth(formatFooter(metrics, 43, columns, rates, 'ko')) <= columns, `fits ${columns}`);
   assert.equal(formatFooter(metrics, 43, 80, rates, 'xx'), formatFooter(metrics, 43, 80, rates), 'unknown locale falls back to English');
+});
+
+test('ledger rows time each call and charge plugin calls made for a session without a wire sessionId', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'dscode-metrics-timing-'));
+  const old = process.env.DSH_HOME; process.env.DSH_HOME = home;
+  let wrapper;
+  const root = { session: { header: {} } };
+  apply({ effect() {}, logger: { warn() {} }, on: (_name, fn) => { wrapper = fn; }, agents: { get: id => id === 'root' ? root : undefined } });
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const call = (options, delayMs = 0) => wrapper({ provider: 'deepseek-official', model: 'deepseek-flash', ...options }, async function* () {
+    await sleep(delayMs); yield { type: 'block-start' }; yield { type: 'reasoning-delta', text: 'x' };
+    await sleep(delayMs); yield { type: 'usage', usage };
+  });
+  try {
+    for await (const _ of call({ sessionId: 'root' }, 25)) {}
+    let rows = readMetrics(home, 'root').rows;
+    const [start, end] = rows;
+    assert.equal(start.purpose, 'agent');
+    assert.equal(end.time, start.time, 'time stays the start so pricing is unchanged');
+    assert(end.firstTokenTime - start.time >= 20, 'first token waits for the first output chunk, not block-start');
+    assert(end.endTime - end.firstTokenTime >= 20, 'endTime is taken when the stream settles');
+    await chargeTo('root', 'review', async () => { for await (const _ of call({ purpose: 'review' })) {} });
+    await chargeTo('root', 'memory', async () => { for await (const _ of call({})) {} });
+    for await (const _ of call({})) {}
+    await chargeTo(undefined, 'memory', async () => { for await (const _ of call({})) {} });
+    await chargeTo('other', 'memory', async () => { for await (const _ of call({ sessionId: 'root' })) {} });
+    rows = readMetrics(home, 'root').rows;
+    assert.deepEqual(rows.filter(row => row.kind === 'start').map(row => row.purpose), ['agent', 'review', 'memory', 'agent'], 'uncharged calls stay out; a wire sessionId wins over the charge');
+    assert(rows.filter(row => row.kind === 'end').every(row => row.endTime >= row.time && row.sessionId === 'root'));
+    assert.equal(readMetrics(home, 'other').rows.length, 0);
+  } finally { if (old === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = old; rmSync(home, { recursive: true, force: true }); }
 });

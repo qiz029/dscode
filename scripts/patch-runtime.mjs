@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { patchMacStdin } from './patch-mac-stdin.mjs';
 import { patchStdinStall } from './patch-stdin-stall.mjs';
-import { ULTRA_POLICY, ultraRequest, FLASH_POLICY, flashRequest } from '../plugins/ultra/policy.mjs';
+import { ULTRA_POLICY, ultraRequest, FLASH_POLICY, flashRequest, piAiRequest } from '../plugins/ultra/policy.mjs';
 
 export function replaceOnce(text, from, to) {
   if (text.split(from).length !== 2) throw new Error('Pinned runtime patch drift: ' + from.slice(0, 90));
@@ -24,6 +24,21 @@ export function patchDeepSeek(text) {
   text = replaceOnce(text, 'const REASONING_EFFORTS = [', 'const REASONING_EFFORTS = [\n{ id: ReasoningEffortId("ultra"), name: "Ultra", description: "DSCODE: max reasoning plus deliberate subagent collaboration; higher total token use." },');
   text = replaceOnce(text, 'function requestWithMessages(options, messages, defaults) {', 'function requestWithMessages(options, messages, defaults) {\n\tmessages = flashRequest(options, messages);\n\tmessages = ultraRequest(options, messages);');
   text = filterTools(text);
+  return prefix + text;
+}
+// OpenRouter runs through pi-ai: a route whose model offers max also offers Ultra
+// (max on the wire plus the collaboration policy), exactly like the DeepSeek adapter.
+export function patchPiAi(text) {
+  const marker = '// dscode-pi-ai-ultra-v1';
+  const prefix = marker + '\nconst ULTRA_POLICY = ' + JSON.stringify(ULTRA_POLICY) + ';\n' + piAiRequest.toString() + '\n';
+  if (text.startsWith(marker)) {
+    const start = text.indexOf('\nimport ');
+    if (start < 0) throw new Error('Malformed patched pi-ai module');
+    return prefix + text.slice(start + 1);
+  }
+  text = replaceOnce(text, 'function resolveReasoningLevel(model, effort) {\n\tif (effort === void 0) return void 0;', 'function resolveReasoningLevel(model, effort) {\n\tif (effort === void 0) return void 0;\n\tif (effort === "ultra" && getSupportedThinkingLevels(model).includes("max")) return "max";');
+  text = replaceOnce(text, '\t\t\tname: `${level.charAt(0).toUpperCase()}${level.slice(1)}`\n\t\t})),', '\t\t\tname: `${level.charAt(0).toUpperCase()}${level.slice(1)}`\n\t\t})).concat(getSupportedThinkingLevels(model).includes("max") ? [{ id: ReasoningEffortId("ultra"), name: "Ultra", description: "DSCODE: max reasoning plus deliberate subagent collaboration; higher total token use." }] : []),');
+  text = replaceOnce(text, 'async *streamWithSnapshot(options, snapshot) {', 'async *streamWithSnapshot(options, snapshot) {\n\t\toptions = piAiRequest(options);');
   return prefix + text;
 }
 export function patchBash(text) {
@@ -139,7 +154,7 @@ export function patchSubagentDriver(text) {
  * package cannot carry its own copy of that package.
  */
 export function patchRuntime(root, { requireMacStdin = true } = {}) {
-  for (const [pkg, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-subagent-in-process-driver', patchSubagentDriver], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash]]) {
+  for (const [pkg, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-subagent-in-process-driver', patchSubagentDriver], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-llm-pi-ai', patchPiAi], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash]]) {
     const dir = join(root, 'node_modules/@deepseek-ai', pkg);
     if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== '0.1.5-rc.1') throw new Error('Revalidate runtime patches before upgrading ' + pkg);
     const path = join(dir, 'lib/index.js');

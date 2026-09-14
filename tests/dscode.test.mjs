@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { patchDeepSeek, patchBash, patchPersistent, patchSubagent, patchSubagentCore, patchSubagentDriver, patchTerminalBash, patchMacStdinPackage } from '../scripts/patch-runtime.mjs';
+import { patchDeepSeek, patchPiAi, patchBash, patchPersistent, patchSubagent, patchSubagentCore, patchSubagentDriver, patchTerminalBash, patchMacStdinPackage } from '../scripts/patch-runtime.mjs';
 import { patchMacStdin, MAC_INSPECTOR_ANCHOR } from '../scripts/patch-mac-stdin.mjs';
 import { createTestRuntime } from '../scripts/test-runtime.mjs';
 import { pathToFileURL } from 'node:url';
@@ -53,6 +53,34 @@ test('ultra uses native max on the actual wire and adds policy only to agent cal
     assert(!JSON.stringify(payloads[6].messages).includes('DSCODE DeepSeek Flash'));
     assert(JSON.stringify(payloads[7].messages).includes('DSCODE DeepSeek Flash'));
   } finally { globalThis.fetch = original; }
+});
+test('OpenRouter (pi-ai) Ultra sends max with the collaboration policy and hides delegation below Ultra', async () => {
+  const { piAiRequest } = await import('../plugins/ultra/policy.mjs');
+  const tools = ['bash', 'subagent', 'subagent_fork', 'workflow', 'ralph'].map(name => ({ name, description: name, parameters: { type: 'object', properties: {} } }));
+  const base = { provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', tools, messages: [{ role: 'system', content: [{ type: 'text', text: 'Original instructions.' }] }, { role: 'user', content: [{ type: 'text', text: 'Do work.' }] }] };
+  const before = JSON.stringify(base);
+  const ultra = piAiRequest({ ...base, reasoningEffort: 'ultra' });
+  assert.equal(JSON.stringify(base), before, 'shaping must not mutate logged input');
+  assert.equal(ultra.reasoningEffort, 'max');
+  assert.deepEqual(ultra.tools.map(tool => tool.name), ['bash', 'subagent', 'subagent_fork']);
+  assert.equal(ultra.messages.length, 2);
+  assert.match(ultra.messages[0].content.at(-1).text, /DSCODE ULTRA/);
+  const system = piAiRequest({ ...base, system: 'Prompt.', reasoningEffort: 'ultra' });
+  assert.match(system.system, /^Prompt\.\n\nDSCODE ULTRA/);
+  assert.equal(system.messages, base.messages);
+  const bare = piAiRequest({ ...base, messages: base.messages.slice(1), reasoningEffort: 'ultra' });
+  assert.equal(bare.messages[0].role, 'system');
+  const high = piAiRequest({ ...base, reasoningEffort: 'high' });
+  assert.equal(high.reasoningEffort, 'high');
+  assert.deepEqual(high.tools.map(tool => tool.name), ['bash']);
+  assert(!JSON.stringify(high.messages).includes('DSCODE ULTRA'));
+  const compaction = piAiRequest({ ...base, reasoningEffort: 'ultra', purpose: 'compaction' });
+  assert.equal(compaction.reasoningEffort, 'max');
+  assert(!JSON.stringify(compaction.messages).includes('DSCODE ULTRA'));
+  const text = readFileSync(`${root}/node_modules/@deepseek-ai/dsh-llm-pi-ai/lib/index.js`, 'utf8');
+  assert(text.startsWith('// dscode-pi-ai-ultra-v1'));
+  assert(text.includes('options = piAiRequest(options);'));
+  assert(text.includes('if (effort === "ultra" && getSupportedThinkingLevels(model).includes("max")) return "max";'));
 });
 test('high and max cannot launch or wake children; Ultra remains available', async () => {
   let execute;
@@ -104,7 +132,7 @@ test('the macOS stdin inspector is patched, reported unchanged, or refused loudl
 });
 
 test('pinned runtime patches are idempotent and reject unknown upstream code', () => {
-  for (const [name, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-subagent-in-process-driver', patchSubagentDriver], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash]]) {
+  for (const [name, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-subagent-in-process-driver', patchSubagentDriver], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-llm-pi-ai', patchPiAi], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash]]) {
     const text = readFileSync(`${root}/node_modules/@deepseek-ai/${name}/lib/index.js`, 'utf8');
     assert.equal(patch(text), text);
     assert.throws(() => patch('unknown upstream'));

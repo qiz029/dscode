@@ -10,6 +10,25 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes here. -->
 
+### Added
+
+- `/provider [deepseek|openrouter]` switches the session between DeepSeek's official API and OpenRouter; without an argument it opens a picker with each provider's key status. The first OpenRouter switch declares the pi-ai `openrouter` route in the settings document with DeepSeek V4 Flash, V4 Pro and V4 Flash Vision Exp (a profile the user already has is left alone), asks for a missing key and resumes, then lands on the counterpart of the current model with the same effort when the target offers it. The provider catalog ships beside the TUI as `lib/dscode-providers`, so the repository install and the vendored bundle load it the same way.
+- Ultra works on OpenRouter. The pi-ai adapter is patched like the DeepSeek one (`dscode-pi-ai-ultra-v1`) and vendored into the bundle: a model that offers max also offers Ultra, which sends max (`xhigh` on OpenRouter) with the collaboration policy, and delegation tools are withheld below Ultra. The OpenRouter route offers the official off/low/high/max detents, sending `low` as `high` the way DeepSeek answers it, so session cards and delegated children that ask for low keep working, and `/effort` keeps the detent bar.
+
+### Changed
+
+- `/login [deepseek|openrouter]` stores either key; without an argument it targets the current provider. `OPENROUTER_API_KEY` joins `DEEPSEEK_API_KEY` in the shared `~/.dscode/credentials.yaml`, with the same environment precedence. An argument that is not a provider name is refused without being echoed.
+- The footer follows the active provider: its balance is that provider's (OpenRouter: credits minus usage from `/api/v1/credits`), OpenRouter calls are estimated from the pinned pi-ai catalog's list prices (ledger `priceVersion` `openrouter-pi-ai-0.85.1`), and the 🔥/❄️ peak marker shows only for DeepSeek. `/status` names the wire effort Ultra sends on each route, and a missing-credential error now points at `/login`.
+
+- `dscode exec` ships in the npm launcher. It runs the installed profile's exec runner with the same options, stdin prompt and exit codes as the source checkout; the argument parser and overlay moved to `plugins/exec/cli.mjs` so both entry points share them.
+
+### Fixed
+
+- The session cost ledger now times every model call. The `end` row kept the start `time`, so a call's duration always read as zero; it now also carries `endTime` and `firstTokenTime` (first text, reasoning or tool-argument delta), while `time` stays the start that prices the call.
+- Model calls made for a session without a request `sessionId` — the review tool and `/review`, memory extraction and consolidation, session cards and `/doctor` — now reach that session's ledger with their own `purpose`. They are charged through an async context instead of a wire `sessionId`, which would also trigger session-log delivery, provider cache affinity and agent-only prompt shaping. Compaction and session titles already carried one.
+- The review tool no longer skips work that was committed or merged. With nothing uncommitted, the default scope reviews the commits made since the latest user task started (HEAD from the reflog), and a `commit` review of a merge commit diffs against its first parent instead of printing an empty combined diff.
+- `/effort` found no catalog row for a model id that carries its own vendor segment (`openrouter/deepseek/deepseek-v4-flash`): the TUI split the label at every slash. It now splits at the first.
+
 ## [0.7.2] - 2026-09-14
 
 ### Added

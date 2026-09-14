@@ -5,6 +5,7 @@ import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { MemoryStore } from './store.mjs';
 import { defaults, runPipeline } from './pipeline.mjs';
+import { chargeTo } from '../session-metrics/attribution.mjs';
 
 export const name = 'dscode-memory';
 export const inject = ['llm', 'sessions', 'sessionPersistence', 'systemPrompt', 'tools', 'commands'];
@@ -30,7 +31,7 @@ export function apply(ctx, options = {}) {
   const root = resolve(config.root ?? process.env.DSCODE_MEMORY_HOME ?? join(process.env.DSCODE_HOME ?? process.env.DSH_HOME ?? join(homedir(), '.local/share/dscode-hub'), 'memories'));
   const store = new MemoryStore(root);
   const controller = new AbortController(), owner = randomUUID(), live = new Set(), started = new Set();
-  let running, lastRoute, lastResult;
+  let running, lastRoute, lastResult, lastSession;
   const reading = session => config.use && store.get('use', true) && session?.header.agentPreset === 'dscode' &&
     store.enabled(session.id) && (!session.header.parentSession || store.enabled(session.header.parentSession));
   const writing = () => config.generate && store.get('generate', true);
@@ -39,15 +40,18 @@ export function apply(ctx, options = {}) {
     const assembler = new BlockAssembler();
     let terminal = false, usage;
     try {
-      for await (const chunk of ctx.llm.stream({
-        provider: config.provider ?? route.provider, model: config.model ?? route.model, reasoningEffort: effort,
-        system, messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(input) }], source: { kind: 'plugin', plugin: name } })],
-        maxTokens: 12000, signal: deadline,
-      })) {
-        deadline.throwIfAborted(); assembler.push(chunk);
-        if (chunk.type === 'finish') terminal = true;
-        if (chunk.type === 'usage') usage = chunk.usage;
-      }
+      // Background work is charged to the live session that scheduled it.
+      await chargeTo(live.has(lastSession) ? lastSession : undefined, 'memory', async () => {
+        for await (const chunk of ctx.llm.stream({
+          provider: config.provider ?? route.provider, model: config.model ?? route.model, reasoningEffort: effort,
+          system, messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(input) }], source: { kind: 'plugin', plugin: name } })],
+          maxTokens: 12000, signal: deadline,
+        })) {
+          deadline.throwIfAborted(); assembler.push(chunk);
+          if (chunk.type === 'finish') terminal = true;
+          if (chunk.type === 'usage') usage = chunk.usage;
+        }
+      });
       if (!terminal || assembler.finish.kind !== 'stop') throw Error('Incomplete memory model response');
       const blocks = assembler.blocks();
       if (blocks.some(b => !['text', 'reasoning'].includes(b.type))) throw Error('Memory model returned non-text output');
@@ -57,8 +61,9 @@ export function apply(ctx, options = {}) {
       if (!controller.signal.aborted) store.recordCall({ time: Date.now(), provider: config.provider ?? route.provider, model: config.model ?? route.model, effort, usage: usage ?? null });
     }
   };
-  const schedule = route => {
+  const schedule = (route, sessionId) => {
     lastRoute = route ?? lastRoute;
+    lastSession = sessionId ?? lastSession;
     if (running || !writing() || !lastRoute?.provider || !lastRoute?.model || controller.signal.aborted) return;
     running = runPipeline({ store, persistence: ctx.sessionPersistence, generate, route: lastRoute, config, signal: controller.signal })
       .then(result => { lastResult = result; })
@@ -74,7 +79,7 @@ export function apply(ctx, options = {}) {
   ctx.on('session/event', (session, event) => {
     if (event.type !== 'request/header' || session.header.origin === 'subagent' || session.header.agentPreset !== 'dscode') return;
     observe(session);
-    if (!started.has(session.id)) { started.add(session.id); schedule(event.data.header.config); }
+    if (!started.has(session.id)) { started.add(session.id); schedule(event.data.header.config, session.id); }
   });
   for (const session of ctx.sessions.list()) observe(session);
   const heartbeat = setInterval(() => { for (const id of live) store.acquire(`session:${id}`, owner, 90000); }, 30000);

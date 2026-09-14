@@ -1,17 +1,20 @@
-import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { acquireLock, activeRuns, registerRun } from './locks.mjs';
 export { acquireLock } from './locks.mjs';
 const require = createRequire(import.meta.url);
+// The exec CLI ships beside the published launcher; a source checkout reads it from plugins/. Only `dscode exec` loads it.
+const loadExecCli = () => import(existsSync(new URL('./exec/cli.mjs', import.meta.url)) ? './exec/cli.mjs' : '../../plugins/exec/cli.mjs');
 export function stateHome(env = process.env) {
   return resolve(env.DSCODE_HOME || join(homedir(), '.local/share/dscode-hub'));
 }
 export function commandPlan(args, release, installed) {
   const [command, ...rest] = args;
+  if (command === 'exec') return { exec: rest, install: !installed };
   if (command === 'resume') {
     const id = rest[0] && !rest[0].startsWith('-') ? rest.shift() : undefined;
     return { launch: [...(id ? ['--resume', id] : ['--continue']), ...rest], install: !installed };
@@ -74,15 +77,21 @@ export async function run(args, release) {
   const hub = join(dirname(require.resolve('@dsh-plugin-hub/cli')), 'bin.js');
   const pnpm = join(dirname(fileURLToPath(import.meta.url)), 'tools');
   const env = { ...process.env, DSH_HOME: home, DSH_AGENTS_HOME: join(home, 'agents'), PATH: process.env.PATH };
-  const exec = (entry, argv, cwd = process.cwd(), lease, started = () => {}) => new Promise((resolvePromise, reject) => {
-    const child = spawn(process.execPath, [entry, ...argv], { env: entry === hub ? { ...env, PATH: pnpm + ':' + env.PATH, npm_config_ignore_scripts: 'true', DSH_HUB_MACHINE: '1' } : env, cwd, stdio: lease ? ['inherit', 'inherit', 'inherit', lease.fd] : 'inherit' });
+  // `stdout: 'stderr'` keeps installer output off a pipeable exec stdout.
+  const spawnRun = (entry, argv, { cwd = process.cwd(), lease, started = () => {}, extraEnv = {}, nodeArgs = [], stdout = 'inherit' } = {}) => new Promise((resolvePromise, reject) => {
+    const out = stdout === 'stderr' ? process.stderr : 'inherit';
+    const child = spawn(process.execPath, [...nodeArgs, entry, ...argv], { env: entry === hub ? { ...env, PATH: pnpm + ':' + env.PATH, npm_config_ignore_scripts: 'true', DSH_HUB_MACHINE: '1' } : { ...env, ...extraEnv }, cwd, stdio: lease ? ['inherit', out, 'inherit', lease.fd] : ['inherit', out, 'inherit'] });
     started();
     const forward = signal => child.kill(signal);
     const handlers = ['SIGTERM','SIGHUP'].map(signal => { const handler = () => forward(signal); process.on(signal,handler); return [signal,handler]; });
     const cleanup = () => handlers.forEach(([signal,handler]) => process.off(signal,handler));
     child.once('error', error => { cleanup(); reject(error); });
-    child.once('exit', (code, signal) => { cleanup(); code === 0 ? resolvePromise() : reject(Error(`DSCODE process exited: ${signal ?? code}`)); });
+    child.once('exit', (code, signal) => { cleanup(); resolvePromise({ code, signal }); });
   });
+  const exec = async (entry, argv, cwd = process.cwd(), lease, started, stdout) => {
+    const { code, signal } = await spawnRun(entry, argv, { cwd, lease, started, stdout });
+    if (code !== 0) throw Error(`DSCODE process exited: ${signal ?? code}`);
+  };
   if (args[0] === 'doctor') {
     const mode = commandPlan(args, release, true).doctor;
     const profile = join(home, 'profiles/dscode');
@@ -98,6 +107,15 @@ export async function run(args, release) {
     await exec(dsh, ['--profile', 'dscode', '--patch', overlay]);
     return;
   }
+  let execOptions, execPrompt;
+  if (args[0] === 'exec') {
+    const cli = await loadExecCli();
+    execOptions = cli.parseExecArgs(commandPlan(args, release, true).exec);
+    execOptions.overlay = cli.execOverlay;
+    if (execOptions.help) { console.log(cli.USAGE); return; }
+    execPrompt = execOptions.prompt && execOptions.prompt !== '-' ? execOptions.prompt : await cli.readStream(process.stdin);
+    if (!execPrompt.trim()) throw Error('Prompt is empty. Pass it as an argument or on stdin.');
+  }
   const releaseLock = await acquireLock(home);
   let lease;
   try {
@@ -111,8 +129,8 @@ export async function run(args, release) {
     if (mutatesProfile && running.length) throw Error('DSCODE sessions are running. Exit them before installing, updating or rolling back this profile.');
     if (plan.hub) return await exec(hub, plan.hub, process.cwd(), releaseLock);
     if (plan.install) {
-      console.log(`Installing DSCODE ${release.version} from dshpluginhub.ai…`);
-      await exec(hub, ['profile','apply',release.slug,'--version',release.version,'--profile','dscode'], process.cwd(), releaseLock);
+      (execOptions ? console.error : console.log)(`Installing DSCODE ${release.version} from dshpluginhub.ai…`);
+      await exec(hub, ['profile','apply',release.slug,'--version',release.version,'--profile','dscode'], process.cwd(), releaseLock, undefined, execOptions ? 'stderr' : 'inherit');
     }
     const metadata = JSON.parse(readFileSync(join(profile,'node_modules',release.bundle,'package.json'),'utf8'));
     if (metadata.name !== release.bundle) throw Error('Unexpected DSCODE bundle');
@@ -122,6 +140,25 @@ export async function run(args, release) {
     const overlays = ['mcp.local.yml','harness.local.yml'].flatMap(file => {
       const path=join(home,'config',file); return existsSync(path) ? ['--patch',path] : [];
     });
+    if (execOptions) {
+      // One headless turn through the installed bundle's exec runner; the turn's exit code is the launcher's.
+      const runner = join(profile, 'node_modules', release.bundle, 'plugins/exec/index.mjs');
+      if (!existsSync(runner)) throw Error('This DSCODE installation has no exec runner. Run dscode update first.');
+      const workspace = realpathSync(resolve(execOptions.cwd ?? process.cwd()));
+      const scratch = mkdtempSync(join(tmpdir(), 'dscode-exec-'));
+      try {
+        const promptFile = join(scratch, 'prompt.txt'), optionsFile = join(scratch, 'options.json'), overlay = join(scratch, 'exec.patch.yml');
+        writeFileSync(promptFile, execPrompt);
+        const { model, effort, permission, approveAll, resume, json, quiet, timeoutMs } = execOptions;
+        writeFileSync(optionsFile, JSON.stringify({ promptFile, cwd: workspace, model, effort, permission, approveAll, resume, json, quiet, timeoutMs }));
+        writeFileSync(overlay, execOptions.overlay(runner));
+        lease = await registerRun(home);
+        const { code, signal } = await spawnRun(dsh, ['--profile', 'dscode', ...overlays, '--patch', overlay, ...execOptions.patches.flatMap(path => ['--patch', resolve(path)])],
+          { cwd: workspace, lease, started: releaseLock, extraEnv: { DSCODE_EXEC_OPTIONS: optionsFile }, nodeArgs: ['--disable-warning=ExperimentalWarning'] });
+        process.exitCode = code ?? (signal ? 130 : 0);
+      } finally { rmSync(scratch, { recursive: true, force: true }); }
+      return;
+    }
     const launch = [...plan.launch];
     let cwd = process.cwd();
     const index = launch.indexOf('--cwd');

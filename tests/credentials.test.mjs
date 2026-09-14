@@ -49,3 +49,33 @@ test('native credential persistence, legacy fallback, environment precedence and
     await rm(home, { recursive: true, force: true });
   }
 });
+
+test('the OpenRouter key shares the cross-project store and its environment override', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dscode-credentials-openrouter-'));
+  const path = join(home, 'shared', 'credentials.yaml');
+  const roots = [];
+  async function open(env = {}) {
+    const ctx = new Context(); roots.push(ctx);
+    ctx.provide('launchEnvironment', createLaunchEnvironmentSnapshot([{ source: 'process', values: env }]));
+    await ctx.plugin(Credentials, { path, dshHome: home, watch: false });
+    return ctx;
+  }
+  try {
+    const ref = 'OPENROUTER_API_KEY';
+    const first = await open();
+    assert.equal((await first.credentials.describe(ref)).configured, false);
+    await first.credentials.set(ref, 'synthetic-openrouter');
+    assert.match(await readFile(path, 'utf8'), /OPENROUTER_API_KEY: synthetic-openrouter/);
+    await first.fiber.dispose();
+    const second = await open();
+    assert.equal((await second.credentials.resolve(ref)).value, 'synthetic-openrouter');
+    const overridden = await open({ [ref]: 'synthetic-env' });
+    assert.equal((await overridden.credentials.resolve(ref)).value, 'synthetic-env');
+    assert.equal((await overridden.credentials.describe(ref)).writable, false);
+    await second.credentials.unset(ref);
+    assert.equal(await second.credentials.resolve(ref), undefined);
+  } finally {
+    for (const ctx of roots) await ctx.fiber.dispose();
+    await rm(home, { recursive: true, force: true });
+  }
+});

@@ -105,7 +105,7 @@ export class SessionCards {
     try {
       const signal = AbortSignal.any([this.stop.signal, controller.signal, AbortSignal.timeout(this.config.timeoutMs)]);
       const result = await this.generate({ messages, topicCount: this.config.topicCount },
-        { provider: this.config.provider ?? state.route.provider, model: this.config.model ?? state.route.model }, signal);
+        { provider: this.config.provider ?? state.route.provider, model: this.config.model ?? state.route.model }, signal, state.session.id);
       usage = result.usage;
       signal.throwIfAborted();
       if (this.states.get(state.session.id) !== state || hash !== this.hash(state)) return;

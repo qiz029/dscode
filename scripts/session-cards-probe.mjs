@@ -3,6 +3,7 @@ import { LlmAdapter, createUserMessage } from '@deepseek-ai/dsh-llm';
 import { installModelSelection } from '@deepseek-ai/dsh-agent';
 import { TOPIC_PROMPT } from '../plugins/session-cards/content.mjs';
 import { discover, request } from '../plugins/session-bridge/client.mjs';
+import { readMetrics } from '../plugins/session-metrics/store.mjs';
 export const name = 'session-cards-probe';
 export const inject = ['agents', 'agentPresets', 'llm', 'sessionCards'];
 export function apply(ctx) { void probe(ctx).catch(error => { console.error(error.stack); ctx.get('appExit')(1); }); }
@@ -39,7 +40,9 @@ async function probe(ctx) {
   const rows = await discover(process.env.DSH_HOME), row = rows.find(s => s.id === agent.id);
   assert.equal(row.cardState.status, 'ready'); assert(row.card.project); assert.equal(row.card.workspace, process.cwd());
   assert.deepEqual(Object.keys(row.card), ['project', 'workspace', 'topics']);
-  assert.equal(row.card.topics.length, 1); assert(row.card.topics[0].sourceSeqs.length);
+  assert.equal(row.card.topics.length, 1);
+  const charged = readMetrics(process.env.DSH_HOME, agent.id).rows.filter(r => r.kind === 'start' && r.purpose === 'session-card');
+  assert(charged.length >= 1, 'session-card model calls must be charged to their session ledger'); assert(row.card.topics[0].sourceSeqs.length);
   const before = calls.length;
   await request(row.socket, { method: 'send', sessionId: agent.id, text: 'EXTERNAL_RELAY', requestId: 'relay' });
   await agent.whenIdle(); await new Promise(resolve => setTimeout(resolve, 30));

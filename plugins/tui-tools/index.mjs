@@ -92,7 +92,7 @@ export function apply(ctx) {
       `Session: ${session.id}`, `Workspace: ${session.header.cwd ?? process.cwd()}`,
       `Agent: ${agent.status} | preset: ${session.header.agentPreset ?? 'standard'}`,
       `Model: ${route?.provider ?? 'default'} / ${route?.model ?? 'default'}`,
-      `Effort: ${route?.reasoningEffort ?? 'model default'}${route?.reasoningEffort === 'ultra' ? ' (DeepSeek wire: max; collaboration enabled)' : ''}`,
+      `Effort: ${route?.reasoningEffort ?? 'model default'}${route?.reasoningEffort === 'ultra' ? ` (${route.provider === 'openrouter' ? 'OpenRouter wire: xhigh' : 'DeepSeek wire: max'}; collaboration enabled)` : ''}`,
       `Permission: ${show(ctx.permissionPresets.current(session))}`,
       `Tokens: ${show(usage ?? 'no provider usage yet')}`,
       `Context: ${pressure?.pressureTokens ?? pressure?.surfaceTokens ?? '?'} / ${pressure?.contextWindow ?? '?'} tokens`,
@@ -120,7 +120,7 @@ export function apply(ctx) {
     const evidence = await collectDoctorEvidence(ctx, { agent, signal });
     if (action === 'preview') return ok(JSON.stringify(evidence, null, 2));
     const route = agent.session.requestHeader()?.config ?? agent.options;
-    return ok(`${health}\n\n${await analyzeDoctorEvidence(ctx, evidence, route, signal, { model: action !== 'local' })}`);
+    return ok(`${health}\n\n${await analyzeDoctorEvidence(ctx, evidence, route, signal, { model: action !== 'local', sessionId: agent.session.id })}`);
   });
   register('mcp', 'MCP list, tools <id>, enable/disable/reconnect <id>', async ({ agent, rawInput }) => {
     const [action = 'list', id, extra] = rawInput.trim().split(/\s+/).filter(Boolean);

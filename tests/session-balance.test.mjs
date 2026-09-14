@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseBalance, refreshBalance, balanceNow, trustedNow } from '../plugins/session-metrics/balance.mjs';
+import { parseBalance, parseOpenRouterCredits, refreshBalance, balanceNow, trustedNow } from '../plugins/session-metrics/balance.mjs';
 import { isPeak, peakEmoji } from '../plugins/session-metrics/pricing.mjs';
 import { formatFooter } from '../plugins/session-metrics/view.mjs';
 
@@ -45,4 +45,30 @@ test('a transient failure keeps the last balance and retries sooner', async () =
   await refreshBalance({ key: 'k', fetch: async () => { throw new Error('offline'); } });
   assert.equal(balanceNow(), before, 'a failed refresh never blanks a known balance');
   assert.equal(await refreshBalance({ key: 'k', fetch: async () => { throw new Error('offline'); } }), before);
+});
+
+test('OpenRouter credits are tracked apart from DeepSeek and the footer drops the peak marker', async () => {
+  assert.equal(parseOpenRouterCredits({ data: { total_credits: 20, total_usage: 7.25 } }), 12.75);
+  assert.equal(parseOpenRouterCredits({ data: { total_credits: 5, total_usage: 9 } }), 0);
+  assert.equal(parseOpenRouterCredits({ data: { total_credits: 'oops', total_usage: 1 } }), null);
+  assert.equal(parseOpenRouterCredits({ data: {} }), null);
+  assert.equal(parseOpenRouterCredits(null), null);
+  const deepseek = balanceNow('deepseek-official');
+  const urls = [];
+  const fetch = async (url, init) => {
+    urls.push([url, init.headers.Authorization]);
+    return { ok: true, headers: { get: () => new Date(0).toUTCString() }, json: async () => ({ data: { total_credits: 10, total_usage: 2.5 } }) };
+  };
+  const clock = trustedNow() - Date.now();
+  assert.equal(await refreshBalance({ provider: 'openrouter', key: 'synthetic-or', fetch }), 7.5);
+  assert.deepEqual(urls, [['https://openrouter.ai/api/v1/credits', 'Bearer synthetic-or']]);
+  assert.equal(balanceNow('openrouter'), 7.5);
+  assert.equal(balanceNow('deepseek-official'), deepseek, 'providers keep separate balances');
+  assert(Math.abs(trustedNow() - Date.now() - clock) < 1000, 'only DeepSeek anchors the billing clock');
+  assert.equal(await refreshBalance({ provider: 'unknown', key: 'k', fetch }), null);
+  const metrics = { cost: 0.01, unknown: false, pending: 0, cache: null };
+  const line = formatFooter(metrics, 10, 200, undefined, 'en', 'openrouter: deepseek/deepseek-v4-flash @ high');
+  assert.match(line, /\$0\.01 \/ \$7\.50 \| cache hit/);
+  assert(!/🔥|❄️/.test(line), 'OpenRouter bills no peak window');
+  assert.match(formatFooter(metrics, 10, 200, undefined, 'en', 'deepseek-official: deepseek-flash @ high'), /\$0\.01 \/ \$(?:--|\d+\.\d{2}) (?:🔥|❄️)/);
 });

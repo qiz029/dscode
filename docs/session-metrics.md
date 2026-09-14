@@ -14,4 +14,4 @@
 
 价格采用 [DeepSeek 官方价目表](https://api-docs.deepseek.com/quick_start/pricing/) 的 2026-09-11 快照，按请求开始时间区分峰谷价，仅匹配支持的官方 provider/model。价格更新需更新 `plugins/session-metrics/pricing.mjs`；显示值不是供应商账单。旧会话能从日志补回部分调用，但历史审核/标题/子 agent 用量未必完整，因此标为部分合计。
 
-记录保存在 `$DSH_HOME/session-metrics/`，只含模型、时间、usage 和费用等元数据，不保存提示词或凭据。原始 session 日志不添加自定义事件。
+记录保存在 `$DSH_HOME/session-metrics/`，只含模型、时间、usage 和费用等元数据，不保存提示词或凭据。每次模型调用写一行 `start`（`time` 为请求开始时刻，`purpose` 为 `agent`、`compaction`、`session-title`、`review`、`memory`、`session-card` 或 `doctor`）和一行 `end`；`end` 的 `time` 仍是开始时刻（用于定价），`endTime` 是流结束时刻，`firstTokenTime` 是首个文本、推理或工具参数增量到达的时刻（没有输出时省略），所以单次 LLM 耗时是 `endTime - time`，首 token 延迟是 `firstTokenTime - time`。代码审核、记忆抽取、会话卡片和 `/doctor` 的调用不在请求里携带 `sessionId`（避免触发会话日志投递、缓存亲和与只针对 agent 的提示词改写），而是通过异步上下文计入发起它们的会话；记忆整理计入安排它的在线会话。没有会话可归属的调用（如 `dscode doctor` 命令行）不入账。原始 session 日志不添加自定义事件。

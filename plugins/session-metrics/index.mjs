@@ -1,9 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { appendMetric } from './store.mjs';
-import { estimateCost, PRICE_VERSION } from './pricing.mjs';
+import { estimateCost, priceVersionFor } from './pricing.mjs';
 import { setMetricSource } from './view.mjs';
-import { refreshBalance } from './balance.mjs';
+import { BALANCE_PROVIDERS, refreshBalance } from './balance.mjs';
+import { providerSpec } from '../providers/catalog.mjs';
 import { createWindowRate } from './rate.mjs';
+import { currentCharge } from './attribution.mjs';
+
+// Chunks that carry generated output; the first one marks time to first token.
+const OUTPUT_CHUNKS = new Set(['text-delta', 'reasoning-delta', 'tool-call-delta']);
 export const name = 'dscode-session-metrics';
 export const inject = ['llm', 'agents', 'tokenMeter', 'sessionProjections'];
 export function apply(ctx) {
@@ -26,42 +31,49 @@ export function apply(ctx) {
   // inject the credentials service, so a missing one cannot fail startup), keep
   // the request on a five-minute cache, and never let it reach the render path.
   const credentials = ctx.get?.('credentials');
-  const refresh = async () => {
+  const refresh = () => Promise.all(BALANCE_PROVIDERS.map(async provider => {
     try {
-      const resolved = await credentials?.resolve?.('DEEPSEEK_API_KEY');
+      const ref = providerSpec(provider).credentialRef;
+      const resolved = await credentials?.resolve?.(ref);
       const key = typeof resolved === 'string' ? resolved : resolved?.value;
-      await refreshBalance({ key: key ?? process.env.DEEPSEEK_API_KEY });
+      await refreshBalance({ provider, key: key ?? process.env[ref] });
     } catch {
       /* balance stays unknown */
     }
-  };
+  }));
   refresh();
   const balanceTimer = setInterval(refresh, 5 * 60 * 1000);
   if (typeof balanceTimer.unref === 'function') balanceTimer.unref();
   ctx.effect(() => () => clearInterval(balanceTimer));
   const record = (id, entry) => { try { appendMetric(home, id, entry); } catch { ctx.logger.warn('Session cost telemetry could not be saved.'); } };
   ctx.on('llm/stream', async function* (options, next) {
-    if (!options.sessionId || !home) { yield* next(); return; }
+    // Plugin calls made for a session carry no sessionId on the wire; they are charged through the async context.
+    const charge = options.sessionId ? undefined : currentCharge();
+    const sessionId = options.sessionId ?? charge?.sessionId;
+    if (!sessionId || !home) { yield* next(); return; }
     const id = randomUUID(), time = Date.now();
-    const recipients = new Set([options.sessionId]);
-    let child = ctx.agents.get(options.sessionId);
+    const purpose = options.purpose ?? charge?.purpose ?? 'agent';
+    const recipients = new Set([sessionId]);
+    let child = ctx.agents.get(sessionId);
     while (child?.session.header.origin === 'subagent' && child.session.header.parentSession && !recipients.has(child.session.header.parentSession)) {
       recipients.add(child.session.header.parentSession);
       child = ctx.agents.get(child.session.header.parentSession);
     }
-    const save = entry => { for (const recipient of recipients) record(recipient, { ...entry, sessionId: options.sessionId }); };
-    save( { kind: 'start', id, time, provider: options.provider, model: options.model, purpose: options.purpose ?? 'agent' });
-    let usage;
-    const liveSession = !options.purpose || options.purpose === 'agent' ? ctx.agents.get(options.sessionId)?.session : undefined;
+    const save = entry => { for (const recipient of recipients) record(recipient, { ...entry, sessionId }); };
+    save({ kind: 'start', id, time, provider: options.provider, model: options.model, purpose });
+    let usage, firstTokenTime;
+    const liveSession = purpose === 'agent' ? ctx.agents.get(sessionId)?.session : undefined;
     try {
       for await (const chunk of next()) {
         if (chunk.type === 'usage') usage = chunk.usage;
+        else if (firstTokenTime === undefined && OUTPUT_CHUNKS.has(chunk.type)) firstTokenTime = Date.now();
         if (liveSession) liveRate.add(liveSession, chunk);
         yield chunk;
       }
     } finally {
       if (liveSession) liveRate.calibrate(liveSession, usage?.outputTokens);
-      save({ kind: 'end', id, time, usage: usage ?? null, cost: estimateCost(options.provider, options.model, usage, time), priceVersion: PRICE_VERSION });
+      // `time` stays the start (it prices the call); `endTime` and `firstTokenTime` time it.
+      save({ kind: 'end', id, time, endTime: Date.now(), ...(firstTokenTime === undefined ? {} : { firstTokenTime }), usage: usage ?? null, cost: estimateCost(options.provider, options.model, usage, time), priceVersion: priceVersionFor(options.provider) });
     }
   });
 }

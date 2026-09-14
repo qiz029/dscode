@@ -3,8 +3,10 @@ import { join } from 'node:path';
 import { LocalCredentialProvider } from '@deepseek-ai/dsh-credentials-local';
 import { Context, Service } from '@deepseek-ai/cordis';
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment';
+import { PROVIDERS } from '../providers/catalog.mjs';
 
-const DEEPSEEK = 'DEEPSEEK_API_KEY';
+// The `/provider` keys (DeepSeek, OpenRouter) live in the shared store.
+const SHARED = new Set(PROVIDERS.map(provider => provider.credentialRef));
 
 // Use the native locked, watched, owner-only store. Keep this independent of
 // the installed profile so upgrades and different projects share credentials.
@@ -26,25 +28,25 @@ export default class DscodeCredentials extends LocalCredentialProvider {
     yield* super[Service.init]();
   }
   async resolve(ref) {
-    if (ref === DEEPSEEK) {
+    if (SHARED.has(ref)) {
       const stored = await this.shared.resolve(ref);
       if (stored?.source === 'env' || stored?.source === 'file') return stored;
     }
     return super.resolve(ref);
   }
   async describe(ref) {
-    if (ref === DEEPSEEK) {
+    if (SHARED.has(ref)) {
       const facts = await this.shared.describe(ref);
       if (facts.source === 'env' || facts.source === 'file') return facts;
     }
     return super.describe(ref);
   }
   set(ref, value) {
-    return ref === DEEPSEEK ? this.shared.set(ref, value) : super.set(ref, value);
+    return SHARED.has(ref) ? this.shared.set(ref, value) : super.set(ref, value);
   }
   async unset(ref) {
     // Explicit removal must not uncover a previously configured legacy key.
-    if (ref === DEEPSEEK) await this.shared.unset(ref);
+    if (SHARED.has(ref)) await this.shared.unset(ref);
     await super.unset(ref);
   }
 }

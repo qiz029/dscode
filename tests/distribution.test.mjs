@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -75,5 +75,37 @@ test('version mismatch warns once and still launches without confirmation',()=>{
   assert(differences.some(line=>line.includes('DSCODE bundle: installed 0.2.0')));
   assert(differences.some(line=>line.includes('dsh-agent: version could not be checked')));
   assert.equal(warnings.length,1);
+ } finally {rmSync(home,{recursive:true,force:true});}
+});
+
+test('launcher exec runs one headless turn through the installed bundle and returns its exit code',()=>{
+ assert.equal(commandPlan(['exec','hi'],{},false).install,true);
+ assert.deepEqual(commandPlan(['exec','--effort','high','fix','it'],{},true).exec,['--effort','high','fix','it']);
+ const home=mkdtempSync(join(tmpdir(),'dscode-launcher-exec-'));
+ const release={slug:'dscode',version:'0.1.0',runtime:'0.1.5-rc.1',bundle:'@test/dscode-bundle'};
+ const profile=join(home,'profiles/dscode');
+ const write=(path,value)=>{mkdirSync(join(path,'..'),{recursive:true});writeFileSync(path,typeof value==='string'?value:JSON.stringify(value));};
+ try {
+  write(join(home,'.hub/installations/dscode/current.json'),{});
+  write(join(profile,'package.json'),{private:true});
+  write(join(profile,'node_modules',release.bundle,'package.json'),{name:release.bundle,version:release.version,dependencies:{'@deepseek-ai/dsh':release.runtime}});
+  write(join(profile,'node_modules',release.bundle,'plugins/exec/index.mjs'),'export {};');
+  write(join(profile,'node_modules/@deepseek-ai/dsh/package.json'),{name:'@deepseek-ai/dsh',version:release.runtime});
+  write(join(profile,'node_modules/@deepseek-ai/dsh/lib/bin.js'),`const fs=require('fs');const argv=process.argv.slice(2);const options=JSON.parse(fs.readFileSync(process.env.DSCODE_EXEC_OPTIONS,'utf8'));
+console.log(JSON.stringify({argv,options,prompt:fs.readFileSync(options.promptFile,'utf8'),overlay:fs.readFileSync(argv[argv.lastIndexOf('--patch')+1],'utf8'),cwd:process.cwd()}));process.exit(3);`);
+  const manager=new URL('../packages/launcher/manager.mjs',import.meta.url).href;
+  const result=spawnSync(process.execPath,['--input-type=module','-e',`import { run } from ${JSON.stringify(manager)}; await run(['exec','--effort','high','--json','fix','it'],${JSON.stringify(release)});`],{encoding:'utf8',cwd:home,env:{...process.env,DSCODE_HOME:home},timeout:10000});
+  assert.equal(result.status,3,result.stderr);
+  const seen=JSON.parse(result.stdout);
+  assert.deepEqual(seen.argv.slice(0,2),['--profile','dscode']);
+  assert.equal(seen.prompt,'fix it');
+  assert.equal(seen.options.effort,'high'); assert.equal(seen.options.json,true);
+  assert.equal(seen.cwd,realpathSync(home)); assert.equal(seen.options.cwd,realpathSync(home));
+  assert.match(seen.overlay,/tui-runner\n  disabled: true/);
+  assert(seen.overlay.includes(join(profile,'node_modules',release.bundle,'plugins/exec/index.mjs')));
+  const help=spawnSync(process.execPath,['--input-type=module','-e',`import { run } from ${JSON.stringify(manager)}; await run(['exec','--help'],${JSON.stringify(release)});`],{encoding:'utf8',env:{...process.env,DSCODE_HOME:home},timeout:10000});
+  assert.match(help.stdout,/Usage: dscode exec/);
+  const bad=spawnSync(process.execPath,['--input-type=module','-e',`import { run } from ${JSON.stringify(manager)}; await run(['exec','--effort','extreme','x'],${JSON.stringify(release)});`],{encoding:'utf8',env:{...process.env,DSCODE_HOME:home},timeout:10000});
+  assert.notEqual(bad.status,0); assert.match(bad.stderr,/--effort expects/);
  } finally {rmSync(home,{recursive:true,force:true});}
 });

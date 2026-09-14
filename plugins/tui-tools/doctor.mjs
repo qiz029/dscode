@@ -4,6 +4,7 @@ import { Logger } from '@deepseek-ai/cordis';
 import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm';
 import { redact } from '../auto-review/policy.mjs';
 import { t, readLanguage } from '../i18n/messages.mjs';
+import { chargeTo } from '../session-metrics/attribution.mjs';
 const L = (key, params) => t(readLanguage(), key, params);
 
 const MAX_LOG_BYTES = 1024 * 1024;
@@ -118,7 +119,7 @@ export function localDoctorReport(evidence) {
   return `${L('doctor.evidence', { traces: evidence.traces.length, logs: evidence.logs.length })}${evidence.logs.length ? '' : evidence.logCoverage ?? ''}\n${local.length ? local.slice(-8).join('\n') : L('doctor.noFindings')}\n${near300.length >= 2 ? `${L('doctor.nearTimeout', { count: near300.length })}\n` : ''}${evidence.logs.slice(-5).map(l => `${time(l.time)} ${l.level} ${l.source}: ${l.detail}`).join('\n')}`;
 }
 
-export async function analyzeDoctorEvidence(ctx, evidence, route, signal, { model = true } = {}) {
+export async function analyzeDoctorEvidence(ctx, evidence, route, signal, { model = true, sessionId } = {}) {
   const fallback = localDoctorReport(evidence);
   if (!model) return fallback;
   if (!route?.provider || !route?.model) return `${fallback}\n${L('doctor.noRoute')}`;
@@ -126,11 +127,13 @@ export async function analyzeDoctorEvidence(ctx, evidence, route, signal, { mode
   const deadline = AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(45000)]);
   try {
     let finished = false;
-    for await (const chunk of ctx.llm.stream({ provider: route.provider, model: route.model, reasoningEffort: 'low', maxTokens: 4096, system: SYSTEM,
-      messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(evidence) }], source: { kind: 'plugin', plugin: 'dscode-doctor' } })], signal: deadline })) {
-      deadline.throwIfAborted(); assembler.push(chunk);
-      if (chunk.type === 'finish') finished = true;
-    }
+    await chargeTo(sessionId, 'doctor', async () => {
+      for await (const chunk of ctx.llm.stream({ provider: route.provider, model: route.model, reasoningEffort: 'low', maxTokens: 4096, system: SYSTEM,
+        messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(evidence) }], source: { kind: 'plugin', plugin: 'dscode-doctor' } })], signal: deadline })) {
+        deadline.throwIfAborted(); assembler.push(chunk);
+        if (chunk.type === 'finish') finished = true;
+      }
+    });
     if (!finished || assembler.finish.kind !== 'stop') throw Error(`model response was incomplete (${safe(JSON.stringify(assembler.finish ?? { kind: 'no finish' }))})`);
     const blocks = assembler.blocks();
     if (blocks.some(b => !['text', 'reasoning'].includes(b.type))) throw Error('model returned unexpected tool output');
