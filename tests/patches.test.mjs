@@ -281,6 +281,8 @@ test('pristine locked upstream accepts all patches once, remains valid JS, and i
   }
   patchTui(fixture.root); patchRuntime(fixture.root);
   assert.deepEqual(files.map(path => readFileSync(path, 'utf8')), after);
+  const tui = after[files.findIndex(path => path.endsWith('dsh-code/lib/index.mjs'))];
+  for (const marker of ['label: "/verbose"', 'if (text === "/verbose")', 'label: "/mouse"', 'if (text === "/mouse")', 'function dscodeSetMouse(', 'notify(dscodeSetMouse(!dscodeMouseEnabled)']) assert(tui.includes(marker), marker);
   // Prior style revisions used a shorter activity suffix and summary catalog.
   const oldStyle = after[0].replace(': " · 本轮 " + runClock(elapsed);', ': " · " + runClock(elapsed);');
   assert.equal(patchStyle(oldStyle), after[0]);
