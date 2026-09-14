@@ -1,105 +1,52 @@
+<div align="center">
+
+<img src="assets/banner.svg" alt="DSCODE" width="880">
+
 # ❄ DSCODE
 
-**在终端里写代码，让脚本接入当前会话，让 agent 之间交接任务。**
+**Write code in your terminal. Plug scripts into a live session. Hand tasks between agents.**
 
-![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111827?logo=apple)
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111827?logo=apple&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-22.19%2B%20%7C%2024%2B-43853D?logo=node.js&logoColor=white)
 ![DSH](https://img.shields.io/badge/DSH-0.1.5--rc.1-2563EB)
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![npm](https://img.shields.io/npm/v/@toddzheng024/dscode)](https://www.npmjs.com/package/@toddzheng024/dscode)
+[![Release](https://img.shields.io/github/v/release/qiz029/dscode?color=111827&label=release)](https://github.com/qiz029/dscode/releases)
+[![Stars](https://img.shields.io/github/stars/qiz029/dscode?color=111827)](https://github.com/qiz029/dscode/stargazers)
 
-DSCODE 是基于 DeepSeek Harness 的终端编码 agent。持久 Shell 负责读写代码和执行测试；TUI、CLI 与脚本共用同一个会话运行时。0.7.0 加入六种界面语言、可选中复制的 TUI、verbose 视图、更准的 TPS 口径，以及更稳的代码审查。
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-[0.7.0 亮点](#-070-亮点) · [安装](#-安装) · [常用命令](#-常用命令) · [权限与配置](#-权限与配置) · [开发与发布](#-开发与发布)
+[Core features](#-core-features) · [What's new](#-whats-new) · [Quick start](#-quick-start) · [Commands](#-commands) · [Changelog](docs/CHANGELOG.md) · [Docs](#-documentation)
 
-## ✨ 0.7.0 亮点
+</div>
 
-`/language` 在英文、简体中文、繁體中文、日本語、한국어、Español 之间切换界面文案并记住选择。鼠标捕获默认关闭，终端里直接拖选复制，`/mouse` 打开滚轮滚动。`/verbose` 以暗色显示思考和工具调用并记住开关。agent 工作时历史铺满对话区，忙碌行是绕雪花公转的彗星，欢迎框雪花有涟漪。底栏 `current` 按实际生成时长并用结算用量校准，`average` 改为输出 token / LLM 调用总耗时。review 工具在非 Git 目录直接返回 no_repository，模型异常结束时重试一次并说明原因。[0.7.0 更新说明 →](docs/releases/0.7.0.md)
+DSCODE is a terminal coding agent for macOS, built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). A persistent shell reads and writes code and runs tests; the TUI, the CLI and your scripts all share one session runtime instead of each starting their own. It installs as a pinned, reproducible harness—DSH dependencies, TUI and plugins are versioned and verified together.
 
-### 非交互执行：`dscode exec`
+## 🧭 Core features
 
-`dscode exec "prompt"` 或 `git diff | dscode exec "review this"` 在不打开 TUI 的情况下跑完一轮完整的 dscode agent：回复流式输出到 stdout，工具活动和 session id 输出到 stderr，退出码反映轮次结果。`--json` 输出 JSON lines，`--resume` 续接已有会话，`--effort`、`--model`、`--permission` 与 TUI 同义。[非交互执行 →](docs/exec.md)
-
-### 一个 session，接入终端、脚本和外部工具
-
-在 TUI 中开始任务后，可以从另一个终端补充要求、读取输出或订阅进展。不同来源的输入进入同一个运行时，共用上下文；读取和订阅不需要取得 session 写锁。
-
-```sh
-# TUI 保持打开，在另一个终端执行
-# 先找到当前 session，再用实际 ID 替换下面的 SESSION_ID
-dscode sessions
-dscode send SESSION_ID --steer "补充：保持现有 API 兼容"
-dscode watch SESSION_ID
-```
-
-外部消息进入会话后，TUI 会显示内容和来源。`watch` 订阅会话事件，不是逐 token 文本流。[多来源接入 →](docs/session-bridge.md)
-
-### 把任务交给另一个 session，也可以只留一条便签
-
-Agent 内置 `list_sessions`、`read_session`、`send_session` 和 `reply_session`，能查找目标会话、读取上下文、请求协作并返回结果。发送方式由任务决定：
-
-| 投递方式 | 适合什么场景 | 行为 |
-|---|---|---|
-| `queue` | 交给对方下一轮处理 | 空闲时唤醒；忙碌时排队 |
-| `steer` | 给当前任务补充信息 | 空闲时唤醒；忙碌时在下一个安全步骤加入 |
-| `defer` | 留一条下次再看的便签 | 不唤醒，等下一轮自然开始时领取 |
-
-持久化邮箱、重试去重、关联回复和有限通信预算，约束消息丢失、重复处理及互相唤醒的循环。当前通信面向同一状态目录中已加载的根 session；离线会话需要先恢复。[Session 通信 →](docs/session-communication.md)
-
-### 看名片，就知道该找哪个会话
-
-每个 session 提供**项目、工作区、最近 5 个用户请求 topic**。查找协作对象时，可以先按仓库、worktree 和近期话题定位。名片描述用户让它做过什么，不放任务结论或 agent 推测的完成状态。
-
-项目从本地 Git 信息识别，topic 在达到输入阈值后后台更新，并保留原始用户消息引用。[会话名片 →](docs/session-cards.md)
-
-### 换一个会话，仍能找到过去的经验
-
-全局 memory 在后台从历史会话提取、整理可复用经验。新会话获得精简记忆，需要细节时再检索对应条目、工作区和来源消息；项目约定、用户修正和操作经验都有可追溯的出处。
-
-同一状态目录默认共享记忆，支持按 session 或全局关闭。Memory 和 topic 提取会产生额外模型用量，分别提供用量记录；它们不会占用前台 agent 的执行轮次。[记忆与开关 →](docs/memory.md)
-
-### 推理强度按任务分配，执行过程看得清
-
-Ultra 使用 DeepSeek 原生 `max` 推理，并引导 agent 按任务需要决定调查、委派和验证的范围。父 agent 可以给每个子 agent 单独选择 effort：例如让边界清楚的测试任务用 `low`，复杂排查用 `high`，同时保留自己的 Ultra 设置。[持久 Shell 与 Ultra →](docs/dscode-ultra.md)
-
-TUI 启动时清屏，顶部欢迎框显示 DSCODE、模型、effort、版本和项目路径；随着对话增长，欢迎框逐行滚出屏幕，输入区保持在终端底部。长对话在屏内显示最近内容，完整会话可用 Ctrl+O 查看或 `/export` 导出。默认聚焦用户与 agent 的输出，隐藏 thinking 和工具调用历史；输入区上方显示当前工具、描述和本轮耗时。子 agent 概览区分 running / idle / done，`/agents` 可查看任务与当前活动。支持 `!` Shell、Shift+Enter 换行、中文输入光标定位，以及 `dscode resume` 接续会话。
-
-界面示意：
-
-```text
-  DSCODE · my-project / main
-  会话消息投递
-
-  已完成队列投递，正在验证中断后的恢复行为。
-
-  ⠋ 正在执行 · shell · 验证会话恢复 · 本轮 24s
-  agents 1 running · 1 idle · /agents
-
-  › 接下来把取消行为也检查一下
-
-  deepseek-flash ｜ ultra                        auto
-  current: ~28.4 tps ｜ average: 3.1 tps ｜ context: 43%
-```
-
-底栏每秒展示最近 5 秒的估算输出 TPS 与 session 活跃时间的平均 TPS，并按宽度展示上下文占用、费用估算与缓存命中率。平均 TPS 包含工具等待时间，排除轮次间空闲；费用包含已记录的子 agent、压缩和 auto 审核调用。后台 memory 与 topic 提取另行统计。[统计口径 →](docs/session-metrics.md)
-
-### 编码所需的基础能力也已配好
-
-| 能力 | 说明 |
+| Feature | What you get |
 |---|---|
-| 持久 Shell | 同一 agent 的 Bash 保留 cwd、环境和后台任务，支持读写文件、搜索、应用补丁与测试 |
-| Auto 权限 | 普通操作按本地策略执行；适用的审批请求交给独立模型审核，支持切换人工审批 |
-| 浏览器与桌面 | Chrome DevTools MCP 与 macOS 原生 Computer Use，按需使用 |
-| 长任务 | 项目指令、skills、plan、goal、hooks、上下文压缩与会话恢复 |
-| 安装与升级 | npm 一条命令安装；固定推荐 Harness 组合，版本偏离只提示 warning；支持 profile 升级与回退 |
+| **[Agentic coding loop](docs/dscode-ultra.md)** | A persistent shell that keeps cwd, environment and background jobs, plus file edits, search, patch application and tests. Project instructions, skills, plan, goal and hooks are wired in. |
+| **[Session bridge](docs/session-bridge.md)** | Start a task in the TUI, then add requirements, read output or subscribe to progress from another terminal (`dscode sessions`, `send`, `read`, `watch`). Every source enters the same runtime and context, and readers never take the session write lock. |
+| **[Agent-to-agent tasks](docs/session-communication.md)** | The agent finds, reads and messages other sessions with `list_sessions`, `read_session`, `send_session` and `reply_session`, choosing `queue`, `steer` or `defer`. A persisted mailbox, retry de-duplication and a finite budget bound message loss, double processing and wake-up loops. |
+| **[Session cards](docs/session-cards.md)** | Each session advertises its project, workspace and the topics of its last five user requests—enough to pick the right collaborator without reading its transcript. Cards describe what the user asked for, not conclusions. |
+| **[Cross-session memory](docs/memory.md)** | Reusable experience is extracted in the background and retrieved together with its workspace and source messages. Memory can be disabled per session or globally, and its model usage is tracked separately. |
+| **[Effort and sub-agents](docs/dscode-ultra.md)** | Ultra uses DeepSeek's native `max` reasoning and decides how far to investigate, delegate and verify. Parents pick a separate effort per child, and children that edit can work in isolated Git worktrees created from a clean `HEAD`. |
+| **[Independent review](docs/tui-commands.md)** | After a code change passes its relevant checks, the agent sends the Git diff to a separate read-only model and fixes concrete findings before ending the turn. `/review` runs the same reviewer by hand, scoped to the staging area, a base branch, a commit or a path. |
+| **[Non-interactive runs](docs/exec.md)** | `dscode exec "prompt"`, or `git diff \| dscode exec "review this"`, runs a full turn in scripts and CI: the reply streams to stdout, tool activity and the session id go to stderr, and the exit code reflects the turn. `--json` and `--resume` are supported. |
+| **[Terminal UX](docs/session-metrics.md)** | Six interface languages, select-and-copy text, scrollback through history, a verbose view of thinking and tool calls, an input area pinned to the bottom, a sub-agent overview, and footer TPS / context / cost / cache figures. |
+| **[Guardrails](docs/auto-review.md)** | A `workspace-write` sandbox by default and Auto permission review by an independent model, switchable to human approval. Ultra grants no extra permissions and Computer Use keeps human authorisation. |
+| **[Agent email](docs/email.md)** | A local `[ToAgent]` inbox shared by all sessions: Enter steers a message into the live session as user-selected context, and with Gmail configured the agent can send mail through the same approval flow. |
 
-## 🚀 安装
+## 🆕 What's new
 
-需要 **macOS 14+、Node 22.19+（22.x）或 24+、npm、Git 和 Google Chrome**。
+**0.7.0** — `/language` switches between six interface languages and remembers the choice. Mouse capture is off by default, so you can select and copy in the terminal, and `/mouse` restores wheel scrolling. `/verbose` shows thinking and tool calls in a dim style. The footer's `current` TPS follows real generation time and is calibrated with settled usage, while `average` is output tokens ÷ total LLM call time. The review tool returns `no_repository` outside a Git directory, retries once when a model turn ends abnormally, and explains why.
 
-### npm + Plugin Hub
+Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.0 notes](docs/releases/0.7.0.md) have the long version.
 
-> **v0.7.0 已发布。** [npm 启动器](https://www.npmjs.com/package/@toddzheng024/dscode) · [Hub preset](https://dshpluginhub.ai/profiles/dscode) · [GitHub Releases](https://github.com/qiz029/dscode/releases)
+## 🚀 Quick start
+
+Requires **macOS 14+, Node 22.19+ (22.x) or 24+, npm, Git and Google Chrome**.
 
 ```sh
 npm install -g @toddzheng024/dscode
@@ -107,46 +54,21 @@ cd /path/to/project
 dscode
 ```
 
-如果 npm 包名查询暂时返回 404，可直接安装同一版本的官方 registry tarball：
+The first launch installs the pinned complete preset from [DSH Plugin Hub](https://dshpluginhub.ai)—no manual plugin assembly, no global pnpm. Then enter `/login` and paste your DeepSeek API key into the hidden input: it is stored locally in `~/.dscode/credentials.yaml` with `0600` permissions, shared across projects and installed versions, and never sent to the agent. A `DEEPSEEK_API_KEY` environment variable takes precedence. Use `/model` to pick a model or another provider, and `/effort` to adjust reasoning effort; the default route is `deepseek-official/deepseek-flash`.
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.0.tgz
-dscode
+dscode --continue                 # continue the last session
+dscode --resume SESSION_ID        # resume a specific session
+dscode --cwd /another/project     # work in another directory
+dscode doctor                     # analyse recent logs and session traces
 ```
 
-首次启动会从 [DSH Plugin Hub](https://dshpluginhub.ai) 安装固定版本的完整 preset；之后直接打开 TUI。无需手动拼装插件，也不需要全局安装 pnpm。
+The launcher checks installed bundles and Harness dependencies against the recommended combination; on a mismatch it prints one consolidated warning and keeps running, without editing dependencies or downgrading. Access to the browser and desktop tools is granted on demand: Chrome starts with a separate temporary profile and does not take over your everyday browser logins, desktop tools load progressively through a skill, screenshot understanding needs a model that accepts images, the MCP bridge provides tools rather than resources or prompts, and Computer Use permissions are granted separately in macOS.
 
-npm 启动器会检查已安装 bundle 和 Harness 依赖的推荐版本组合。版本不匹配或无法核实时，只在启动时集中显示一次 warning，并继续运行，不要求确认，也不会自动降级或修改依赖。源码构建时的补丁匹配检查仍会在补丁无法安全应用时停止构建。
+<details>
+<summary><b>Other install paths, upgrades and rollback</b></summary>
 
-第一次进入后，输入 `/login`，在隐藏输入框中粘贴 DeepSeek API key，按 Enter 保存。密钥保存在本机 `~/.dscode/credentials.yaml`，当前会话立即可用，以后启动自动加载，不同项目和安装版本共用。输入不会进入聊天记录，也不会发送给 agent。按 Esc 取消。
-
-密钥文件以明文保存在本地，文件权限为 `0600`，新建目录权限为 `0700`。已设置的 `DEEPSEEK_API_KEY` 环境变量优先；若要改用 `/login`，先移除 shell 或启动器 `.env` 中的该变量并重启。旧版 profile 中保存的凭据仍可读取，直到你通过 `/login` 保存新的 key。
-
-用 `/model` 选择模型或配置其他提供方，用 `/effort` 调整推理强度。effort 选择器会替代底部输入框；支持四档的模型显示 `low → high → max → ultra` 横向 bar，方向键移动、Enter 应用、Esc 取消，`o` 可切到 off。光标移到 ultra 时，蓝色光效会从中央向两侧展开；按 Enter 后，输入框也会播放短暂的中央扩散涟漪。默认路由是 `deepseek-official/deepseek-flash`。Computer Use 的辅助功能和录屏权限需在 macOS 中单独授予。
-
-```sh
-dscode --continue                     # 继续上次会话
-dscode --resume SESSION_ID            # 恢复指定会话
-dscode --cwd /another/project         # 在指定目录工作
-
-dscode update 0.7.0                   # 升级到 0.7.0
-dscode history                        # 查看保留的版本记录
-dscode rollback                       # 回到上个 preset 版本
-dscode doctor                         # 分析近期运行日志和 session trace
-```
-
-从旧版本升级时，先更新启动器，再更新已安装的 profile：
-
-```sh
-npm install -g @toddzheng024/dscode@0.7.0
-dscode update 0.7.0
-```
-
-源码/tar 安装与 npm/Hub 使用不同的数据目录。升级不会自动迁移它们之间的会话和凭据。[0.7.0 更新说明](docs/releases/0.7.0.md)
-
-### 从源码运行（现在可用）
-
-克隆本仓库并安装锁定依赖：
+**From source**
 
 ```sh
 git clone https://github.com/qiz029/dscode.git
@@ -155,131 +77,121 @@ npm ci --ignore-scripts
 npm run setup
 npm start
 
-# 操作另一个项目
+# Work on another project
 npm start -- --cwd /path/to/project
 ```
 
-首次使用同样通过 `/login` 保存 DeepSeek API key。也可复制 `.env.example` 为 `.env`，仅在本机填写密钥；此方式会优先于 `/login` 保存的凭据。
-
-### tar 包安装（现在可用）
-
-从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.0.tar.gz`，然后执行：
+**From a tar package** — download `dscode-0.7.0.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
 
 ```sh
 mkdir dscode-install
 tar -xzf dscode-0.7.0.tar.gz -C dscode-install
 sh dscode-install/install.sh
-cd /path/to/project
-dscode
 ```
 
-默认命令位于 `~/.local/bin/dscode`，请确保该目录在 PATH 中。tar 安装器不会覆盖已有命令或安装。它与 npm/Hub 安装的管理命令不同，详情见 [tar 分发说明](docs/distribution.md)。
+The command lands in `~/.local/bin/dscode` by default—make sure that directory is on your PATH. The tar installer never overwrites an existing command or installation.
 
-## ⌨️ 常用命令
-
-| 命令 | 作用 |
-|---|---|
-| `/login` | 在隐藏输入框粘贴 DeepSeek API key，保存到 `~/.dscode/`，启动自动加载 |
-| `/model`、`/effort` | 选择模型、配置其他凭据；支持四档的模型用横向 bar 调整 effort |
-| `/mode` | 选择 Agent Preset；新会话默认 `dscode` |
-| `/status`、`/doctor` | 会话状态与运行时诊断 |
-| `/memories` | 全局记忆状态、后台用量、开关与清理 |
-| `/session` | 当前 session ID、名片与外部接入入口 |
-| `/permission auto`、`/permission ask` | 切换自动审核或人工审批 |
-| `/review-usage` | 查看自动审核的额外 token 与耗时 |
-| `/shell`、`/shell reset` | 检查或重置持久终端 |
-| `/mcp`、`/skills`、`/hooks` | 管理 MCP、检查 skill 来源、查看或重载 hooks |
-| `/plan`、`/goal` | 计划与持续任务 |
-| `/agents` | 查看子 agent 的任务、状态与当前活动 |
-| `/mailbox` | 查看 session 消息和 deferred 便签 |
-| `/email` | `i` 配置 IMAP 邮箱与应用密码；浏览 `[ToAgent]` 邮件，Enter 直接 steer 进当前 session。Gmail 配置后可让 agent 用 `send_email` 发送。[收发说明](docs/email.md) |
-| `/compact` | 压缩历史上下文 |
-| `/diff`、`/review` | 查看代码修改；`/review` 用独立、只读模型请求审查 Git diff，支持未提交、暂存、基准分支、单次提交与路径范围 |
-| `/clear` | 开始新的空上下文会话，旧会话仍可恢复 |
-| `/resume`、`/fork` | 恢复或分叉会话 |
-
-`Shift+Enter` 换行，`!命令` 运行本地 Shell 命令，`Ctrl+L` 只清屏，`Esc` 中断当前操作。退出后用 `dscode resume [SESSION_ID]` 恢复会话。完整命令以 TUI `/help` 为准。[命令与 hooks 说明 →](docs/tui-commands.md)
-
-## 📬 Agent 邮件
-
-在 TUI 输入 `/email`，按 `i` 配置邮箱。Gmail 使用邮箱地址和 **Google 应用密码**，在隐藏输入框中保存；无需申请 OAuth 客户端 JSON。首次连接后开始接收所选文件夹内、主题以 `[ToAgent]` 开头的新邮件，后台定期同步。应用密码需要先在 Google 账号开启两步验证，再到[应用密码页面](https://myaccount.google.com/apppasswords)创建。
-
-收件箱按更新时间倒序排列，所有 session 共用。↑/↓ 选择邮件，PgUp/PgDn 滚动预览，窄窗口用 Tab 切换列表和预览。按 **Enter 直接注入当前 session**：运行中走 steer，空闲时开始一轮；无需复制粘贴或再次提交。注入使用 `user_injected_email_context` JSON 结构，明确标注由用户选择、仅用于补充上下文，邮件正文不构成新的操作授权。
-
-配置 Gmail 后，也可以让 agent 发邮件：
-
-> 给 person@example.com 发邮件，总结这次修改并请对方检查。
-
-`send_email` 复用本地应用密码，通过 SMTP 发送纯文本，自动给主题加 `[ToAgent]`，并走现有审批流程。发送记录可防止同一请求重复发送；服务端接受不代表已送达或已读，结果不确定时不会自动重新发信。
-
-联系人别名同样跨 session 共用，可以直接告诉 agent：
-
-> 把 congkai 的邮箱设为 person@example.com。
->
-> 发给 congkai，告诉他这次修改已完成。
->
-> 列出我的邮箱别名。
-
-也可用 CLI 管理：
+**If the npm name lookup returns 404**, install the same version straight from the official registry tarball:
 
 ```sh
-dscode email alias set congkai person@example.com
-dscode email alias list
-dscode email alias remove congkai
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.0.tgz
 ```
 
-审批会显示别名对应的真实地址；修改别名后，旧地址不能继续用于发送。邮箱数据、联系人和凭据保存在 `~/.dscode/email`，可通过 `DSCODE_EMAIL_DIR` 覆盖。新增功能需重启 DSCODE 加载。自定义 IMAP 邮箱目前支持接收，发送工具目前仅支持 Gmail 应用密码连接。[连接方式、工具与接收接口 →](docs/email.md)
+**Upgrade** — update the launcher first, then the installed profile:
 
-## 🔧 权限与配置
+```sh
+npm install -g @toddzheng024/dscode@0.7.0
+dscode update 0.7.0
+```
 
-默认使用 `workspace-write` sandbox 和 **Auto** 权限审核。Ultra 不增加权限；独立审核只处理适用的审批请求，Computer Use 保留人工授权。[Auto 的范围、成本与限制 →](docs/auto-review.md)
+`dscode history` lists retained versions and `dscode rollback` returns to the previous preset revision. Source, tar and npm/Hub installs use different data directories, and sessions and credentials are not migrated between them. See the [tar distribution notes](docs/distribution.md) and the [npm + Hub guide](docs/hub-distribution.md).
 
-| 安装方式 | 会话、凭据与统计 | 本地配置 |
+</details>
+
+## ⌨️ Commands
+
+| Command | What it does |
+|---|---|
+| `/login` | Paste the DeepSeek API key into a hidden input; saved under `~/.dscode/` and loaded at startup |
+| `/model`, `/effort` | Choose a model or configure other credentials; models with four levels use a horizontal effort bar |
+| `/mode` | Select an Agent Preset; new sessions default to `dscode` |
+| `/status`, `/doctor` | Session state and runtime diagnostics |
+| `/memories` | Global memory state, background usage, switches and cleanup |
+| `/session` | Current session id, its card, and the external access entry point |
+| `/permission auto`, `/permission ask` | Switch between automatic review and human approval |
+| `/review-usage` | Extra tokens and time spent on automatic review |
+| `/shell`, `/shell reset` | Inspect or reset the persistent terminal |
+| `/mcp`, `/skills`, `/hooks` | Manage MCP, inspect skill sources, view or reload hooks |
+| `/plan`, `/goal` | Plans and long-running objectives |
+| `/agents` | Sub-agent tasks, status and current activity |
+| `/mailbox` | Session messages and deferred notes |
+| `/email` | Press `i` to configure IMAP and an app password; browse `[ToAgent]` mail and press Enter to steer it into the session |
+| `/compact` | Compact the conversation context |
+| `/diff`, `/review` | Inspect edits; `/review` asks an independent, read-only model to review a Git diff |
+| `/clear` | Start a new session with empty context; the old session stays resumable |
+| `/resume`, `/fork` | Resume or fork a session |
+
+`Shift+Enter` inserts a newline, `!command` runs a local shell command, `Ctrl+L` clears only the screen, and `Esc` interrupts the current operation. The TUI's `/help` is the authoritative list, and [commands and hooks](docs/tui-commands.md) covers the rest.
+
+## 🔧 Permissions & configuration
+
+The default is a `workspace-write` sandbox with **Auto** permission review, where applicable approval requests go to an independent model; `/permission ask` hands them back to you. Ultra adds no permissions. [Scope, cost and limits of auto review →](docs/auto-review.md)
+
+| Install method | Sessions, credentials and stats | Local configuration |
 |---|---|---|
-| npm / Hub | `~/.local/share/dscode-hub`，可用 `DSCODE_HOME` 覆盖 | 数据目录的 `.env` 和 `config/` |
-| 源码 | 仓库 `.runtime/` | 仓库 `.env` 和 `config/` |
-| tar | 安装目录 `.runtime/` | 安装目录 `.env` 和 `config/` |
+| npm / Hub | `~/.local/share/dscode-hub`, overridable with `DSCODE_HOME` | `.env` and `config/` in the data directory |
+| Source | repository `.runtime/` | repository `.env` and `config/` |
+| tar | `.runtime/` inside the install directory | `.env` and `config/` in the install directory |
 
-支持 `config/hooks.local.json`、`config/mcp.local.yml`、`config/harness.local.yml`。这些本地配置、密钥与会话不会打入发布包。Hub 升级/回退替换 profile，保留独立状态目录；不自动迁入旧源码或 tar 安装的凭据。
+`config/hooks.local.json`, `config/mcp.local.yml` and `config/harness.local.yml` are supported. Local configs, secrets and sessions never enter a release package. Skills are discovered in the target project's `.agents/skills` and `.dsh/skills`, plus an isolated user skill directory; `/skills conflicts` diagnoses same-name overrides.
 
-Skills 会发现目标项目的 `.agents/skills`、`.dsh/skills`，以及隔离的用户 skill 目录。使用 `/skills conflicts` 排查同名覆盖。
-
-Chrome 随 `dscode` agent preset 初始化：空白启动先显示输入框，首次创建会话时连接 MCP 并等待工具注册；带初始消息或恢复会话的启动仍需完成这一步。Chrome 使用独立临时 profile，不接管日常浏览器登录态。桌面工具通过 skill 渐进加载；截图理解需要支持图片的模型。当前 MCP bridge 提供 tools，不提供 resources/prompts。[持久 Shell 与 Ultra →](docs/dscode-ultra.md)
-
-代码修改完成并通过相关检查后，dscode agent 会在结束本轮前调用 `review` tool 审查当前 Git diff；若发现具体问题，先修复，再对有实质变化的 diff 复查。纯问答或无代码改动时跳过。`/review` 可手动触发同一审查器，例如 `/review --staged`、`/review --base main` 或 `/review --path src/app.ts`。审查器只看到当前任务和选定 diff，不会运行测试或修改文件；同一份 diff 的重复请求复用结果。[命令说明 →](docs/tui-commands.md)
-
-Ultra 中主 agent 可以在 `subagent` 或 `subagent_fork` 调用里指定 `worktree: true`，让并行编辑的子 agent 使用独立 Git checkout；只读任务默认共享目录。隔离 worktree 从干净的 `HEAD` 建立，主工作区有未提交改动时会拒绝创建，避免子 agent 漏看当前修改。主 agent 收到路径后负责检查、整合改动，再删除 worktree。[细节 →](docs/dscode-ultra.md)
-
-## 🧩 开发与发布
+## 🧩 Development
 
 ```sh
-npm test                              # 单元与契约测试（隔离上游依赖）
-npm run check                         # 覆盖率、集成、TUI 与打包检查
-npm run doctor                        # 本地确定性 agent 集成检查
-npm run config                        # 查看组合后的配置（请勿分享含密钥的输出）
-
-npm run build:packages                # 构建 launcher 与完整 bundle 的 npm tgz
-npm run release:hub                   # 构建 Hub release 和 .dshprofile
-npm run verify:hub                    # 临时安装、agent 检查、失败升级与回退
-npm run dist                          # 构建备用 tar 安装包
+npm test                    # unit and contract tests (upstream dependencies isolated)
+npm run check               # coverage, integration, TUI and packaging checks
+npm run doctor              # deterministic local agent integration check
+npm run build:packages      # build the launcher and complete bundle npm tgz
+npm run release:hub         # build the Hub release and .dshprofile
+npm run verify:hub          # temp install, agent check, failed upgrade and rollback
+npm run dist                # build the fallback tar installer
 ```
 
-| 分发组件 | 内容 |
+| Distribution component | Contents |
 |---|---|
-| `@toddzheng024/dscode` | `dscode` 命令、首次安装引导、Hub 版本管理 |
-| `@toddzheng024/dscode-bundle` | 基础层、Computer Use、自定义插件与修改后的 TUI/runtime |
-| Hub profile `dscode` | 固定 bundle/runtime 版本与完整性哈希 |
+| `@toddzheng024/dscode` | The `dscode` command, first-install bootstrap and Hub version management |
+| `@toddzheng024/dscode-bundle` | Base layer, Computer Use, custom plugins and the modified TUI/runtime |
+| Hub profile `dscode` | Pinned bundle and runtime versions with integrity hashes |
 
-Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第三方源码。DSH 依赖统一固定到 `0.1.5-rc.1`；TUI 基于 `dsh-code@1.0.6`，Chrome MCP 为 `1.9.0`，Computer Use 为 `0.3.2`。
+The bundle generates its modified modules at build time and never rewrites third-party sources on a user's machine. DSH dependencies are pinned to `0.1.5-rc.1`; the TUI is based on `dsh-code@1.0.6`, Chrome MCP on `1.9.0` and Computer Use on `0.3.2`. The full pipeline—bundle, then Hub release, then launcher—is in the [distribution guide](docs/hub-distribution.md). Context-compaction evaluation lives under [`eval/`](eval/README.md) and runs with `npm run eval:compaction`.
 
-日常检查使用 `npm run check`；单独运行可用 `test:unit`、`test:integration`、`test:ui`、`test:package`、`test:coverage`、`test:eval`。覆盖率把未加载的项目源码计为零，并设置 75% 行覆盖率门槛。测试不会修改开发环境的 `node_modules`，集成和 UI 验证使用临时 checkout。首次准备原始上游测试包时，优先读取 npm 缓存，缓存缺失才下载锁文件指定的 tarball。
+## 📚 Documentation
 
-上下文压缩评测入口是 `npm run eval:compaction`，默认离线运行；样本、策略、评分器、测试和报告均放在 [`eval/`](eval/README.md)。真实模型评测显式使用 `--backend deepseek`。
+| Document | Contents |
+|---|---|
+| [Changelog](docs/CHANGELOG.md) | Every release, newest first |
+| [Non-interactive runs](docs/exec.md) | `dscode exec`, JSON output, resume and effort/model/permission flags |
+| [Session bridge](docs/session-bridge.md) | `dscode sessions`, `send`, `read`, `watch` against a live session |
+| [Session communication](docs/session-communication.md) | Agent-side messaging, delivery modes, budgets and de-duplication |
+| [Session cards](docs/session-cards.md) | Project, workspace and topic fields, and how they are derived |
+| [Memory](docs/memory.md) | Global cross-session memory, background usage and switches |
+| [Persistent shell and Ultra](docs/dscode-ultra.md) | Presets, reasoning effort, per-child effort and worktree isolation |
+| [Auto review](docs/auto-review.md) | Scope, cost and limits of independent permission review |
+| [Email](docs/email.md) | IMAP setup, the inbox panel, `send_email` and aliases |
+| [TUI commands](docs/tui-commands.md) | Command reference and hooks |
+| [Session metrics](docs/session-metrics.md) | Definition of the footer TPS, context, cost and cache figures |
+| [npm + Hub distribution](docs/hub-distribution.md) | Bundle, Hub release and launcher pipeline |
+| [tar distribution](docs/distribution.md) | The standalone tar installer |
+| [Verification](docs/verification.md) | What the maintained checks cover |
 
-完整流程见 **[npm + Hub 分发指南](docs/hub-distribution.md)**。先发布 bundle，再上线 Hub release，最后发布 launcher。`artifacts/npm/` 是完整分发产物；旧 `npm run release` 只保留基础配置导出，不能替代完整 bundle。
+## 🤝 Contributing
 
-本地集成验证使用确定性模型；公开 npm/Hub 安装与真实 TUI 启动另行验证。真实远程模型、浏览器操作或桌面操作不属于这轮发布测试的验收范围。[验证说明 →](docs/verification.md)
+Issues and pull requests are welcome. Run `npm run check` before sending a change, and keep the release flow intact: bundle first, then Hub release, then launcher.
+
+## 📄 License
+
+[MIT](LICENSE) © 2026 Todd Zheng
 
 ---
 
-基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)、[DSH-Code](https://github.com/unlinearity/dsh-code)、[Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) 与 [DSH Plugin Hub](https://dshpluginhub.ai)。独立社区项目，非 DeepSeek 官方产品。
+Built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), [DSH-Code](https://github.com/unlinearity/dsh-code), [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) and [DSH Plugin Hub](https://dshpluginhub.ai). An independent community project, not an official DeepSeek product.
