@@ -31,7 +31,7 @@ DSCODE is a terminal coding agent for macOS, built on [DeepSeek Harness](https:/
 | **[Agent-to-agent tasks](docs/session-communication.md)** | The agent finds, reads and messages other sessions with `list_sessions`, `read_session`, `send_session` and `reply_session`, choosing `queue`, `steer` or `defer`. A persisted mailbox, retry de-duplication and a finite budget bound message loss, double processing and wake-up loops. |
 | **[Session cards](docs/session-cards.md)** | Each session advertises its project, workspace and the topics of its last five user requests—enough to pick the right collaborator without reading its transcript. Cards describe what the user asked for, not conclusions. |
 | **[Cross-session memory](docs/memory.md)** | Reusable experience is extracted in the background and retrieved together with its workspace and source messages. Memory can be disabled per session or globally, and its model usage is tracked separately. |
-| **[Effort and sub-agents](docs/dscode-ultra.md)** | Ultra uses DeepSeek's native `max` reasoning and decides how far to investigate, delegate and verify. Parents pick a separate effort per child, and children that edit can work in isolated Git worktrees created from a clean `HEAD`. |
+| **[Effort and sub-agents](docs/dscode-ultra.md)** | Ultra uses the model's `max` reasoning and decides how far to investigate, delegate and verify; below Ultra the agent can still delegate, but only when a task clearly warrants it. Parents pick a separate effort per child, and children that edit can work in isolated Git worktrees created from a clean `HEAD`. |
 | **[Independent review](docs/tui-commands.md)** | After a code change passes its relevant checks, the agent sends the Git diff—or, outside a repository, the changes since a snapshot taken when the task began—to a separate read-only model and fixes concrete findings before ending the turn. `/review` runs the same reviewer by hand, scoped to the staging area, a base branch, a commit or a path. |
 | **[Non-interactive runs](docs/exec.md)** | `dscode exec "prompt"`, or `git diff \| dscode exec "review this"`, runs a full turn in scripts and CI: the reply streams to stdout, tool activity and the session id go to stderr, and the exit code reflects the turn. `--json` and `--resume` are supported. |
 | **[Terminal UX](docs/session-metrics.md)** | Six interface languages, select-and-copy text, scrollback through history, a verbose view of thinking and tool calls, an input area pinned to the bottom, a sub-agent overview, and footer TPS / context / cost / cache figures. |
@@ -40,9 +40,9 @@ DSCODE is a terminal coding agent for macOS, built on [DeepSeek Harness](https:/
 
 ## 🆕 What's new
 
-**0.7.5** — independent review works outside Git. In a workspace that is not a repository, DSCODE snapshots the files before the task's first tool call and reviews what changed since, so the agent gets the review guidance there too; the snapshot lives under the data directory and never touches the workspace. 0.7.4 made MCP calls work under `danger-full-access` again, where they were silently rejected and `dscode exec --approve-all` could not allow them.
+**0.7.6** — OpenRouter serves its whole catalog. `/provider openrouter` lists every model pi-ai knows on OpenRouter (Anthropic, OpenAI, Google, Qwen, Kimi, GLM and more), `/model` gains a search, and calls are priced from OpenRouter's live list prices. Reasoning effort now follows each model instead of DeepSeek's levels, delegation is available at every effort (the prompt keeps it rare below Ultra), and the review tool no longer caps its reviewer at 8,192 output tokens. 0.7.5 made independent review work outside Git.
 
-Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.5 notes](docs/releases/0.7.5.md) have the long version.
+Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.6 notes](docs/releases/0.7.6.md) have the long version.
 
 ## 🚀 Quick start
 
@@ -54,7 +54,7 @@ cd /path/to/project
 dscode
 ```
 
-The first launch installs the pinned complete preset from [DSH Plugin Hub](https://dshpluginhub.ai)—no manual plugin assembly, no global pnpm. Then enter `/login` and paste your DeepSeek API key into the hidden input: it is stored locally in `~/.dscode/credentials.yaml` with `0600` permissions, shared across projects and installed versions, and never sent to the agent. A `DEEPSEEK_API_KEY` environment variable takes precedence. To reach the same DeepSeek models through OpenRouter, enter `/provider openrouter`: DSCODE declares the OpenRouter route, asks for your OpenRouter key (stored the same way, or taken from `OPENROUTER_API_KEY`) and switches the session; `/provider deepseek` switches back, and `/login openrouter` replaces the key. Use `/model` to pick a model or another provider, and `/effort` to adjust reasoning effort; the default route is `deepseek-official/deepseek-flash`.
+The first launch installs the pinned complete preset from [DSH Plugin Hub](https://dshpluginhub.ai)—no manual plugin assembly, no global pnpm. Then enter `/login` and paste your DeepSeek API key into the hidden input: it is stored locally in `~/.dscode/credentials.yaml` with `0600` permissions, shared across projects and installed versions, and never sent to the agent. A `DEEPSEEK_API_KEY` environment variable takes precedence. To use OpenRouter, enter `/provider openrouter`: DSCODE declares the OpenRouter route, asks for your OpenRouter key (stored the same way, or taken from `OPENROUTER_API_KEY`) and switches the session to the DeepSeek model you were on; every other model in pi-ai's OpenRouter catalog is then listed in `/model`, where `/` searches. `/provider deepseek` switches back, and `/login openrouter` replaces the key. Use `/model` to pick a model or another provider, and `/effort` to adjust reasoning effort; the default route is `deepseek-official/deepseek-flash`.
 
 ```sh
 dscode --continue                 # continue the last session
@@ -81,11 +81,11 @@ npm start
 npm start -- --cwd /path/to/project
 ```
 
-**From a tar package** — download `dscode-0.7.5.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
+**From a tar package** — download `dscode-0.7.6.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.5.tar.gz -C dscode-install
+tar -xzf dscode-0.7.6.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -94,14 +94,14 @@ The command lands in `~/.local/bin/dscode` by default—make sure that directory
 **If the npm name lookup returns 404**, install the same version straight from the official registry tarball:
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.5.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.6.tgz
 ```
 
 **Upgrade** — update the launcher first, then the installed profile:
 
 ```sh
-npm install -g @toddzheng024/dscode@0.7.5
-dscode update 0.7.5
+npm install -g @toddzheng024/dscode@0.7.6
+dscode update 0.7.6
 ```
 
 `dscode history` lists retained versions and `dscode rollback` returns to the previous preset revision. Source, tar and npm/Hub installs use different data directories, and sessions and credentials are not migrated between them. See the [tar distribution notes](docs/distribution.md) and the [npm + Hub guide](docs/hub-distribution.md).

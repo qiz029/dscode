@@ -10,6 +10,8 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes here. -->
 
+## [0.7.6] - 2026-09-14
+
 ### Added
 
 - `/provider openrouter` serves pi-ai's whole OpenRouter catalog (366 models, including Anthropic, OpenAI, Google, Qwen, Kimi and GLM) instead of three DeepSeek models, so no model has to be added by hand. The DeepSeek models keep the official detents through `modelOverrides`; every other model uses its own reasoning levels. Opening `/model` replaces the narrow profile 0.7.3 to 0.7.5 wrote, and a profile the user edited is left alone.
