@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 // Four ordered detents are a DSCODE presentation for the DeepSeek catalog.
 // Keep the upstream panel for other models and for catalogs with extra levels.

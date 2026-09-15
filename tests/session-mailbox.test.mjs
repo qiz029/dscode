@@ -9,7 +9,7 @@ import { parseClientArgs } from '../plugins/session-bridge/client.mjs';
 
 function fixture(t) {
   const home = mkdtempSync(join(tmpdir(), 'dscode-mailbox-test-')); let now = 1000;
-  const store = new Mailbox(home, () => now), a = store.register('a', '/a'), b = store.register('b', '/b');
+  const store = new Mailbox(home, () => now, { retainedMessages: 12, retainedEvents: 16, retainedChains: 12, retainedRefusals: 16 }), a = store.register('a', '/a'), b = store.register('b', '/b');
   store.newTask(a);
   t.after(() => { store.close(); rmSync(home, { recursive: true, force: true }); });
   const send = (id, key, auth = a, extra = {}) => store.admit(id, { text: 'task', requestId: key, ...extra }, auth);
@@ -146,4 +146,87 @@ test('defer batch is bounded including metadata; claimed cancellation reports th
   assert.equal(cancelled.alreadyClaimed, true); assert.equal(cancelled.requestState, 'cancelled');
   assert.equal(cancelled.delivery, 'cancelled'); // Stop future recovery even if this turn already claimed it.
   assert.throws(() => send('b', 'oversized-encoding', a, { text: '\u0000'.repeat(20000), mode: 'defer' }), { code: 'message_too_large' });
+});
+
+test('retention removes old settled rows and their events, and sweeps an expired pending row', t => {
+  const { store, a, b, send } = fixture(t);
+  const old = send('b', 'old', a).row;
+  store.transition(b, old.id, 'consumed');
+  store.prune();
+  assert.equal(store.tableCounts().messages, 1, 'a fresh prune keeps a just-settled message');
+  const cutoff = 1000 + limits.retentionMs + limits.ttlMs;
+  store.now = () => cutoff;
+  store.newTask(a); // the first task chain expired with the jump, as it would in a real week-long gap
+  const pending = send('b', 'still-pending', a).row;
+  store.prunedAt = 0;
+  store.prune();
+  assert.equal(store.get(old.id), null, 'a settled message past the window is dropped');
+  assert.equal(store.get(pending.id).id, pending.id, 'a swept pending row in a live chain is kept');
+  assert(store.one('SELECT COUNT(*) n FROM events WHERE recipient=?', 'b').n > 0, 'the newer events survive');
+});
+
+
+test('pruning keeps deliverable rows even with a populated table', t => {
+  const { store, b } = fixture(t);
+  store.now = () => 2 * 3600000;
+  // Anonymous senders get expires=Infinity, so only the cap can bound their rows; stop at the
+  // pending-mailbox limit, which is the other guard under test.
+  let accepted = 0;
+  for (let index = 0; index < store.retention.retainedMessages; index++) {
+    try { store.admit('b', { text: 'x', requestId: 'anon-' + index }, undefined); accepted++; }
+    catch (error) { if (error.code !== 'mailbox_full') throw error; break; }
+  }
+  assert(accepted > 0 && accepted <= store.retention.retainedMessages);
+  store.prunedAt = 0;
+  store.prune();
+  assert.equal(store.tableCounts().messages, accepted, 'nothing deliverable is evicted');
+});
+
+// A far-future clock: the fixture starts an hour from epoch 0, and prune itself is throttled hourly.
+test('the cap evicts only settled mail whose reply window has closed', t => {
+  const { store, b } = fixture(t);
+  const base = 2 * 3600000;
+  store.now = () => base;
+  store.newTask(b); // closed rows settle behind this chain, so they expire one hour from now
+  const closed = [];
+  for (let index = 0; index < store.retention.retainedMessages + 1; index++) {
+    const row = store.admit('b', { text: 'x', requestId: 'cap-' + index }, undefined).row;
+    closed.push(row.id);
+    store.transition(b, row.id, 'consumed');
+  }
+  // One more task: the pending message and the live chain expire three hours from the fixture start.
+  store.newTask(b);
+  const pending = store.admit('b', { text: 'x', requestId: 'cap-pending' }, undefined).row;
+  store.now = () => base + 2 * 3600000;
+  store.prunedAt = 0;
+  store.prune();
+  const settled = store.one("SELECT COUNT(*) n FROM messages WHERE delivery NOT IN ('accepted','admitted')").n;
+  assert(settled <= store.retention.retainedMessages, `the cap bounds the closed rows (${settled})`);
+  assert.equal(store.get(closed[0]), null, 'the oldest closed row is evicted');
+  assert.equal(store.get(closed.at(-1)).id, closed.at(-1), 'recent closed rows survive');
+  assert.equal(store.get(pending.id).id, pending.id, 'deliverable mail is never evicted');
+});
+
+test('a forced prune ignores the hourly throttle, a plain one does not', t => {
+  const { store } = fixture(t);
+  store.now = () => 2 * 3600000;
+  store.prune();
+  const stamped = store.prunedAt;
+  store.prune();
+  assert.equal(store.prunedAt, stamped, 'the second plain prune is a no-op inside the window');
+  store.now = () => 2 * 3600000 + 1000;
+  store.prune({ force: true });
+  assert.notEqual(store.prunedAt, stamped, 'force runs it anyway');
+});
+
+test('the event cap is per recipient, so one busy stream cannot age out another', t => {
+  const { store } = fixture(t);
+  const base = 2 * 3600000;
+  store.now = () => base;
+  store.event('a', 'quiet', null);
+  for (let index = 0; index < store.retention.retainedEvents + 3; index++) store.event('b', 'burst', null);
+  store.prunedAt = 0;
+  store.prune();
+  assert(store.one('SELECT COUNT(*) n FROM events WHERE recipient=?', 'a').n >= 1, 'the quiet recipient keeps its event');
+  assert(store.one('SELECT COUNT(*) n FROM events WHERE recipient=?', 'b').n <= store.retention.retainedEvents, 'the busy recipient is bounded');
 });

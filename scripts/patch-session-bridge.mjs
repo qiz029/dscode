@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 export function patchSessionBridge(text) {
   if (text.includes('// dscode-session-relay-v1')) return text;
   return '// dscode-session-relay-v1\nfunction dscodeVisibleRelay(message) {\n  return message.source.kind === "plugin" && message.source.plugin === "dscode-session-bridge" && message.source.form === "relay";\n}\n' + replaceOnce(text,

@@ -1,6 +1,6 @@
 import { cpSync } from 'node:fs';
 import { join } from 'node:path';
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 export function patchClipboardImage(text, root) {
   cpSync(new URL('../plugins/clipboard-image/', import.meta.url), join(root, 'node_modules/dsh-code/lib/dscode-clipboard-image'), { recursive: true });

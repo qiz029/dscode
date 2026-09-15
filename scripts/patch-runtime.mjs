@@ -1,14 +1,11 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { replaceOnce } from './patch-util.mjs';
 import { patchMacStdin } from './patch-mac-stdin.mjs';
 import { patchStdinStall } from './patch-stdin-stall.mjs';
 import { patchCompactionBasic } from './patch-compaction.mjs';
 import { ULTRA_POLICY, ultraRequest, FLASH_POLICY, flashRequest } from '../plugins/ultra/policy.mjs';
 
-export function replaceOnce(text, from, to) {
-  if (text.split(from).length !== 2) throw new Error('Pinned runtime patch drift: ' + from.slice(0, 90));
-  return text.replace(from, to);
-}
 export function patchDeepSeek(text) {
   const marker = '// dscode-ultra-v1';
   const prefix = marker + '\nconst ULTRA_POLICY = ' + JSON.stringify(ULTRA_POLICY) + ';\n' + ultraRequest.toString() + '\nconst FLASH_POLICY = ' + JSON.stringify(FLASH_POLICY) + ';\n' + flashRequest.toString() + '\n';

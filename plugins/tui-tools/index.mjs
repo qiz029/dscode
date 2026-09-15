@@ -62,7 +62,8 @@ export async function findConflicts(cwd, configs, winners, env = process.env) {
 
 export function apply(ctx) {
   const diagnosticsHome = process.env.DSH_HOME ?? process.env.DSCODE_HOME;
-  if (diagnosticsHome) ctx.logger.exporter({ levels: { default: 2 }, export: message => recordRuntimeLog(diagnosticsHome, message) });
+  // A minimal composition (and the unit fixtures) may mount no logger; diagnostics are best-effort.
+  if (diagnosticsHome) ctx.logger?.exporter?.({ levels: { default: 2 }, export: message => recordRuntimeLog(diagnosticsHome, message) });
   const entries = agent => [
     ...(ctx.get('loader')?.entries() ?? []),
     ...(agent?.ctx ? standingMountFor(agent.ctx)?.tree.entries() ?? [] : []),

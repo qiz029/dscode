@@ -7,7 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { collectReviewDiff, parseReviewCommand, reviewSpec, gitWorkspace, isGitAvailableSync, isGitWorkspaceSync } from '../plugins/code-review/git.mjs';
 import { baselineStore } from '../plugins/code-review/baseline.mjs';
-import { apply, independentReview } from '../plugins/code-review/index.mjs';
+import { apply, independentReview, REVIEW_LIMITS } from '../plugins/code-review/index.mjs';
 import { patchReview } from '../scripts/patch-review.mjs';
 
 const exec = promisify(execFile);
@@ -67,9 +67,9 @@ test('independent review uses a separate tool-free model request and caches unch
   const first = await independentReview(ctx, agent, {}, undefined, collect);
   assert.equal(first.status, 'reviewed');
   assert.equal(first.usage.inputTokens, 40);
-  assert.equal(calls[0].reasoningEffort, 'high');
+  assert.equal(calls[0].reasoningEffort, 'low');
   assert.equal(calls[0].purpose, 'review');
-  assert.equal(calls[0].maxTokens, undefined, 'the route default output cap applies');
+  assert.equal(calls[0].maxTokens, 8192, 'review has its own bounded output budget');
   assert.equal(calls[0].tools, undefined);
   assert.match(JSON.stringify(calls[0].messages), /Fix the bug/);
   const second = await independentReview(ctx, agent, {}, undefined, collect);
@@ -118,7 +118,8 @@ test('cancelling a stalled reviewer ends the request instead of reporting a clea
   const agent = { options: {}, session: { header: { cwd: '/fixture' }, requestHeader: () => ({ config: { provider: 'fixture', model: 'test' } }), snapshotEvents: () => [] } };
   const ctx = { llm: { async *stream() { await new Promise(() => {}); yield { type: 'finish', reason: { kind: 'stop' } }; } } };
   const pending = independentReview(ctx, agent, {}, controller.signal, async () => ({ label: 'working', diff: 'diff --git a/a b/a\n+x\n' }));
-  setTimeout(() => controller.abort(new Error('cancelled')), 5);
+  // Cancellation during startup must settle too, without depending on a wall-clock timer.
+  queueMicrotask(() => controller.abort(new Error('cancelled')));
   await assert.rejects(pending, /cancelled/);
 });
 
@@ -246,16 +247,18 @@ test('review retries once after a non-stop finish, surfaces the provider reason,
   assert.equal(ok.status, 'reviewed');
   assert.equal(recovered.calls(), 2, 'one automatic retry');
   const stuck = stream(overloaded);
-  await assert.rejects(independentReview(stuck, agent(), {}, undefined, collect), /INSUFFICIENT_SYSTEM_RESOURCE.*do not treat it as a clean review/);
+  const failed = await independentReview(stuck, agent(), {}, undefined, collect);
+  assert.equal(failed.status, 'error');
+  assert.match(failed.error, /INSUFFICIENT_SYSTEM_RESOURCE.*do not treat it as a clean review/);
   assert.equal(stuck.calls(), 2, 'no endless retries');
   const noFinish = stream({ text: 'partial…' });
-  await assert.rejects(independentReview(noFinish, agent(), {}, undefined, collect), /ended without a result/);
+  assert.match((await independentReview(noFinish, agent(), {}, undefined, collect)).error, /ended without a result/);
   const truncated = stream({ text: 'Finding: null check missing in a.', finish: { kind: 'max-tokens' } });
   const cut = await independentReview(truncated, agent(), {}, undefined, collect);
   assert.equal(cut.status, 'partial');
   assert.match(cut.report, /Finding: null check missing[\s\S]*hit its output limit/);
   assert.equal(truncated.calls(), 1, 'a truncated but usable report is not retried');
-  await assert.rejects(independentReview(stream({ finish: { kind: 'max-tokens' } }), agent(), {}, undefined, collect), /ran out of output tokens/);
+  assert.match((await independentReview(stream({ finish: { kind: 'max-tokens' } }), agent(), {}, undefined, collect)).error, /ran out of output tokens/);
 });
 
 test('review covers a merge commit and the commits a task made when nothing is left uncommitted', async () => {
@@ -300,4 +303,91 @@ test('the review tool passes the task start, never a caller-supplied one, to the
   const result = await independentReview({}, agent, { scope: 'working', path: 'src', since: 1 }, undefined, collect);
   assert.equal(result.status, 'no_changes');
   assert.deepEqual(seen, [{ scope: 'working', ref: undefined, path: 'src', since: 123456 }]);
+});
+
+
+test('automatic review converges across changed paths, persists on resume and resets for a new user task', async () => {
+  const events = [{ type: 'user/message', seq: 1, time: 1, data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'Fix the bug' }] } }];
+  const makeAgent = () => ({ options: {}, session: { id: 'bounded', header: { cwd: '/fixture' }, requestHeader: () => ({ config: { provider: 'fixture', model: 'test', reasoningEffort: 'ultra' } }), snapshotEvents: () => events } });
+  const requests = [];
+  const ctx = { llm: { async *stream(request) {
+    requests.push(request);
+    yield { type: 'block-start', index: 0, blockType: 'text' };
+    yield { type: 'block-end', index: 0, block: { type: 'text', text: 'Confirmed defect: missing null check in a.' } };
+    yield { type: 'finish', reason: { kind: 'stop' } };
+  } } };
+  let version = 0;
+  const collect = async (_cwd, options) => ({ label: options.path ?? 'working', diff: `diff --git a/a b/a\n+${version}\n` });
+  const save = value => events.push({ type: 'tool/result', data: { message: { content: [{ type: 'tool-result', content: [{ type: 'text', text: JSON.stringify(value) }] }] } } });
+  save(null); // Other tools can emit arbitrary JSON; it is not review state.
+  let agent = makeAgent();
+  const first = await independentReview(ctx, agent, {}, undefined, collect);
+  save(first);
+  assert.equal(first.reviewBudget.used, 1);
+  assert.equal((await independentReview(ctx, agent, {}, undefined, collect)).cached, true);
+  version++;
+  const second = await independentReview(ctx, agent, { path: 'a' }, undefined, collect);
+  save(second);
+  const payload = JSON.parse(requests[1].messages[0].content[0].text);
+  assert.equal(payload.mode, 'verification');
+  assert.match(payload.previousReport, /missing null check/);
+  assert.equal(second.reviewBudget.used, 2);
+  version++;
+  agent = makeAgent(); // Simulate resume: no WeakMap state.
+  const blocked = await independentReview(ctx, agent, { path: 'another-path' }, undefined, collect);
+  assert.equal(blocked.status, 'budget_exhausted');
+  assert.match(blocked.report, /not a clean review/);
+  assert.equal(requests.length, 2);
+  // A deliberate user slash command is distinct from the model tool and does not reset its allowance.
+  assert.equal((await independentReview(ctx, agent, {}, undefined, collect, undefined, { manual: true })).status, 'reviewed');
+  version++;
+  assert.equal((await independentReview(ctx, agent, {}, undefined, collect)).status, 'budget_exhausted');
+  events.push({ type: 'user/message', seq: 9, time: 9, data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'Fix the bug' }] } });
+  const next = await independentReview(ctx, agent, {}, undefined, collect);
+  assert.equal(next.status, 'reviewed');
+  assert.equal(next.reviewBudget.used, 1);
+  assert.equal(JSON.parse(requests.at(-1).messages[0].content[0].text).mode, 'initial');
+});
+
+test('failed reviews consume passes and concurrent calls cannot multiply model work', async () => {
+  const agent = { options: {}, session: { id: 'failed', header: { cwd: '/fixture' }, requestHeader: () => ({ config: { provider: 'fixture', model: 'test' } }), snapshotEvents: () => [] } };
+  let entered, release;
+  const started = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  let calls = 0;
+  const ctx = { llm: { async *stream() { calls++; entered(); await gate; throw Error('provider unavailable'); } } };
+  const collect = async () => ({ label: 'working', diff: '+changed' });
+  const pending = independentReview(ctx, agent, {}, undefined, collect);
+  await started;
+  assert.equal((await independentReview(ctx, agent, {}, undefined, collect)).status, 'in_progress');
+  release();
+  const failure = await pending;
+  assert.equal(failure.status, 'error');
+  assert.equal(failure.reviewBudget.used, 1);
+  assert.equal((await independentReview(ctx, agent, {}, undefined, collect)).reviewBudget.used, 2);
+  assert.equal((await independentReview(ctx, agent, {}, undefined, collect)).status, 'budget_exhausted');
+  assert.equal(calls, 2);
+  assert.equal(REVIEW_LIMITS.timeoutMs, 90_000);
+});
+
+
+test('the review deadline bounds stalled model metadata and streams and returns an incomplete result', async t => {
+  for (const phase of ['metadata', 'stream']) {
+    const timer = new AbortController();
+    let timeout;
+    const mock = t.mock.method(AbortSignal, 'timeout', ms => { timeout = ms; return timer.signal; });
+    try {
+      const agent = { options: {}, session: { header: { cwd: '/fixture' }, requestHeader: () => ({ config: { provider: 'fixture', model: 'test' } }), snapshotEvents: () => [] } };
+      const stall = () => { queueMicrotask(() => timer.abort(new DOMException('review deadline', 'TimeoutError'))); return new Promise(() => {}); };
+      const ctx = { llm: {
+        ...(phase === 'metadata' ? { resolveModelInfo: stall } : {}),
+        async *stream() { await stall(); },
+      } };
+      const result = await independentReview(ctx, agent, {}, undefined, async () => ({ label: 'working', diff: '+changed' }));
+      assert.equal(timeout, 90_000);
+      assert.equal(result.status, 'error');
+      assert.match(result.report, /Review incomplete.*review deadline/);
+      assert.equal(result.reviewBudget.used, 1);
+    } finally { mock.mock.restore(); }
+  }
 });

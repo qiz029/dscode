@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 // The footer's second row leads with the model (`provider: model @ effort`), while the
 // status line's first row leads with the session title — falling back to the model while

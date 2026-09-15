@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 // A command that holds the shell's terminal and produces nothing settles as a
 // stdin wait. Upstream returns the empty partial output and leaves that command

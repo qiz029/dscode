@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 // `/openrouter` shows the OpenRouter account: balance, this key's usage, every key and
 // the last 30 days of spend. A management key (optional, offered after the OpenRouter
@@ -146,7 +146,11 @@ export function patchOpenRouterTui(text) {
   if (text.includes(MARKER)) {
     const start = text.indexOf(UI_START), end = text.indexOf(UI_END);
     if (start < 0 || end < start) throw Error('Patched TUI OpenRouter account drift');
-    return text.slice(0, start) + UI_SOURCE + text.slice(end + UI_END.length);
+    // A resync must also refresh the import: new UI code may reference a new export.
+    const current = text.match(/^import \{[^\n]*dscodeLoadOpenRouterAccount[^\n]*$/m);
+    if (current === null) throw Error('Patched TUI OpenRouter import drift; refresh the dependencies (npm ci)');
+    const resynced = text.replace(current[0], IMPORT);
+    return resynced.slice(0, resynced.indexOf(UI_START)) + UI_SOURCE + resynced.slice(resynced.indexOf(UI_END) + UI_END.length);
   }
   const patch = (from, to) => { text = replaceOnce(text, from, to); };
   patch('{ label: "/provider", description: "switch between DeepSeek and OpenRouter" },',

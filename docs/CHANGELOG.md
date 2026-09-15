@@ -10,6 +10,20 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes here. -->
 
+## [0.7.8] - 2026-09-14
+
+### Changed
+
+- Bound automatic code review to two passes per task, 90 seconds per pass and 8,192 output tokens per attempt; follow-up review focuses on fixes and direct regressions.
+- Add ordinary-text progress guidance and stable acceptance/closeout rules to the default agent.
+- Cache session metrics incrementally, memoize footer and card calculations, and throttle invalid OpenRouter cache reads.
+
+### Fixed
+
+- Preserve incomplete ledger tails without dropping or duplicating rows.
+- Prune settled mailbox history and recipient events; use small independent retention limits in tests.
+- Validate bundle import rewrites, remove patch-module import cycles, and upgrade existing macOS stdin probes to backoff behavior.
+
 ## [0.7.7] - 2026-09-14
 
 ### Added

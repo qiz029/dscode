@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 export function patchLogin(text) {
   if (text.includes('// dscode-login-v1')) return text;

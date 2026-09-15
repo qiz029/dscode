@@ -26,13 +26,21 @@ export class SessionCards {
   }
   path(session) { return join(this.root, fingerprint(session.id) + '.json'); }
   input(state) { return selectRequests(state.requests, this.config.maxMessages, this.config.maxInputChars); }
-  hash(state) { return fingerprint({ topicCount: this.config.topicCount, messages: this.input(state) }); }
+  /** A cheap key over everything `input()` reads: the memo can only be stale if this repeats. */
+  hashKey(state) { return `${state.requests.length}:${state.requests.at(-1)?.seq ?? ''}:${this.config.topicCount}:${this.config.maxMessages}:${this.config.maxInputChars}`; }
+  /** The digest hashes up to 16k characters, and arm()/updateStatus() ask for it
+   * several times per event across every tracked session; memoize until that key changes. */
+  hash(state) {
+    const key = this.hashKey(state);
+    if (state.digestKey !== key) { state.digest = fingerprint({ topicCount: this.config.topicCount, messages: this.input(state) }); state.digestKey = key; }
+    return state.digest;
+  }
   track(session) {
     if (this.closed || session.header.agentPreset !== 'dscode' || session.header.origin === 'subagent') return null;
     if (this.states.has(session.id)) return this.states.get(session.id);
     const requests = session.snapshotEvents().map(userRequest).filter(Boolean);
     const state = { session, requests: requests.slice(-this.config.maxMessages).map(m => ({ ...m, text: m.text.slice(0, 4000) })),
-      project: null, topics: [], hash: '', updatedAt: null, coveredUserSeq: null, status: 'empty', failures: 0,
+      project: null, topics: [], hash: '', digest: null, digestKey: null, updatedAt: null, coveredUserSeq: null, status: 'empty', failures: 0,
       nextAt: Date.now() + this.config.debounceMs, lastAttempt: 0, route: session.requestHeader()?.config, usage: { calls: 0, inputTokens: 0, outputTokens: 0, unknown: 0 } };
     try {
       const raw = readFileSync(this.path(session), 'utf8');
@@ -52,7 +60,8 @@ export class SessionCards {
     this.updateStatus(state); this.arm(); return state;
   }
   updateStatus(state) {
-    state.status = !this.config.enabled ? 'disabled' : !state.requests.length ? 'empty' : state.hash === this.hash(state) ? 'ready' : state.requests.length < this.config.minMessages ? 'insufficient' : 'pending';
+    const digest = !this.config.enabled || !state.requests.length ? null : this.hash(state);
+    state.status = !this.config.enabled ? 'disabled' : !state.requests.length ? 'empty' : state.hash === digest ? 'ready' : state.requests.length < this.config.minMessages ? 'insufficient' : 'pending';
   }
   observe(session, event) {
     const state = this.track(session); if (!state) return;
@@ -110,7 +119,7 @@ export class SessionCards {
       signal.throwIfAborted();
       if (this.states.get(state.session.id) !== state || hash !== this.hash(state)) return;
       const topics = validateTopics(result.value, messages, this.config.topicCount);
-      const updated = { topics, hash, updatedAt: Date.now(), coveredUserSeq: messages.at(-1)?.seq ?? null };
+      const updated = { topics, hash, digest: hash, digestKey: this.hashKey(state), updatedAt: Date.now(), coveredUserSeq: messages.at(-1)?.seq ?? null };
       this.save({ ...state, ...updated });
       Object.assign(state, updated); state.failures = 0; state.status = 'ready';
     } catch {

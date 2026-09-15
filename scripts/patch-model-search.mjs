@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 /**
  * Models ranked for a /model search, recomputed on every keystroke. BM25 over the model

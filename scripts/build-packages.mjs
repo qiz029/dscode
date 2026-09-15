@@ -3,7 +3,8 @@ import { cpSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, ex
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { patchTui } from './patch-tui.mjs';
-import { patchRuntime, replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
+import { patchRuntime } from './patch-runtime.mjs';
 const root = resolve(import.meta.dirname, '..');
 const read = path => readFileSync(join(root, path), 'utf8');
 const original = JSON.parse(read('package.json'));
@@ -46,7 +47,18 @@ for (const [pkg, dest] of [['@deepseek-ai/dsh-tool-subagent','subagent'], ['@dee
   if (license) cpSync(join(src, license), join(bundle, 'vendor', dest, 'LICENSE'));
 }
 const tui = join(bundle, 'vendor/tui/index.mjs');
-writeFileSync(tui, readFileSync(tui, 'utf8').replace('new URL("../package.json", import.meta.url)', 'new URL("../../package.json", import.meta.url)').replace(/import \{ footerFor as dscodeFooterFor \} from [^\n]+;/, 'import { footerFor as dscodeFooterFor } from "../../plugins/session-metrics/view.mjs";').replace(/from "file:[^"]*\/plugins\/compaction\/(tetris|threshold)\.mjs";/g, 'from "../../plugins/compaction/$1.mjs";'));
+// The patched TUI carries absolute file: URLs that only exist on the machine that built it;
+// every one of them must be rewritten into the bundle or the published package imports a
+// path that does not exist. Assert the count instead of silently shipping a broken bundle.
+let tuiSource = replaceOnce(readFileSync(tui, 'utf8'), 'new URL("../package.json", import.meta.url)', 'new URL("../../package.json", import.meta.url)');
+const footerImports = tuiSource.match(/import \{ footerFor as dscodeFooterFor \} from [^\n]+;/g) ?? [];
+if (footerImports.length !== 1) throw new Error('TUI bundle footer import drift: ' + footerImports.length);
+tuiSource = tuiSource.replace(footerImports[0], 'import { footerFor as dscodeFooterFor } from "../../plugins/session-metrics/view.mjs";');
+const compactionImports = tuiSource.match(/from "file:[^"]*\/plugins\/compaction\/(?:tetris|threshold)\.mjs";/g) ?? [];
+if (compactionImports.length !== 2) throw new Error('TUI bundle compaction import drift: ' + compactionImports.length);
+tuiSource = tuiSource.replace(/from "file:[^"]*\/plugins\/compaction\/(tetris|threshold)\.mjs";/g, 'from "../../plugins/compaction/$1.mjs";');
+if (tuiSource.includes('from "file:')) throw new Error('TUI bundle keeps an absolute file: import');
+writeFileSync(tui, tuiSource);
 for (const [file, from, to] of [
   ['compaction-basic/index.js', '../../../../plugins/compaction/threshold.mjs', '../../plugins/compaction/threshold.mjs'],
   ['subagent/index.js', '../../../../plugins/worktree-subagent/worktree.mjs', '../../plugins/worktree-subagent/worktree.mjs'],

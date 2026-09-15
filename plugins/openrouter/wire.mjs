@@ -258,7 +258,9 @@ export async function* sseData(body, onActivity) {
       buffer = newline >= 0 ? buffer.slice(newline + 1) : '';
       if (line.endsWith('\r')) line = line.slice(0, -1);
       if (line === '') {
-        if (data.length > 0) yield data.join('\n');
+        // A bare `data:` line assembles to whitespace; the SSE spec reads it as a newline, but every consumer here parses JSON.
+        const payload = data.join('\n');
+        if (payload.trim() !== '') yield payload;
         data = [];
       } else if (line.startsWith('data:')) data.push(line.slice(line.startsWith('data: ') ? 6 : 5));
     }
@@ -270,7 +272,8 @@ export async function* sseData(body, onActivity) {
   }
   buffer += decoder.decode();
   yield* lines(true);
-  if (data.length > 0) yield data.join('\n');
+  const tail = data.join('\n');
+  if (tail.trim() !== '') yield tail;
 }
 
 /** Map OpenRouter usage to disjoint harness counts (`prompt_tokens` includes cache reads and writes). */

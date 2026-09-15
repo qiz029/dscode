@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 // macOS exposes neither the waiting syscall (Linux reads /proc/<pid>/syscall)
 // nor a wait channel: `ps -o wchan` prints "-" for every user process. A command
@@ -8,6 +8,8 @@ import { replaceOnce } from './patch-runtime.mjs';
 // waiting on instead. The freeze window keeps work in flight from looking like
 // a wait, and the caller throttles the probe.
 export const STDIN_PROBE_MS = 250;
+/** Idle probes back off up to this multiple: a long command polls the process table far less often. */
+export const STDIN_PROBE_MAX_MULTIPLE = 8;
 export const STDIN_FREEZE_MS = 1200;
 
 /** `ps -o time=` prints either `MM:SS.ss` or `HH:MM:SS.ss`. */
@@ -70,8 +72,8 @@ const MAC_INSPECTOR_PROBE = [
   '\tisStdinWaiting(pgid, shellPid) {',
   '\t\tconst now = Date.now();',
   '\t\tconst cached = dscodeStdinWaitProbes.get(this);',
-  '\t\tif (cached !== void 0 && now - cached.at < dscodeStdinProbeMs) return cached.waiting;',
-  '\t\tconst state = cached ?? { at: 0, waiting: false, snapshot: void 0 };',
+  '\t\tconst state = cached ?? { at: 0, idle: 0, waiting: false, snapshot: void 0 };',
+  '\t\tif (cached !== void 0 && now - cached.at < dscodeStdinProbeMs * Math.min(dscodeStdinProbeMax, 2 ** state.idle)) return cached.waiting;',
   '\t\tstate.at = now;',
   '\t\tdscodeStdinWaitProbes.set(this, state);',
   '\t\tlet rows;',
@@ -83,6 +85,9 @@ const MAC_INSPECTOR_PROBE = [
   '\t\t\treturn false;',
   '\t\t}',
   '\t\tconst verdict = stdinWaitVerdict(rows, state.snapshot, now, pgid, shellPid, dscodeStdinFreezeMs);',
+  '\t\t// Idle probes back off; any change in group state restarts the fast poll.',
+  '\t\tconst changed = state.snapshot === void 0 || verdict.snapshot === void 0 || state.snapshot.since !== verdict.snapshot.since || state.snapshot.cpu.size !== verdict.snapshot.cpu.size;',
+  '\t\tstate.idle = verdict.waiting || changed ? 0 : state.idle + 1;',
   '\t\tstate.snapshot = verdict.snapshot;',
   '\t\tstate.waiting = verdict.waiting && socketFreePids(this.internals, verdict.pids).length > 0;',
   '\t\treturn state.waiting;',
@@ -100,8 +105,14 @@ export const MAC_INSPECTOR_ANCHOR = [
 
 /** Replace the macOS inspector's `isStdinWaiting` stub with the process-table probe. */
 export function patchMacStdin(text) {
-  if (text.includes('// dscode-mac-stdin-wait-v1')) return text;
+  if (text.includes('// dscode-mac-stdin-wait-v1')) {
+    if (text.includes('const dscodeStdinProbeMax =')) return text;
+    const oldProbe = MAC_INSPECTOR_PROBE
+      .replace('\t\tconst state = cached ?? { at: 0, idle: 0, waiting: false, snapshot: void 0 };\n\t\tif (cached !== void 0 && now - cached.at < dscodeStdinProbeMs * Math.min(dscodeStdinProbeMax, 2 ** state.idle)) return cached.waiting;', '\t\tif (cached !== void 0 && now - cached.at < dscodeStdinProbeMs) return cached.waiting;\n\t\tconst state = cached ?? { at: 0, waiting: false, snapshot: void 0 };')
+      .replace(/\t\t\/\/ Idle probes back off;[^\n]*\n\t\tconst changed = [^\n]*\n\t\tstate.idle = [^\n]*\n/, '');
+    return replaceOnce(text, oldProbe, MAC_INSPECTOR_PROBE).replace('// dscode-mac-stdin-wait-v1', `// dscode-mac-stdin-wait-v1\nconst dscodeStdinProbeMax = ${STDIN_PROBE_MAX_MULTIPLE};`);
+  }
   const helpers = [cpuSeconds, parseProcessRows, withoutSockets, socketFreePids, stdinWaitVerdict].map(fn => fn.toString()).join('\n');
-  const head = `// dscode-mac-stdin-wait-v1\nconst dscodeStdinProbeMs = ${STDIN_PROBE_MS};\nconst dscodeStdinFreezeMs = ${STDIN_FREEZE_MS};\nconst dscodeStdinWaitProbes = new WeakMap();\n`;
+  const head = `// dscode-mac-stdin-wait-v1\nconst dscodeStdinProbeMs = ${STDIN_PROBE_MS};\nconst dscodeStdinProbeMax = ${STDIN_PROBE_MAX_MULTIPLE};\nconst dscodeStdinFreezeMs = ${STDIN_FREEZE_MS};\nconst dscodeStdinWaitProbes = new WeakMap();\n`;
   return head + helpers + '\n' + replaceOnce(text, MAC_INSPECTOR_ANCHOR, MAC_INSPECTOR_ANCHOR.replace(MAC_INSPECTOR_STUB, MAC_INSPECTOR_PROBE));
 }

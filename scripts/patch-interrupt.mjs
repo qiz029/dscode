@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 // A cancelled agent may remain "busy" until its aborting tool settles. Keep the
 // two Ctrl+C presses independent of that asynchronous view update.

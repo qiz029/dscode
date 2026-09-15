@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 // `/provider` switches the session between DeepSeek's official API and OpenRouter,
 // and `/login [provider]` stores either key. The provider catalog ships beside the
@@ -67,6 +67,12 @@ export function patchProvider(text) {
   const start = text.indexOf('function DscodeLoginPanel(');
   const end = text.indexOf('\nfunction ProviderSetupPanel(');
   if (start < 0 || end < start) throw new Error('Pinned runtime patch drift: DscodeLoginPanel');
+  // Never discard anything between the two panels silently: assert the slice we remove is
+  // the install's own login panel before replacing it.
+  const removed = text.slice(start, end);
+  // Refuse to swallow anything upstream may have added between the two panels: the removed
+  // slice must be exactly the bracketed login panel we are replacing.
+  if (!removed.trimEnd().endsWith('}') || /^function [A-Za-z]/m.test(removed.slice(1)) || removed.length > 20000) throw new Error('Pinned runtime patch drift: provider panel splice');
   text = text.slice(0, start) + DscodeLoginPanel.toString() + '\n' + DscodeProviderPanel.toString() + '\n' + text.slice(end);
   return marker + '\n' + IMPORT + '\n' + text;
 }

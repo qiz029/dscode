@@ -77,9 +77,10 @@ export function sessionAverageTps(events) {
   const starts = new Map();
   let callMs = 0, outputTokens = 0, known = 0, unknown = false;
   for (const event of events) {
-    const key = `${event.data?.turn}:${event.data?.step}`;
-    if (event.type === 'step/start') starts.set(key, event.time);
+    // Build the key only for the two event types that use it: the array carries every event.
+    if (event.type === 'step/start') starts.set(`${event.data?.turn}:${event.data?.step}`, event.time);
     else if (event.type === 'assistant/message') {
+      const key = `${event.data?.turn}:${event.data?.step}`;
       const start = starts.get(key);
       starts.delete(key);
       const output = event.data?.usage?.outputTokens;

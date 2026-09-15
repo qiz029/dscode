@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 // The native-scrollback transcript renders each settled entry exactly once, so a
 // finished turn appends its own rule and breathing rows instead of competing for

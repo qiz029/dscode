@@ -37,7 +37,8 @@ export async function runPipeline({ store, persistence, generate, route, config,
         handle = await persistence.open(id, 'read', { signal: combined });
         const { events } = await handle.read(0, 100001, { signal: combined });
         if (events.length > 100000) continue;
-        const latest = Math.max(item.header.createdAt, ...events.map(e => e.time));
+        // reduce, not a spread: a 100k-event session passes the guard above but sits near V8's argument limit.
+        const latest = events.reduce((newest, event) => Math.max(newest, event.time), item.header.createdAt);
         if (latest > now - config.minIdleHours * 3600000) continue;
         const input = rollout(item.header, events, config.maxInputChars);
         if (!input.messages.some(m => m.role === 'user')) continue;

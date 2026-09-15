@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 export function welcomePath(path, width) {
   const full = singleLineText(path || '');

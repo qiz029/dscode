@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { estimateCost, priceVersionFor } from '../plugins/session-metrics/pricing.mjs';
-import { openRouterRates, parseOpenRouterModels, refreshOpenRouterModels, setOpenRouterModels } from '../plugins/openrouter/models.mjs';
-import { summarize, formatFooter, footerFor, displayWidth } from '../plugins/session-metrics/view.mjs';
+import { RETRY_MS, openRouterRates, parseOpenRouterModels, refreshOpenRouterModels, setOpenRouterModels } from '../plugins/openrouter/models.mjs';
+import { summarize, formatFooter, footerFor, displayWidth, setMetricSource } from '../plugins/session-metrics/view.mjs';
 import { apply } from '../plugins/session-metrics/index.mjs';
-import { readMetrics } from '../plugins/session-metrics/store.mjs';
+import { appendMetric, ledgerPath, readMetrics } from '../plugins/session-metrics/store.mjs';
 import { chargeTo } from '../plugins/session-metrics/attribution.mjs';
 import { createWindowRate, estimatedDeltaTokens, sessionAverageTps } from '../plugins/session-metrics/rate.mjs';
 const usage = { inputTokens: 1e6, outputTokens: 1e6, cacheReadTokens: 1e6 };
@@ -66,6 +66,23 @@ test('OpenRouter calls are priced from its live listing, with long-prompt tiers 
   assert.equal(openRouterRates('anthropic/claude-sonnet-4.5'), undefined, 'a failed listing leaves the pinned fallback in charge');
   assert.equal(Math.round(estimateCost('openrouter', 'deepseek/deepseek-v4-flash', usage, time) * 1e6), 272832);
 });
+test('an unusable model cache is throttled, then re-read for the next window', async t => {
+  const home = mkdtempSync(join(tmpdir(), 'dscode-openrouter-cache-'));
+  const path = join(home, 'openrouter-models.json');
+  t.after(() => { setOpenRouterModels({}, 0); rmSync(home, { recursive: true, force: true }); });
+  setOpenRouterModels({}, 0);
+  const now = Date.parse('2026-03-01T02:00Z');
+  const offline = async () => { throw new Error('offline'); };
+  writeFileSync(path, '{ not json');
+  await refreshOpenRouterModels({ home, fetch: offline, now });
+  assert.equal(openRouterRates('cached/model'), undefined);
+  writeFileSync(path, JSON.stringify({ version: 2, fetchedAt: Date.parse('2026-02-28T00:00Z'), models: { 'cached/model': { id: 'cached/model' } } }));
+  await refreshOpenRouterModels({ home, fetch: offline, now: now + RETRY_MS - 1 });
+  assert.equal(openRouterRates('cached/model'), undefined, 'inside the window the file is not read again');
+  await refreshOpenRouterModels({ home, fetch: offline, now: now + RETRY_MS + 1 });
+  assert.notEqual(openRouterRates('cached/model'), undefined, 'after the window a usable cache is picked up');
+});
+
 test('session totals weight input tokens, retain unknowns and survive replay', () => {
   const rows = [
     { kind: 'start', id: 'a', time: 10 },
@@ -210,6 +227,32 @@ test('collector includes child costs in parent, emits one final usage and record
   } finally { if (old === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = old; rmSync(home, { recursive: true, force: true }); }
 });
 
+test('a ledger is re-read incrementally, so appended rows appear without re-parsing history', t => {
+  const home = mkdtempSync(join(tmpdir(), 'dscode-ledger-'));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const first = { kind: 'start', id: 'a', time: 1, model: '模型/flash' };
+  appendMetric(home, 'ledger', first);
+  assert.equal(readMetrics(home, 'ledger').rows.length, 1);
+  appendMetric(home, 'ledger', { kind: 'end', id: 'a', time: 2, cost: 0.5, usage });
+  const grown = readMetrics(home, 'ledger');
+  assert.equal(grown.rows.length, 2);
+  assert.deepEqual(grown.rows[0], first, 'the earlier row is kept, not re-parsed away');
+  assert.equal(summarize(grown.rows).calls, 1);
+  // A batch past one read: the incremental reader must not stop at a short read.
+  const batch = 4000;
+  appendFileSync(ledgerPath(home, 'ledger'), Array.from({ length: batch }, (_, index) => JSON.stringify({ kind: 'start', id: 'b' + index, time: index + 3, usage })).join('\n') + '\n');
+  assert.equal(readMetrics(home, 'ledger').rows.length, 2 + batch);
+  assert.equal(readMetrics(home, 'ledger').rows.at(-1).id, 'b' + (batch - 1));
+  // A partially written trailing line is ignored until its newline arrives, then appears once.
+  const path = ledgerPath(home, 'ledger');
+  appendFileSync(path, '{"kind":"end"');
+  assert.equal(readMetrics(home, 'ledger').rows.length, 2 + batch);
+  writeFileSync(path, readFileSync(path, 'utf8') + '}\n');
+  const completed = readMetrics(home, 'ledger');
+  assert.equal(completed.rows.length, 3 + batch, 'the completed row appears exactly once');
+  assert.equal(completed.rows.at(-1).kind, 'end');
+});
+
 test('footer labels follow the interface language and wide characters count as two columns', () => {
   const metrics = { cost: 0.003, unknown: false, pending: 0, cache: 90 };
   const rates = { current: 12.3, average: 2.4 };
@@ -252,4 +295,57 @@ test('ledger rows time each call and charge plugin calls made for a session with
     assert(rows.filter(row => row.kind === 'end').every(row => row.endTime >= row.time && row.sessionId === 'root'));
     assert.equal(readMetrics(home, 'other').rows.length, 0);
   } finally { if (old === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = old; rmSync(home, { recursive: true, force: true }); }
+});
+
+test('summarize counts an event that the ledger already recorded only once', () => {
+  const rows = [
+    { kind: 'start', id: 'a', time: 10 },
+    { kind: 'end', id: 'a', time: 12, cost: 0.5, usage: { inputTokens: 100, outputTokens: 10, cacheReadTokens: 50 } },
+  ];
+  // The same call, still present in the live event list after the ledger wrote it.
+  const events = [
+    { type: 'request/header', time: 9, data: { header: { config: { provider: 'deepseek-official', model: 'deepseek-flash' } } } },
+    { type: 'assistant/message', time: 12, data: { turn: 1, step: 1, usage: { inputTokens: 100, outputTokens: 10, cacheReadTokens: 50 } } },
+  ];
+  const summary = summarize(rows, events);
+  assert.equal(summary.calls, 1, 'the ledger row and its event are one call, not two');
+  assert.equal(summary.cost, 0.5);
+});
+
+test('the footer memo answers a cache hit and a rebuilt summary identically', t => {
+  const home = mkdtempSync(join(tmpdir(), 'dscode-footer-memo-'));
+  const old = process.env.DSH_HOME; process.env.DSH_HOME = home;
+  t.after(() => { if (old === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = old; setMetricSource(undefined); rmSync(home, { recursive: true, force: true }); });
+  const events = [
+    { type: 'step/start', time: 0, data: { turn: 1, step: 1 } },
+    { type: 'assistant/message', time: 1000, data: { turn: 1, step: 1, usage: { inputTokens: 100, outputTokens: 20 } } },
+  ];
+  setMetricSource(() => ({ events, used: 50, capacity: 100 }));
+  const first = footerFor('memo', { contextWindow: 100 }, 120);
+  const second = footerFor('memo', { contextWindow: 100 }, 120);
+  assert.equal(second, first, 'a repeated render reuses the memo');
+  // Same array identity, one more event: the length guard must rebuild.
+  events.push({ type: 'step/start', time: 2000, data: { turn: 2, step: 1 } });
+  events.push({ type: 'assistant/message', time: 4000, data: { turn: 2, step: 1, usage: { inputTokens: 100, outputTokens: 80 } } });
+  assert.notEqual(footerFor('memo', { contextWindow: 100 }, 120), first, 'growing the event list invalidates the memo');
+  // A ledger row arrives: the rows identity changes, so the cost is recomputed.
+  appendMetric(home, 'memo', { kind: 'start', id: 'x', time: 10, provider: 'deepseek-official', model: 'deepseek-flash' });
+  appendMetric(home, 'memo', { kind: 'end', id: 'x', time: 20, cost: 1.5, usage: { inputTokens: 1000, outputTokens: 10, cacheReadTokens: 0 } });
+  assert.match(footerFor('memo', { contextWindow: 100 }, 120), /\$1\.50/, 'a new ledger row reaches the footer');
+});
+
+test('the ledger reader keeps a complete row that has no trailing newline yet', t => {
+  const home = mkdtempSync(join(tmpdir(), 'dscode-ledger-tail-'));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const path = ledgerPath(home, 'tail');
+  mkdirSync(join(home, 'session-metrics'), { recursive: true });
+  writeFileSync(path, '{"kind":"start","id":"a","time":1}\n{"kind":"end","id":"a","time":2,"cost":0.25,"usage":{"inputTokens":1,"outputTokens":1}}');
+  const first = readMetrics(home, 'tail');
+  assert.equal(first.rows.length, 2, 'a complete row without its newline is not lost');
+  assert.equal(first.corrupt, false);
+  // Once the writer terminates the line and appends another, nothing is counted twice.
+  writeFileSync(path, '{"kind":"start","id":"a","time":1}\n{"kind":"end","id":"a","time":2,"cost":0.25,"usage":{"inputTokens":1,"outputTokens":1}}\n{"kind":"start","id":"b","time":3}\n');
+  const grown = readMetrics(home, 'tail');
+  assert.equal(grown.rows.length, 3);
+  assert.deepEqual(grown.rows.map(row => row.id), ['a', 'a', 'b']);
 });

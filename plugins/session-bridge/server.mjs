@@ -135,7 +135,9 @@ export class SessionBridge {
           const poll = () => {
             if (!this.ctx.agents.get(agent.id)) { send({ type: 'closed', sessionId: agent.id, cursor }); socket.end(); return; }
             try { for (const event of this.communication.store.events(agent.id, cursor)) { if (!send({ type: 'event', event })) return; cursor = event.seq; } }
-            catch { socket.end(); }
+            catch { socket.end(); return; }
+            // Maintenance stays outside the read's failure domain: a busy or failing prune never closes a live watch.
+            try { this.communication.store.pruneEvents(agent.id); } catch (error) { this.ctx.logger?.warn?.(`Mailbox prune failed: ${error.message}`); }
           };
           poll(); const interval = setInterval(poll, 250); interval.unref(); cleanup = () => clearInterval(interval);
         } else if (req.method === 'watch') {

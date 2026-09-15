@@ -103,3 +103,15 @@ test('welcome art packs pixel pairs into half blocks with merged runs', () => {
   }
 });
 
+
+test('every TUI patch stage is idempotent, so npm start cannot corrupt an already-patched tree', async t => {
+  const fixture = createTestRuntime({ tui: true, patched: false });
+  t.after(fixture.close);
+  const path = `${fixture.root}/node_modules/dsh-code/lib/index.mjs`;
+  patchTui(fixture.root);
+  const once = readFileSync(path, 'utf8');
+  patchTui(fixture.root);
+  assert.equal(readFileSync(path, 'utf8'), once, 'a second patchTui must be a no-op');
+  assert(once.includes('// dscode-openrouter-account-v1'));
+  assert(once.includes('dscodeLoadOpenRouterAccount'), 'the resync path must keep the OpenRouter import');
+});

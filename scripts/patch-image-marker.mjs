@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 /** Show dropped image paths as compact attachment chips in the composer. */
 export function patchImageMarker(text) {

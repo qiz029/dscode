@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 import { ALIASES, LANGUAGES, MESSAGES, normalizeLanguage, languageName, t } from '../plugins/i18n/messages.mjs';
 
 // Runtime half of /language inside the TUI bundle: the message tables, the

@@ -10,11 +10,14 @@ export const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models';
 /** How long a first model lookup waits for the listing before answering without it. */
 export const FORCED_LOAD_TIMEOUT_MS = 10_000;
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const RETRY_MS = 10 * 60 * 1000;
+/** How long a failed listing (or an unusable cache file) waits before the next attempt. */
+export const RETRY_MS = 10 * 60 * 1000;
 const FILE = 'openrouter-models.json';
 const VERSION = 2;
 const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 let table = { fetchedAt: 0, models: {} };
+/** When the on-disk cache was last consulted; an unusable file waits, then may retry, like the listing. */
+let cacheReadAt = 0;
 let attemptedAt = 0, pending;
 
 const perMillion = value => {
@@ -96,6 +99,7 @@ export function openRouterPriceVersion() {
 /** Replace the table (and forget the last attempt); for tests and cache loads. */
 export function setOpenRouterModels(models, fetchedAt = Date.now()) {
   table = { fetchedAt, models };
+  cacheReadAt = 0;
   attemptedAt = 0;
 }
 
@@ -105,7 +109,9 @@ export function setOpenRouterModels(models, fetchedAt = Date.now()) {
  */
 export async function refreshOpenRouterModels({ home, fetch: fetchImpl = globalThis.fetch, now = Date.now() } = {}) {
   const path = home ? join(home, FILE) : undefined;
-  if (table.fetchedAt === 0 && path) {
+  // A version bump or a corrupt body leaves the table empty: parse that file once per throttle window, not per request.
+  if (table.fetchedAt === 0 && path && now - cacheReadAt >= RETRY_MS) {
+    cacheReadAt = now;
     try {
       const cached = JSON.parse(readFileSync(path, 'utf8'));
       if (cached?.version === VERSION && Number.isFinite(cached.fetchedAt) && cached.models && typeof cached.models === 'object') table = { fetchedAt: cached.fetchedAt, models: cached.models };

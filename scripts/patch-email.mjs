@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 import { DscodeEmailPanel } from './email-panel.mjs';
 import { DscodeImapSetup } from './imap-panel.mjs';
 

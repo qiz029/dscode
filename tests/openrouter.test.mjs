@@ -140,6 +140,11 @@ test('the SSE reader skips keep-alive comments and reassembles split lines', asy
   assert.equal(activity, 3, 'comments keep the idle clock alive');
 });
 
+test('the SSE reader drops a bare data line instead of failing the stream on it', async () => {
+  const payloads = await collect(sseData(chunks('data:\n\n', 'data: {\"a\":1}\n\n', 'data:\ndata:\n\n', 'data: [DONE]\n\n')));
+  assert.deepEqual(payloads, ['{"a":1}', '[DONE]']);
+});
+
 test('a stream becomes reasoning, text and tool-call blocks, and its finish carries the billed cost and the reasoning details', async () => {
   const out = await collect(stream('z-ai/glm-5.3-flash',
     { id: 'gen-1', provider: 'Z.AI', choices: [{ index: 0, delta: { reasoning: 'Let me ', reasoning_details: [{ type: 'reasoning.text', text: 'Let me ', index: 0, format: 'unknown' }] } }] },

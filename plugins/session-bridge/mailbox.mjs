@@ -3,7 +3,11 @@ import { mkdirSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 
-export const limits = Object.freeze({ depth: 3, sends: 8, ttlMs: 3600000, pending: 100, bytes: 1048576, contexts: 32 });
+export const limits = Object.freeze({ depth: 3, sends: 8, ttlMs: 3600000, pending: 100, bytes: 1048576, contexts: 32,
+  // The retention window is the real policy: settled rows are deleted only once they are past it.
+  // The row caps are a backstop against runaway growth from an idle or hostile sender; they are
+  // deliberately far above any realistic mailbox so they never cut a live late-reply window short.
+  retentionMs: 7 * 24 * 3600000, retainedMessages: 50000, retainedEvents: 5000, retainedChains: 20000, retainedRefusals: 5000 });
 export class CommunicationError extends Error {
   constructor(code, message) { super(message); this.code = code; }
 }
@@ -19,9 +23,14 @@ export function mergeContexts(...sets) {
 
 // Shared metadata only. Native Harness owns the session writer and model driver.
 export class Mailbox {
-  constructor(home, now = Date.now) {
+  constructor(home, now = Date.now, retention = {}) {
+    this.retention = Object.freeze(Object.fromEntries(['retentionMs', 'retainedMessages', 'retainedEvents', 'retainedChains', 'retainedRefusals'].map(key => {
+      const value = retention[key] ?? limits[key];
+      if (!Number.isSafeInteger(value) || value < 1) throw new Error(`Invalid mailbox retention: ${key}`);
+      return [key, value];
+    })));
     const root = join(home, 'session-communication'); mkdirSync(root, { recursive: true, mode: 0o700 });
-    this.db = new DatabaseSync(join(root, 'mailbox.sqlite')); this.now = now;
+    this.db = new DatabaseSync(join(root, 'mailbox.sqlite')); this.now = now; this.prunedAt = 0; this.eventsPrunedAt = new Map();
     chmodSync(join(root, 'mailbox.sqlite'), 0o600);
     this.db.exec(`PRAGMA busy_timeout=3000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
       CREATE TABLE IF NOT EXISTS owners(id TEXT PRIMARY KEY, generation TEXT NOT NULL, secret TEXT NOT NULL, socket TEXT NOT NULL);
@@ -34,6 +43,8 @@ export class Mailbox {
       CREATE TABLE IF NOT EXISTS refusals(key TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, recipient TEXT NOT NULL, message_id TEXT, type TEXT NOT NULL, time INTEGER NOT NULL, data TEXT NOT NULL);`);
   }
+  /** Cheap size check for the prune test surface. */
+  tableCounts() { return Object.fromEntries(['messages', 'events', 'refusals', 'chains', 'contexts'].map(name => [name, this.one(`SELECT COUNT(*) AS n FROM ${name}`).n])); }
   all(sql, ...args) { return this.db.prepare(sql).all(...args); }
   one(sql, ...args) { return this.db.prepare(sql).get(...args); }
   run(sql, ...args) { return this.db.prepare(sql).run(...args); }
@@ -91,6 +102,50 @@ export class Mailbox {
       this.run("UPDATE messages SET delivery='expired' WHERE id=?", row.id); this.event(id, 'expired', row.id);
     }
   }
+  /** Drop dead rows so the sqlite file stays bounded: settled messages past the retention
+   * window (or beyond the cap), their events, expired chains and old refusals. A request whose
+   * reply window may still be used is kept for the full retention window, because late replies
+   * are legal. Cheap, idempotent and throttled to once an hour. */
+  prune({ force = false } = {}) {
+    const now = this.now();
+    // The throttle is per process, but the table outlives it: the caller forces the first sweep.
+    if (!force && now - this.prunedAt < 3600000) return;
+    // Stamp only after the transaction commits, so a failed sweep retries instead of waiting an hour.
+    this.transaction(() => {
+      const cutoff = now - this.retention.retentionMs;
+      // Settle every request whose reply window has closed first: the in-process expiry sweep only
+      // runs on mailbox reads, so an idle session would otherwise never settle one.
+      for (const { recipient } of this.all('SELECT DISTINCT recipient FROM messages')) this.expire(recipient);
+      this.run("DELETE FROM messages WHERE delivery IN ('consumed','cancelled','expired','late') AND expires<=?", cutoff);
+      // Inside the retention window neither still-deliverable mail (accepted/admitted) nor a
+      // request whose reply window is still open is ever evicted: late replies are legal.
+      this.run("DELETE FROM messages WHERE delivery NOT IN ('accepted','admitted') AND expires<=? AND seq <= COALESCE((SELECT seq FROM messages WHERE delivery NOT IN ('accepted','admitted') AND expires<=? ORDER BY seq DESC LIMIT 1 OFFSET ?), -1)", now, now, this.retention.retainedMessages);
+      this.run('DELETE FROM events WHERE time<?', cutoff);
+      // Events are per-recipient cursors: cap each recipient's own stream so a busy session
+      // cannot age out another session's unread notifications.
+      for (const { recipient } of this.all('SELECT DISTINCT recipient FROM events')) {
+        this.run('DELETE FROM events WHERE recipient=? AND seq <= COALESCE((SELECT seq FROM events WHERE recipient=? ORDER BY seq DESC LIMIT 1 OFFSET ?), -1)', recipient, recipient, this.retention.retainedEvents);
+      }
+      this.run('DELETE FROM chains WHERE expires<?', cutoff);
+      this.run('DELETE FROM chains WHERE expires<? AND created < COALESCE((SELECT created FROM chains ORDER BY created DESC LIMIT 1 OFFSET ?), 0)', now, this.retention.retainedChains);
+      this.run('DELETE FROM refusals WHERE rowid NOT IN (SELECT rowid FROM refusals ORDER BY rowid DESC LIMIT ?)', this.retention.retainedRefusals);
+    });
+    this.prunedAt = now;
+  }
+
+  /** Event-only pruning for the watch loop: events are cheap rows and can be dropped more often. */
+  pruneEvents(recipient) {
+    const now = this.now();
+    // Per recipient: one session's poller must not starve another window.
+    if (now - (this.eventsPrunedAt.get(recipient) ?? 0) < 60000) return;
+    this.transaction(() => {
+      this.run('DELETE FROM events WHERE recipient=? AND time<?', recipient, now - this.retention.retentionMs);
+      // Scoped to one recipient: a busy session must not age out another session's notifications.
+      this.run('DELETE FROM events WHERE recipient=? AND seq <= COALESCE((SELECT seq FROM events WHERE recipient=? ORDER BY seq DESC LIMIT 1 OFFSET ?), -1)', recipient, recipient, this.retention.retainedEvents);
+    });
+    this.eventsPrunedAt.set(recipient, now);
+  }
+
   admit(recipient, request, auth) {
     const { text, mode = 'queue', kind = 'request', requestId, source = 'cli', inReplyTo, title } = request;
     if (typeof text !== 'string' || !text.trim() || Buffer.byteLength(text) > 64000) fail('invalid_text', 'Text must contain 1..64000 bytes');

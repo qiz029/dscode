@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 // Auto-compaction prices its threshold from the routed model's cache discount
 // (plugins/compaction/threshold.mjs) unless the deployment configured one.

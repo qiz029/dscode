@@ -18,6 +18,8 @@ export function summarize(rows, events = [], corrupt = false) {
   const history = [];
   for (const event of events) {
     if (event.type === 'request/header') route = event.data.header.config;
+    // Ledger rows cover everything from the first row's time on, so only older events are
+    // backfilled. `continue`, not `break`: the loop must not depend on event ordering.
     if (event.time >= first) continue;
     if (event.type === 'assistant/message' || event.type === 'compaction/summary' && event.data.llmStreamCall) {
       const r = event.type === 'compaction/summary' ? event.data : route;
@@ -82,14 +84,22 @@ export function formatFooter(metrics, context, columns = 80, rates, locale = 'en
   for (const char of floor) { if (displayWidth(clipped + char) > columns) break; clipped += char; }
   return clipped;
 }
+/** Per-events memo: the status line renders up to once a second, and summarize/average are O(events). */
+const footerCache = new WeakMap();
 export function footerFor(id, stats, columns, header = '', locale = 'en') {
   try {
     const data = id ? source?.(id) : undefined;
     const ledger = id && process.env.DSH_HOME ? readMetrics(process.env.DSH_HOME, id) : { rows: [], corrupt: false };
-    const summary = summarize(ledger.rows, data?.events ?? [], ledger.corrupt);
+    const events = data?.events ?? [];
+    // Identity alone is not enough: a session event list may be appended to in place.
+    const hit = events.length > 0 ? footerCache.get(events) : undefined;
+    const tail = events.at(-1)?.time;
+    const fresh = hit !== undefined && hit.key === ledger.rows && hit.length === events.length && hit.tail === tail;
+    const summary = fresh ? hit.summary : summarize(ledger.rows, events, ledger.corrupt);
     const used = data?.used;
     const capacity = data?.capacity ?? stats.contextWindow;
-    const average = sessionAverageTps(data?.events ?? []);
+    const average = fresh ? hit.average : sessionAverageTps(events);
+    if (events.length > 0 && !fresh) footerCache.set(events, { key: ledger.rows, length: events.length, tail, summary, average });
     return formatFooter(summary, Number.isFinite(used) && capacity > 0 ? used / capacity * 100 : undefined, columns, { current: data?.currentTps, average }, locale, header);
   } catch { return formatFooter({ cost: 0, unknown: true, cache: null }, undefined, columns, { current: null, average: null }, locale, header); }
 }

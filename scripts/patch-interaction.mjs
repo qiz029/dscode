@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 // Chat rendering: quiet by default; /verbose (or Ctrl/Alt+R) shows thinking and tool calls in dim text.
 export const CHAT_LINES_SOURCE = `function dscodeChatLines(entry, columns, verbose = false) {

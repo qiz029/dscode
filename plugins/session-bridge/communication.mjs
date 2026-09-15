@@ -27,6 +27,17 @@ export class CommunicationService {
       ctx.on('agent/disposed', ({ agent }) => this.remove(agent)),
     ];
     for (const agent of ctx.agents.list()) this.start(agent);
+    // The mailbox keeps every settled message for a week; a daily prune stops the sqlite file
+    // from growing for the process lifetime (prune itself is throttled and cheap).
+    const pruneTimer = setInterval(() => { try { this.store.prune(); } catch (error) { ctx.logger?.warn?.(`Mailbox prune failed: ${error.message}`); } }, 24 * 3600000);
+    pruneTimer.unref?.();
+    // Through the same disposer list as the event handlers: a context without `effect` still clears it.
+    this.disposers.push(() => clearInterval(pruneTimer));
+    // A TUI restarts far more often than daily, and the throttle is per process, so the first
+    // sweep is forced once per start and deferred off the startup path.
+    const firstPrune = setTimeout(() => { try { this.store.prune({ force: true }); } catch (error) { ctx.logger?.warn?.(`Mailbox prune failed: ${error.message}`); } }, 15000);
+    firstPrune.unref?.();
+    this.disposers.push(() => clearTimeout(firstPrune));
   }
   background(promise) {
     this.pending.add(promise);

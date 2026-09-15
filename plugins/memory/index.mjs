@@ -79,7 +79,7 @@ export function apply(ctx, options = {}) {
     live.add(session.id); store.acquire(`session:${session.id}`, owner, 90000);
   };
   ctx.on('session/created', observe);
-  ctx.on('session/disposed', session => { live.delete(session.id); store.release(`session:${session.id}`, owner); });
+  ctx.on('session/disposed', session => { live.delete(session.id); started.delete(session.id); store.release(`session:${session.id}`, owner); });
   ctx.on('session/event', (session, event) => {
     if (event.type !== 'request/header' || session.header.origin === 'subagent' || session.header.agentPreset !== 'dscode') return;
     observe(session);

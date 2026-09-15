@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 // The prompt is already wrapped into terminal-safe rows. Pad each physical
 // row so its background remains a continuous block across wrapped lines.

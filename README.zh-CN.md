@@ -40,9 +40,9 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
-**0.7.7** — OpenRouter 改由 DSCODE 自己的适配器直连，模型直接来自 OpenRouter 的实时列表，新模型不用等发版；DeepSeek、GLM、Kimi、Qwen 和 Muse Spark 都用真实请求验证过，费用按 OpenRouter 实际扣费记账，`web_search` 跟随会话的 provider。新增 `/openrouter` 查看账户余额和 key 的花费（配置 management key 后还能看所有 key 和最近 30 天花费），`/model` 边输入边用 BM25 搜索，压缩时显示俄罗斯方块动画，压缩阈值按模型的缓存价格调整。0.7.6 开放了 OpenRouter 的整个模型目录。
+**0.7.8** — 自动审查限制为两轮，每轮最多 90 秒；agent 增加普通模式可见的进度说明和明确的收尾规则。改进会话指标缓存、mailbox 历史清理和补丁构建校验。
 
-每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.7 更新说明](docs/releases/0.7.7.md)。
+每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.8 更新说明](docs/releases/0.7.8.md)。
 
 ## 🚀 快速开始
 
@@ -83,11 +83,11 @@ npm start -- --cwd /path/to/project
 
 也可复制 `.env.example` 为 `.env`，仅在本机填写密钥；此方式会优先于 `/login` 保存的凭据。
 
-**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.7.tar.gz`，然后执行：
+**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.8.tar.gz`，然后执行：
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.7.tar.gz -C dscode-install
+tar -xzf dscode-0.7.8.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -96,14 +96,14 @@ sh dscode-install/install.sh
 **若 npm 包名查询暂时返回 404**，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.7.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.8.tgz
 ```
 
 **升级** —— 先更新启动器，再更新已安装的 profile：
 
 ```sh
-npm install -g @toddzheng024/dscode@0.7.7
-dscode update 0.7.7
+npm install -g @toddzheng024/dscode@0.7.8
+dscode update 0.7.8
 ```
 
 `dscode history` 查看保留的版本记录，`dscode rollback` 回到上个 preset 版本。源码、tar 与 npm/Hub 使用不同的数据目录，会话和凭据不会互相迁移。详见 [tar 分发说明](docs/distribution.md) 与 [npm + Hub 分发指南](docs/hub-distribution.md)。

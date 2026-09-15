@@ -1,4 +1,4 @@
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 
 // Embedded in the pinned TUI bundle, so published builds need no local imports.
 export function imePosition(anchor, height, columns) {

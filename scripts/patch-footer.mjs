@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { replaceOnce } from './patch-runtime.mjs';
+import { replaceOnce } from './patch-util.mjs';
 export function patchFooter(text, root) {
   // Both footer rows now lead with their own left content, so upstream's space-between
   // (a lone child stays at the start) is exactly the alignment the two rows want.
