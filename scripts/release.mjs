@@ -30,7 +30,7 @@ export async function buildRelease() {
   const inputs = [
     { key: 'DSH_AGENTS_HOME', label: 'Isolated user skill home', description: 'Set to an absolute directory dedicated to this harness, e.g. $DSH_HOME/agents; export for both import and launch. Prevents global computer-use skill collisions.', required: true, secret: false },
     { key: 'DEEPSEEK_API_KEY', label: 'DeepSeek API key', description: 'Optional if another provider is configured via /model or /provider. Supply locally; never embed credentials in a release.', required: false, secret: true },
-    { key: 'OPENROUTER_API_KEY', label: 'OpenRouter API key', description: 'Optional; /provider openrouter routes the DeepSeek models through OpenRouter. Supply locally; never embed credentials in a release.', required: false, secret: true },
+    { key: 'OPENROUTER_API_KEY', label: 'OpenRouter API key', description: 'Optional; /provider openrouter uses OpenRouter and its live model listing. Supply locally; never embed credentials in a release.', required: false, secret: true },
   ];
   const patchYaml = readFileSync(join(root, 'config/cordis.patch.yml'), 'utf8');
   const draft = profileDraftSchema.parse({

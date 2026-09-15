@@ -54,7 +54,7 @@ cd /path/to/project
 dscode
 ```
 
-The first launch installs the pinned complete preset from [DSH Plugin Hub](https://dshpluginhub.ai)—no manual plugin assembly, no global pnpm. Then enter `/login` and paste your DeepSeek API key into the hidden input: it is stored locally in `~/.dscode/credentials.yaml` with `0600` permissions, shared across projects and installed versions, and never sent to the agent. A `DEEPSEEK_API_KEY` environment variable takes precedence. To use OpenRouter, enter `/provider openrouter`: DSCODE declares the OpenRouter route, asks for your OpenRouter key (stored the same way, or taken from `OPENROUTER_API_KEY`) and switches the session to the DeepSeek model you were on; every other model in pi-ai's OpenRouter catalog is then listed in `/model`, where `/` searches. `/provider deepseek` switches back, and `/login openrouter` replaces the key. Use `/model` to pick a model or another provider, and `/effort` to adjust reasoning effort; the default route is `deepseek-official/deepseek-flash`.
+The first launch installs the pinned complete preset from [DSH Plugin Hub](https://dshpluginhub.ai)—no manual plugin assembly, no global pnpm. Then enter `/login` and paste your DeepSeek API key into the hidden input: it is stored locally in `~/.dscode/credentials.yaml` with `0600` permissions, shared across projects and installed versions, and never sent to the agent. A `DEEPSEEK_API_KEY` environment variable takes precedence. To use OpenRouter, enter `/provider openrouter`: DSCODE asks for your OpenRouter key (stored the same way, or taken from `OPENROUTER_API_KEY`) and switches the session to the DeepSeek model you were on; every model in OpenRouter's live listing that can call tools is then listed in `/model`, where typing searches. DeepSeek, GLM, Kimi and Qwen models are tuned and tested; other models work on a best-effort basis. `/provider deepseek` switches back, and `/login openrouter` replaces the key. Use `/model` to pick a model or another provider, and `/effort` to adjust reasoning effort; the default route is `deepseek-official/deepseek-flash`.
 
 ```sh
 dscode --continue                 # continue the last session
@@ -113,7 +113,7 @@ dscode update 0.7.6
 | Command | What it does |
 |---|---|
 | `/login` | Paste the DeepSeek API key into a hidden input; saved under `~/.dscode/` and loaded at startup |
-| `/model`, `/effort` | Choose a model or configure other credentials; models with four levels use a horizontal effort bar |
+| `/model`, `/effort` | Choose a model (type to search) or configure other credentials; models with four levels use a horizontal effort bar |
 | `/mode` | Select an Agent Preset; new sessions default to `dscode` |
 | `/status`, `/doctor` | Session state and runtime diagnostics |
 | `/memories` | Global memory state, background usage, switches and cleanup |

@@ -1,9 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Config } from '@deepseek-ai/dsh-llm-pi-ai';
 import {
-  PROVIDERS, OPENROUTER_MODELS, openRouterProfile, providerArgument, splitModelLabel, providerOfLabel, providerOfHeader,
-  pickModel, credentialState, ensureProviderRoute, waitForModels, narrowOpenRouterProfile, isNarrowOpenRouterProfile, migrateOpenRouterProfile,
+  PROVIDERS, OPENROUTER_EFFORTS, providerArgument, splitModelLabel, providerOfLabel, providerOfHeader,
+  pickModel, credentialState, ensureProviderRoute, waitForModels, migrateOpenRouterProfile,
 } from '../plugins/providers/catalog.mjs';
 import { EFFORT_LEVELS, chooseEffort, effortFor } from '../plugins/providers/effort.mjs';
 
@@ -80,57 +79,30 @@ test('credential state distinguishes saved, environment, missing and unreadable 
   assert.equal(credentialState({ credential: { kind: 'error', message: 'denied' } }), 'error');
 });
 
-test('the OpenRouter profile serves the whole pi-ai catalog with the official detents on the DeepSeek models', () => {
-  const profile = openRouterProfile();
-  assert.equal(profile.apiKeyEnv, 'OPENROUTER_API_KEY');
-  assert.equal(profile.models, undefined, 'no models list, so every catalog model is served');
-  assert.deepEqual(Object.keys(profile.modelOverrides), OPENROUTER_MODELS.map(model => model.id));
-  for (const override of Object.values(profile.modelOverrides)) assert.deepEqual(override.reasoningEfforts, { off: 'none', low: 'high', high: 'high', max: 'xhigh' });
-  assert.doesNotThrow(() => Config({ providers: { openrouter: profile } }));
-  assert.doesNotThrow(() => Config({ providers: { openrouter: narrowOpenRouterProfile() } }));
-  profile.modelOverrides['deepseek/deepseek-v4-flash'].reasoningEfforts.max = 'changed';
-  assert.equal(openRouterProfile().modelOverrides['deepseek/deepseek-v4-flash'].reasoningEfforts.max, 'xhigh', 'each call returns a fresh profile');
+test('DeepSeek V4 on OpenRouter keeps the official detents in the wire spelling OpenRouter accepts', () => {
+  assert.deepEqual(OPENROUTER_EFFORTS, { off: 'none', low: 'high', high: 'high', max: 'xhigh' });
 });
 
-test('the OpenRouter route is declared once and a user profile is never overwritten', async () => {
+test('switching to OpenRouter clears the inert pi-ai profile earlier builds wrote, and nothing else', async () => {
   const writes = [];
   const settings = (value, extra = {}) => ({
     writable: true, ...extra,
     describe: () => [{ ns: 'llm-deepseek', value: {}, revision: 1 }, ...(value === undefined ? [] : [{ ns: 'llm-pi-ai', value, revision: 7 }])],
     mutate: async (...args) => { writes.push(args); },
   });
-  assert.equal(await ensureProviderRoute(settings({}), 'deepseek-official'), false);
-  assert.equal(await ensureProviderRoute(settings({ providers: {} }), 'openrouter'), true);
-  assert.deepEqual(writes, [['llm-pi-ai', [{ op: 'set', path: ['providers', 'openrouter'], value: openRouterProfile() }], 7]]);
-  assert.equal(await ensureProviderRoute(settings({ providers: { openrouter: { models: [{ id: 'mine' }] } } }), 'openrouter'), false);
-  assert.equal(writes.length, 1);
-  // The described value carries resolved defaults, shaped as the real settings service returns them; they do not make the narrow profile the user's own.
-  const compat = { chatTemplateKwargs: {}, chatTemplateArgs: {} };
-  const narrow = {
-    ...narrowOpenRouterProfile(), models: narrowOpenRouterProfile().models.map(model => ({ ...model, input: [], compat })),
-    modelOverrides: {}, compat, headers: {}, thinkingBudgets: {}, defaultContextWindow: 262144, defaultMaxTokens: 32768, defaultInput: ['text'], streamIdleTimeoutMs: 300000,
-  };
-  assert.equal(isNarrowOpenRouterProfile(narrow), true);
-  assert.equal(await ensureProviderRoute(settings({ providers: { openrouter: narrow } }), 'openrouter'), true, 'the narrow profile earlier builds wrote is replaced');
-  assert.deepEqual(writes[1], ['llm-pi-ai', [{ op: 'set', path: ['providers', 'openrouter'], value: openRouterProfile() }], 7]);
-  const withImages = { ...narrow, models: narrow.models.map((model, index) => index ? model : { ...model, input: ['text', 'image'] }) };
-  const withKwargs = { ...narrow, compat: { ...compat, chatTemplateKwargs: { thinking: true } } };
-  for (const edited of [{ ...narrow, baseURL: 'https://proxy.example/api/v1' }, { ...narrow, models: narrow.models.slice(1) }, { ...narrow, reasoning: 'max' }, withImages, withKwargs, openRouterProfile()]) {
-    assert.equal(isNarrowOpenRouterProfile(edited), false);
-    assert.equal(await migrateOpenRouterProfile(settings({ providers: { openrouter: edited } })), false, 'a profile the user changed is left alone');
-  }
-  assert.equal(await migrateOpenRouterProfile(settings({ providers: { openrouter: narrow } })), true);
-  assert.equal(await migrateOpenRouterProfile(settings({ providers: {} })), false, 'migration never declares a route');
-  assert.equal(await migrateOpenRouterProfile(settings({ providers: { openrouter: narrow } }, { writable: false })), false);
+  assert.equal(await ensureProviderRoute(settings({ providers: { openrouter: { displayName: 'OpenRouter' } } }), 'deepseek-official'), false);
+  assert.equal(await ensureProviderRoute(settings({ providers: { openrouter: { displayName: 'OpenRouter' } } }), 'openrouter'), true);
+  assert.deepEqual(writes, [['llm-pi-ai', [{ op: 'unset', path: ['providers', 'openrouter'] }], 7]]);
+  assert.equal(await ensureProviderRoute(settings({ providers: { other: {} } }), 'openrouter'), false, 'other pi-ai providers are left alone');
+  assert.equal(await ensureProviderRoute(settings(undefined), 'openrouter'), false, 'without the pi-ai section there is nothing to clear');
+  assert.equal(await migrateOpenRouterProfile(settings({ providers: { openrouter: {} } }, { writable: false })), false);
   assert.equal(await migrateOpenRouterProfile(undefined), false, 'a profile without settings still opens /model');
   assert.equal(await migrateOpenRouterProfile({ writable: true, describe: () => { throw new Error('boom'); } }), false);
-  assert.equal(writes.length, 3);
-  await assert.rejects(ensureProviderRoute(settings(undefined), 'openrouter'), /not mounted/);
-  await assert.rejects(ensureProviderRoute(settings({}, { writable: false }), 'openrouter'), /read-only/);
-  await assert.rejects(ensureProviderRoute(undefined, 'openrouter'), /unavailable/);
+  assert.equal(await ensureProviderRoute(undefined, 'openrouter'), false);
+  assert.equal(writes.length, 1);
 });
 
-test('a new route is awaited until its models reach the directory', async () => {
+test('a route is awaited until its models reach the directory', async () => {
   let calls = 0;
   const loadModels = async () => ({ rows: ++calls < 3 ? rows.slice(0, 2) : rows });
   const directory = await waitForModels(loadModels, 'openrouter', { delayMs: 1 });

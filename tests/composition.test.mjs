@@ -19,7 +19,7 @@ test('source and package compositions share plugins and settings after path reso
   const entries = source.flatMap(e => e.insert ?? [e]);
   assert.equal(new Set(entries.map(e => e.id)).size, entries.length);
   assert(entries.some(e => e.id === 'credentials'));
-  assert.deepEqual(entries.find(e => e.id === 'dscode-auto-review').config, { timeoutMs: 30000, maxOutputTokens: 768, maxReviewsPerTurn: 20 });
+  assert.deepEqual(entries.find(e => e.id === 'dscode-auto-review').config, { timeoutMs: 30000, maxOutputTokens: 4096, maxReviewsPerTurn: 20 });
 });
 
 test('Chrome MCP mounts with the first DSCODE agent, not the prompt-free host', () => {

@@ -12,6 +12,29 @@
   config:
     policy: ask
 
+# OpenRouter is DSCODE's own adapter (plugins/openrouter); the pi-ai route that
+# served it before stays unmounted so the two never claim the same route.
+- id: llm-pi-ai
+  disabled: true
+
+# Web search follows the session's route: OpenRouter's web plugin for an
+# OpenRouter session, DeepSeek's native search for a DeepSeek one. A patch
+# replaces the row's whole config, so fetch keeps its provider here.
+- id: web
+  config:
+    searchProvider: dscode-web
+    fetchProvider: http
+
+# A reasoning model spends tokens before its title; 64 left most titles empty.
+# DeepSeek's route disables thinking for titles, so its usage stays small.
+- id: session-title-llm
+  config:
+    targetWords: 5
+    targetCjkCharacters: 10
+    maxInputBytes: 4096
+    maxOutputTokens: 1024
+    timeoutMs: 60000
+
 - id: computer-use
   config:
     observationTtlMs: 30000

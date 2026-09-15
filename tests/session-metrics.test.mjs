@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { estimateCost, priceVersionFor } from '../plugins/session-metrics/pricing.mjs';
-import { openRouterRates, parseOpenRouterModels, refreshOpenRouterPrices, setOpenRouterPrices } from '../plugins/session-metrics/openrouter-prices.mjs';
+import { openRouterRates, parseOpenRouterModels, refreshOpenRouterModels, setOpenRouterModels } from '../plugins/openrouter/models.mjs';
 import { summarize, formatFooter, footerFor, displayWidth } from '../plugins/session-metrics/view.mjs';
 import { apply } from '../plugins/session-metrics/index.mjs';
 import { readMetrics } from '../plugins/session-metrics/store.mjs';
@@ -34,7 +34,7 @@ test('OpenRouter prices the declared DeepSeek models at list price with no peak 
 });
 test('OpenRouter calls are priced from its live listing, with long-prompt tiers and cache writes, cached for a day', async t => {
   const home = mkdtempSync(join(tmpdir(), 'dscode-openrouter-prices-'));
-  t.after(() => { setOpenRouterPrices({}, 0); rmSync(home, { recursive: true, force: true }); });
+  t.after(() => { setOpenRouterModels({}, 0); rmSync(home, { recursive: true, force: true }); });
   const body = { data: [
     { id: 'anthropic/claude-sonnet-4.5', pricing: { prompt: '0.000003', completion: '0.000015', input_cache_read: '0.0000003', input_cache_write: '0.00000375',
       overrides: [{ min_prompt_tokens: 200000, prompt: '0.000006', completion: '0.0000225', input_cache_read: '0.0000006', input_cache_write: '0.0000075' }] } },
@@ -45,7 +45,7 @@ test('OpenRouter calls are priced from its live listing, with long-prompt tiers 
   let calls = 0;
   const fetch = async url => { calls++; assert.equal(url, 'https://openrouter.ai/api/v1/models'); return { ok: true, json: async () => body }; };
   const now = Date.now(), time = Date.parse('2026-09-14T02:00Z');
-  await refreshOpenRouterPrices({ home, fetch, now });
+  await refreshOpenRouterModels({ home, fetch, now });
   assert.equal(calls, 1);
   const micro = value => Math.round(value * 1e6);
   assert.equal(micro(estimateCost('openrouter', 'anthropic/claude-sonnet-4.5', { inputTokens: 1000, outputTokens: 1000, cacheReadTokens: 1000, cacheWriteTokens: 1000 }, time)), 22050, 'cache writes are priced');
@@ -55,14 +55,14 @@ test('OpenRouter calls are priced from its live listing, with long-prompt tiers 
   assert.equal(estimateCost('openrouter', 'broken/model', usage, time), null);
   assert.match(priceVersionFor('openrouter', 'anthropic/claude-sonnet-4.5'), /^openrouter-models-\d{4}-\d{2}-\d{2}$/);
   assert.equal(priceVersionFor('openrouter', 'unlisted/model'), 'openrouter-pi-ai-0.85.1');
-  await refreshOpenRouterPrices({ home, fetch, now: now + 60_000 });
+  await refreshOpenRouterModels({ home, fetch, now: now + 60_000 });
   assert.equal(calls, 1, 'the table is not refetched within a day');
-  setOpenRouterPrices({}, 0);
-  await refreshOpenRouterPrices({ home, fetch: async () => { throw new Error('offline'); }, now });
+  setOpenRouterModels({}, 0);
+  await refreshOpenRouterModels({ home, fetch: async () => { throw new Error('offline'); }, now });
   assert.notEqual(openRouterRates('anthropic/claude-sonnet-4.5'), undefined, 'a restart reads the cached table without the network');
-  setOpenRouterPrices({}, 0);
-  rmSync(join(home, 'openrouter-prices.json'));
-  await refreshOpenRouterPrices({ home, fetch: async () => ({ ok: false, json: async () => ({}) }), now });
+  setOpenRouterModels({}, 0);
+  rmSync(join(home, 'openrouter-models.json'));
+  await refreshOpenRouterModels({ home, fetch: async () => ({ ok: false, json: async () => ({}) }), now });
   assert.equal(openRouterRates('anthropic/claude-sonnet-4.5'), undefined, 'a failed listing leaves the pinned fallback in charge');
   assert.equal(Math.round(estimateCost('openrouter', 'deepseek/deepseek-v4-flash', usage, time) * 1e6), 272832);
 });

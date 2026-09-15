@@ -1,10 +1,18 @@
+import { OPENROUTER_API, parseOpenRouterCredits, parseOpenRouterKeyRemaining } from '../providers/openrouter-account.mjs';
+
+export { parseOpenRouterCredits, parseOpenRouterKeyRemaining };
+
 // Remaining provider balance, refreshed on a long cache. DeepSeek's response
 // also carries the trusted clock: its `Date` header anchors peak/off-peak pricing
-// without a second network call. OpenRouter has no peak window, so only its
-// remaining credits are read.
+// without a second network call. OpenRouter has no peak window. Its account
+// credits (`/credits`) are documented as management-only but are served to
+// inference keys too; a key refused them falls back to its own remaining limit (`/key`).
 const SOURCES = {
-  'deepseek-official': { url: 'https://api.deepseek.com/user/balance', env: 'DEEPSEEK_API_KEY', parse: body => parseBalance(body), clock: true },
-  openrouter: { url: 'https://openrouter.ai/api/v1/credits', env: 'OPENROUTER_API_KEY', parse: body => parseOpenRouterCredits(body), clock: false },
+  'deepseek-official': { env: 'DEEPSEEK_API_KEY', clock: true, requests: ({ key }) => [{ url: 'https://api.deepseek.com/user/balance', key, parse: body => parseBalance(body) }] },
+  openrouter: { env: 'OPENROUTER_API_KEY', managementEnv: 'OPENROUTER_MANAGEMENT_KEY', clock: false, requests: ({ key, managementKey }) => [
+    { url: `${OPENROUTER_API}/credits`, key: managementKey ?? key, parse: parseOpenRouterCredits },
+    { url: `${OPENROUTER_API}/key`, key, parse: parseOpenRouterKeyRemaining },
+  ] },
 };
 export const BALANCE_PROVIDERS = Object.freeze(Object.keys(SOURCES));
 const CACHE_MS = 5 * 60 * 1000;
@@ -22,14 +30,6 @@ export function parseBalance(body) {
   return body?.is_available === false ? null : total;
 }
 
-/** Remaining USD credits from an OpenRouter `/credits` body: purchased minus used. */
-export function parseOpenRouterCredits(body) {
-  const credits = Number(body?.data?.total_credits), used = Number(body?.data?.total_usage);
-  if (body?.data?.total_credits == null || body?.data?.total_usage == null) return null;
-  if (!Number.isFinite(credits) || !Number.isFinite(used) || credits < 0 || used < 0) return null;
-  return Math.max(0, credits - used);
-}
-
 export function balanceNow(provider = 'deepseek-official') { return snapshotOf(provider).balance; }
 /** Clock anchored to the last DeepSeek balance response's `Date` header, else the local one. */
 export function trustedNow() {
@@ -43,29 +43,39 @@ export async function refreshBalance(options = {}) {
   const source = SOURCES[provider];
   if (!source) return null;
   const snapshot = snapshotOf(provider);
-  const now = Date.now();
-  if (snapshot.pending || now - snapshot.fetchedAt < CACHE_MS) return snapshot.balance;
-  const retrySoon = () => Date.now() - (CACHE_MS - RETRY_MS);
   const key = options.key ?? process.env[source.env];
-  if (!key) { snapshots.set(provider, { ...snapshot, fetchedAt: retrySoon(), pending: false }); return snapshot.balance; }
+  const managementKey = options.managementKey ?? (source.managementEnv ? process.env[source.managementEnv] : undefined);
+  const requests = source.requests({ key, managementKey }).filter(request => request.key);
+  const mode = managementKey ? 'management' : 'key';
+  const now = Date.now();
+  // A newly added (or removed) management key changes the source; it is read at once.
+  if (snapshot.pending || snapshot.mode === mode && now - snapshot.fetchedAt < CACHE_MS) return snapshot.balance;
+  const retrySoon = () => Date.now() - (CACHE_MS - RETRY_MS);
+  if (requests.length === 0) { snapshots.set(provider, { ...snapshot, mode, fetchedAt: retrySoon(), pending: false }); return snapshot.balance; }
   const fetchImpl = options.fetch ?? globalThis.fetch;
   if (typeof fetchImpl !== 'function') return snapshot.balance;
   snapshots.set(provider, { ...snapshot, pending: true });
   try {
-    const response = await fetchImpl(source.url, { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' } });
+    let response, body, request;
+    for (request of requests) {
+      response = await fetchImpl(request.url, { headers: { Authorization: `Bearer ${request.key}`, Accept: 'application/json' } });
+      body = await response.json();
+      // A key refused this reading falls through to the next source.
+      if (response.ok || (response.status !== 401 && response.status !== 403)) break;
+    }
     const header = source.clock ? response.headers?.get?.('date') : null;
     const anchor = header ? Date.parse(header) : NaN;
-    const body = await response.json();
-    const parsed = response.ok ? source.parse(body) : null;
+    const parsed = response.ok ? request.parse(body) : null;
     if (Number.isFinite(anchor)) clock = { anchor, skewMs: anchor - Date.now() };
     snapshots.set(provider, {
+      mode,
       balance: parsed === null && response.ok ? null : parsed ?? snapshot.balance,
       fetchedAt: parsed === null ? retrySoon() : Date.now(),
       pending: false,
     });
   } catch {
     // A transient failure keeps the last known balance and retries sooner.
-    snapshots.set(provider, { ...snapshot, fetchedAt: retrySoon(), pending: false });
+    snapshots.set(provider, { ...snapshot, mode, fetchedAt: retrySoon(), pending: false });
   }
   return snapshotOf(provider).balance;
 }

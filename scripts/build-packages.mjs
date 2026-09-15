@@ -22,7 +22,7 @@ for (const [path, pkg] of Object.entries(lock.packages)) {
   if (path.startsWith('node_modules/@deepseek-ai/') && !path.slice(13).includes('/node_modules/') && !pkg.os && !pkg.cpu) dependencies[path.slice(13)] = pkg.version;
 }
 for (const [pkg] of Object.entries(original.dependencies)) dependencies[pkg] = lock.packages['node_modules/' + pkg].version;
-for (const pkg of ['commander', 'eventsource-parser', '@earendil-works/pi-ai']) dependencies[pkg] = lock.packages['node_modules/' + pkg].version;
+for (const pkg of ['commander', 'eventsource-parser']) dependencies[pkg] = lock.packages['node_modules/' + pkg].version;
 const bundle = join(out, 'bundle');
 rmSync(bundle, { recursive: true, force: true }); mkdirSync(bundle);
 copy('packages/bundle/bootstrap.mjs', join(bundle, 'bootstrap.mjs'));
@@ -32,12 +32,12 @@ mkdirSync(join(bundle, 'vendor'));
 // Patch only our staging copies, never the developer or recipient install.
 const stage = join(out, '.vendor-stage');
 rmSync(stage, { recursive: true, force: true }); mkdirSync(join(stage, 'node_modules'), { recursive: true });
-for (const pkg of ['@deepseek-ai/dsh-tool-subagent', '@deepseek-ai/dsh-subagent', '@deepseek-ai/dsh-subagent-in-process-driver', '@deepseek-ai/dsh-subagent-spawn-in-process', '@deepseek-ai/dsh-subagent-fork-in-process', 'dsh-code', '@deepseek-ai/dsh-llm-deepseek', '@deepseek-ai/dsh-llm-pi-ai', '@deepseek-ai/dsh-tool-bash', '@deepseek-ai/dsh-tool-bash-persistent', '@deepseek-ai/dsh-terminal-bash']) {
+for (const pkg of ['@deepseek-ai/dsh-tool-subagent', '@deepseek-ai/dsh-subagent', '@deepseek-ai/dsh-subagent-in-process-driver', '@deepseek-ai/dsh-subagent-spawn-in-process', '@deepseek-ai/dsh-subagent-fork-in-process', 'dsh-code', '@deepseek-ai/dsh-llm-deepseek', '@deepseek-ai/dsh-tool-bash', '@deepseek-ai/dsh-tool-bash-persistent', '@deepseek-ai/dsh-terminal-bash', '@deepseek-ai/dsh-compaction-basic']) {
   copy('node_modules/' + pkg, join(stage, 'node_modules', pkg));
 }
 patchTui(stage); patchRuntime(stage, { requireMacStdin: false });
 const notices = [];
-for (const [pkg, dest] of [['@deepseek-ai/dsh-tool-subagent','subagent'], ['@deepseek-ai/dsh-subagent','subagent-core'], ['@deepseek-ai/dsh-subagent-in-process-driver','subagent-driver'], ['@deepseek-ai/dsh-subagent-spawn-in-process','subagent-spawn'], ['@deepseek-ai/dsh-subagent-fork-in-process','subagent-fork'], ['dsh-code','tui'], ['@deepseek-ai/dsh-llm-deepseek','deepseek'], ['@deepseek-ai/dsh-llm-pi-ai','pi-ai'], ['@deepseek-ai/dsh-tool-bash','bash'], ['@deepseek-ai/dsh-tool-bash-persistent','persistent'], ['@deepseek-ai/dsh-terminal-bash','terminal']]) {
+for (const [pkg, dest] of [['@deepseek-ai/dsh-tool-subagent','subagent'], ['@deepseek-ai/dsh-subagent','subagent-core'], ['@deepseek-ai/dsh-subagent-in-process-driver','subagent-driver'], ['@deepseek-ai/dsh-subagent-spawn-in-process','subagent-spawn'], ['@deepseek-ai/dsh-subagent-fork-in-process','subagent-fork'], ['dsh-code','tui'], ['@deepseek-ai/dsh-llm-deepseek','deepseek'], ['@deepseek-ai/dsh-tool-bash','bash'], ['@deepseek-ai/dsh-tool-bash-persistent','persistent'], ['@deepseek-ai/dsh-terminal-bash','terminal'], ['@deepseek-ai/dsh-compaction-basic','compaction-basic']]) {
   const src = join(stage, 'node_modules', pkg);
   cpSync(join(src, 'lib'), join(bundle, 'vendor', dest), { recursive: true });
   const meta = JSON.parse(readFileSync(join(src, 'package.json'), 'utf8'));
@@ -46,8 +46,9 @@ for (const [pkg, dest] of [['@deepseek-ai/dsh-tool-subagent','subagent'], ['@dee
   if (license) cpSync(join(src, license), join(bundle, 'vendor', dest, 'LICENSE'));
 }
 const tui = join(bundle, 'vendor/tui/index.mjs');
-writeFileSync(tui, readFileSync(tui, 'utf8').replace('new URL("../package.json", import.meta.url)', 'new URL("../../package.json", import.meta.url)').replace(/import \{ footerFor as dscodeFooterFor \} from [^\n]+;/, 'import { footerFor as dscodeFooterFor } from "../../plugins/session-metrics/view.mjs";'));
+writeFileSync(tui, readFileSync(tui, 'utf8').replace('new URL("../package.json", import.meta.url)', 'new URL("../../package.json", import.meta.url)').replace(/import \{ footerFor as dscodeFooterFor \} from [^\n]+;/, 'import { footerFor as dscodeFooterFor } from "../../plugins/session-metrics/view.mjs";').replace(/from "file:[^"]*\/plugins\/compaction\/(tetris|threshold)\.mjs";/g, 'from "../../plugins/compaction/$1.mjs";'));
 for (const [file, from, to] of [
+  ['compaction-basic/index.js', '../../../../plugins/compaction/threshold.mjs', '../../plugins/compaction/threshold.mjs'],
   ['subagent/index.js', '../../../../plugins/worktree-subagent/worktree.mjs', '../../plugins/worktree-subagent/worktree.mjs'],
   ['subagent/index.js', 'from "@deepseek-ai/dsh-subagent"', 'from "../subagent-core/index.js"'],
   ['subagent-driver/index.js', 'from "@deepseek-ai/dsh-subagent"', 'from "../subagent-core/index.js"'],
@@ -58,7 +59,7 @@ for (const [file, from, to] of [
   writeFileSync(filePath, replaceOnce(readFileSync(filePath, 'utf8'), from, to));
 }
 rmSync(stage, { recursive: true, force: true });
-let preset = read('presets/dscode/agent.cordis.yml').replaceAll("'@deepseek-ai/dsh-tool-subagent'", `'${name}/subagent'`).replace('DSCODE_POLICY_PLUGIN', `'${name}/policy'`).replace('DSCODE_REVIEW_PLUGIN', `'${name}/code-review'`).replaceAll("'@deepseek-ai/dsh-tool-bash'", `'${name}/bash'`).replaceAll("'@deepseek-ai/dsh-tool-bash-persistent'", `'${name}/persistent'`).replaceAll("'@deepseek-ai/dsh-terminal-bash'", `'${name}/terminal'`);
+let preset = read('presets/dscode/agent.cordis.yml').replaceAll("'@deepseek-ai/dsh-tool-subagent'", `'${name}/subagent'`).replace('DSCODE_POLICY_PLUGIN', `'${name}/policy'`).replace('DSCODE_REVIEW_PLUGIN', `'${name}/code-review'`).replaceAll("'@deepseek-ai/dsh-tool-bash'", `'${name}/bash'`).replaceAll("'@deepseek-ai/dsh-tool-bash-persistent'", `'${name}/persistent'`).replaceAll("'@deepseek-ai/dsh-terminal-bash'", `'${name}/terminal'`).replaceAll("'@deepseek-ai/dsh-compaction-basic'", `'${name}/compaction-basic'`);
 preset = replaceOnce(preset,
   "  name: '@deepseek-ai/dsh-mcp-client'\n  config:\n    serverName: chrome",
   "  name: '@deepseek-ai/dsh-mcp-client'\n  inject: [dscodePaths]\n  config:\n    serverName: chrome");
@@ -83,19 +84,15 @@ patch = replaceOnce(patch, "name: '@deepseek-ai/dsh-credentials-local'", `name: 
 patch += `
 - id: llm-deepseek
   disabled: true
-- id: llm-pi-ai
-  disabled: true
 - insert:
     - id: dscode-deepseek
       name: '${name}/deepseek'
-    - id: dscode-pi-ai
-      name: '${name}/pi-ai'
     - id: dscode-bootstrap
       name: '${name}/bootstrap'
 `;
 write(bundle, 'cordis.patch.yml', patch);
 const exports = { './email-tools':'./plugins/email-tools/index.mjs', './imap':'./plugins/email/imap.mjs', './gmail':'./plugins/email/gmail.mjs', './email':'./plugins/email/inbox.mjs', './package.json':'./package.json', './cordis.patch.yml':'./cordis.patch.yml', './credentials':'./plugins/credentials/index.mjs', './memory':'./plugins/memory/index.mjs', './session-bridge':'./plugins/session-bridge/index.mjs', './session-cards':'./plugins/session-cards/index.mjs' };
-for (const [key, file] of Object.entries({subagent:'vendor/subagent/index.js','subagent-core':'vendor/subagent-core/index.js','subagent-driver':'vendor/subagent-driver/index.js','subagent-spawn':'vendor/subagent-spawn/index.js','subagent-fork':'vendor/subagent-fork/index.js',bootstrap:'bootstrap.mjs',tui:'vendor/tui/index.mjs',startup:'vendor/tui/startup.mjs',deepseek:'vendor/deepseek/index.js','pi-ai':'vendor/pi-ai/index.js',bash:'vendor/bash/index.js',persistent:'vendor/persistent/index.js',terminal:'vendor/terminal/index.js',policy:'plugins/dscode/index.mjs','code-review':'plugins/code-review/index.mjs','auto-review':'plugins/auto-review/index.mjs','session-metrics':'plugins/session-metrics/index.mjs','tui-tools':'plugins/tui-tools/index.mjs'})) exports['./'+key] = './'+file;
+for (const [key, file] of Object.entries({subagent:'vendor/subagent/index.js','subagent-core':'vendor/subagent-core/index.js','subagent-driver':'vendor/subagent-driver/index.js','subagent-spawn':'vendor/subagent-spawn/index.js','subagent-fork':'vendor/subagent-fork/index.js',bootstrap:'bootstrap.mjs',tui:'vendor/tui/index.mjs',startup:'vendor/tui/startup.mjs',deepseek:'vendor/deepseek/index.js',bash:'vendor/bash/index.js',persistent:'vendor/persistent/index.js',terminal:'vendor/terminal/index.js','compaction-basic':'vendor/compaction-basic/index.js',policy:'plugins/dscode/index.mjs','code-review':'plugins/code-review/index.mjs','auto-review':'plugins/auto-review/index.mjs','session-metrics':'plugins/session-metrics/index.mjs',openrouter:'plugins/openrouter/index.mjs','tui-tools':'plugins/tui-tools/index.mjs'})) exports['./'+key] = './'+file;
 const shared = { version, type:'module', license:'MIT', author:'Todd Zheng', engines:original.engines, publishConfig:{access:'public'}, repository: process.env.DSCODE_REPOSITORY ? {type:'git',url:process.env.DSCODE_REPOSITORY} : original.repository };
 write(bundle, 'package.json', { ...shared, name, description:'DSCODE coding harness: minimal persistent shell, Ultra subagents, auto review, Chrome, computer use and session telemetry.', files:['bootstrap.mjs','cordis.patch.yml','plugins','presets','bin','vendor','THIRD_PARTY_NOTICES.md'], exports, dependencies, dsh:{bundle:{patch:'./cordis.patch.yml'},hub:{schemaVersion:1,displayName:'DSCODE',summary:'A complete DeepSeek coding agent with persistent shell, Ultra collaboration and automatic permission review.',description:'macOS coding TUI with Chrome MCP, Computer Use, skills, compaction, goals, hooks and session telemetry. Requires the DSCODE profile and its pinned DSH runtime.',categories:['community'],keywords:['coding','tui','deepseek-harness'],compatibility:{dsh:'0.1.5-rc.1',node:original.engines.node,platforms:['darwin'],surfaces:['headless'],hmr:'restart'},entryIds:['dscode-bootstrap'],before:[],after:[],channel:'stable'}} });
 write(bundle, 'THIRD_PARTY_NOTICES.md', notices.join('\n'));

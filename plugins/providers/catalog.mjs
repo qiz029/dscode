@@ -1,83 +1,42 @@
 // Model providers `/provider` switches between. DeepSeek's official API is the
-// native `llm-deepseek` route; OpenRouter serves the DeepSeek models and the rest
-// of pi-ai's OpenRouter catalog through pi-ai's catalog route, which the base
-// composition mounts dormant until a `llm-pi-ai:` settings section declares it.
+// native `llm-deepseek` route; OpenRouter is DSCODE's own adapter
+// (plugins/openrouter), which serves OpenRouter's live model listing and is always
+// registered. This module ships beside the TUI too, so it imports nothing.
 
 export const PROVIDERS = Object.freeze([
   { id: 'deepseek-official', name: 'DeepSeek', aliases: ['deepseek', 'deepseek-official', 'official'], credentialRef: 'DEEPSEEK_API_KEY', defaultModel: 'deepseek-flash' },
-  { id: 'openrouter', name: 'OpenRouter', aliases: ['openrouter', 'open-router'], credentialRef: 'OPENROUTER_API_KEY', defaultModel: 'deepseek/deepseek-v4-flash' },
+  // The optional management key reads account data only; it cannot call models.
+  { id: 'openrouter', name: 'OpenRouter', aliases: ['openrouter', 'open-router'], credentialRef: 'OPENROUTER_API_KEY', managementRef: 'OPENROUTER_MANAGEMENT_KEY', defaultModel: 'deepseek/deepseek-v4-flash' },
 ]);
 
+// The pi-ai adapter served OpenRouter until 0.7.6, from this settings section.
 const PI_AI_NS = 'llm-pi-ai';
 
 // OpenRouter serves DeepSeek V4 thinking as none/high/xhigh. DeepSeek itself
 // answers `low` as high and `max` as xhigh, so the route offers the official
 // low/high/max detents (and Ultra on top of max) with the wire spelling OpenRouter
 // accepts; session cards and delegated children that ask for `low` keep working.
-const OPENROUTER_EFFORTS = Object.freeze({ off: 'none', low: 'high', high: 'high', max: 'xhigh' });
+export const OPENROUTER_EFFORTS = Object.freeze({ off: 'none', low: 'high', high: 'high', max: 'xhigh' });
 
-/** The DeepSeek models the OpenRouter route declares, with their official-route counterparts. */
+/** The DeepSeek models the OpenRouter route serves, with their official-route counterparts. */
 export const OPENROUTER_MODELS = Object.freeze([
   { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', official: ['deepseek-flash', 'deepseek-v4-flash'] },
   { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', official: ['deepseek-v4-pro'] },
   { id: 'deepseek/deepseek-v4-flash-vision-exp', name: 'DeepSeek V4 Flash Vision Exp', official: ['deepseek-v4-flash-vision-exp'] },
 ]);
 
-/** The `llm-pi-ai` profile `/provider openrouter` writes: pi-ai's whole OpenRouter catalog. */
-export function openRouterProfile() {
-  return {
-    displayName: 'OpenRouter',
-    apiKeyEnv: 'OPENROUTER_API_KEY',
-    // Like the official route, requests default to high; a model without high uses its own default.
-    reasoning: 'high',
-    // No models list, so the route serves every catalog model; the overrides give the
-    // DeepSeek models the official detents (and /effort its detent bar).
-    modelOverrides: Object.fromEntries(OPENROUTER_MODELS.map(({ id, name }) => [id, { name, reasoningEfforts: { ...OPENROUTER_EFFORTS } }])),
-  };
-}
-
-/** The profile 0.7.3 to 0.7.5 wrote: the catalog narrowed to the three DeepSeek models. */
-export function narrowOpenRouterProfile() {
-  return {
-    displayName: 'OpenRouter',
-    apiKeyEnv: 'OPENROUTER_API_KEY',
-    reasoning: 'high',
-    models: OPENROUTER_MODELS.map(({ id, name }) => ({ id, name, reasoningEfforts: { ...OPENROUTER_EFFORTS } })),
-  };
-}
-
-// Fields a user sets to point the route elsewhere or shape its requests. The settings
-// service describes a profile with its resolved defaults, which fill these with empty
-// values (`input: []`, `compat: { chatTemplateKwargs: {}, ... }`), so empty counts as unset.
-const USER_FIELDS = ['api', 'baseURL', 'modelOverrides', 'headers', 'compat', 'thinkingBudgets', 'cacheRetention', 'transport'];
-const empty = value => value === undefined || (Array.isArray(value) ? value.length === 0
-  : value !== null && typeof value === 'object' && Object.values(value).every(empty));
-const sameEfforts = (left, right) => left !== null && typeof left === 'object'
-  && Object.keys(left).length === Object.keys(right).length && Object.entries(right).every(([level, wire]) => left[level] === wire);
-
-/** Whether a stored profile is exactly the narrow one DSCODE wrote, so replacing it discards nothing the user chose. */
-export function isNarrowOpenRouterProfile(profile) {
-  if (profile === null || typeof profile !== 'object' || !Array.isArray(profile.models)) return false;
-  const narrow = narrowOpenRouterProfile();
-  return profile.displayName === narrow.displayName && profile.apiKeyEnv === narrow.apiKeyEnv && profile.reasoning === narrow.reasoning
-    && USER_FIELDS.every(field => empty(profile[field]))
-    && profile.models.length === narrow.models.length
-    && narrow.models.every((expected, index) => {
-      const { id, name, reasoningEfforts, ...rest } = profile.models[index] ?? {};
-      return id === expected.id && name === expected.name && sameEfforts(reasoningEfforts, expected.reasoningEfforts) && Object.values(rest).every(empty);
-    });
-}
-
 /**
- * Replace the narrow profile earlier builds wrote with the whole-catalog one.
- * Never declares a route and never throws: /model must open regardless.
+ * Remove the `openrouter` profile earlier builds wrote into the pi-ai section. The
+ * pi-ai adapter is no longer mounted, so the profile is inert, and it would claim the
+ * route a second time if that adapter were ever mounted again.
+ * Never throws: /model and /provider must open regardless.
  * @returns whether the settings changed.
  */
 export async function migrateOpenRouterProfile(settings) {
   try {
     const descriptor = settings?.describe?.({ redactSecrets: true }).find(entry => entry.ns === PI_AI_NS);
-    if (!descriptor || settings.writable !== true || !isNarrowOpenRouterProfile(descriptor.value?.providers?.openrouter)) return false;
-    await settings.mutate(PI_AI_NS, [{ op: 'set', path: ['providers', 'openrouter'], value: openRouterProfile() }], descriptor.revision);
+    if (!descriptor || settings.writable !== true || descriptor.value?.providers?.openrouter === undefined) return false;
+    await settings.mutate(PI_AI_NS, [{ op: 'unset', path: ['providers', 'openrouter'] }], descriptor.revision);
     return true;
   } catch {
     return false;
@@ -156,25 +115,16 @@ export function credentialState(row) {
 }
 
 /**
- * Declare a provider's route before it is used. Only OpenRouter needs one; a
- * profile the user already has (their own models or endpoint) is left alone,
- * while the narrow profile earlier builds wrote is replaced.
+ * Prepare a provider before a switch. Both routes are always registered; switching
+ * to OpenRouter only clears the inert pi-ai profile earlier builds wrote.
  * @param settings - the host settings service.
  * @returns whether the settings changed.
  */
 export async function ensureProviderRoute(settings, provider) {
-  if (provider !== 'openrouter') return false;
-  if (typeof settings?.describe !== 'function' || typeof settings.mutate !== 'function') throw new Error('settings are unavailable; OpenRouter cannot be configured in this profile');
-  const descriptor = settings.describe({ redactSecrets: true }).find(entry => entry.ns === PI_AI_NS);
-  if (!descriptor) throw new Error('the OpenRouter adapter (llm-pi-ai) is not mounted in this profile');
-  const existing = descriptor.value?.providers?.openrouter;
-  if (existing !== undefined) return migrateOpenRouterProfile(settings);
-  if (settings.writable !== true) throw new Error('settings are read-only; OpenRouter cannot be configured here');
-  await settings.mutate(PI_AI_NS, [{ op: 'set', path: ['providers', 'openrouter'], value: openRouterProfile() }], descriptor.revision);
-  return true;
+  return provider === 'openrouter' ? migrateOpenRouterProfile(settings) : false;
 }
 
-/** Wait for a freshly declared route to reach the model directory. */
+/** Wait for a route's models to reach the model directory. */
 export async function waitForModels(loadModels, provider, { attempts = 30, delayMs = 100 } = {}) {
   let directory;
   for (let attempt = 0; attempt < attempts; attempt++) {

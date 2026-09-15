@@ -10,6 +10,27 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes here. -->
 
+### Added
+
+- `/model` searches as you type, with no `/` first, and ranks with BM25 on every keystroke: the model name counts most, then the model id, then the provider. The word being typed matches as a prefix (`kim` finds Kimi, `glm5` finds GLM 5.x); rows matching every word come first, and rows matching some words show only when none matches them all. A changed search focuses no row: Enter or an arrow focuses the first match, and Enter on a focused row selects it. Esc clears the search, then closes; Tab still opens providers and retry moves to Ctrl+R, since letters now always search.
+- Pressing Enter on `/provider`, `/login` or `/openrouter` in the slash-command menu opens its picker straight away, instead of leaving the command in the input for another Enter or a typed argument.
+- `/openrouter` shows the OpenRouter account: the balance, this key's limit and its spend today, this week and this month, and, with a management key, every API key's usage and the last 30 days of spend by model and the providers that served it (`r` refreshes, `m` sets the management key). After the OpenRouter API key is saved in `/provider openrouter` or `/login openrouter`, DSCODE offers an optional management key; it is checked against OpenRouter (an inference key is refused account activity), stored beside the other keys in `~/.dscode/credentials.yaml` (or taken from `OPENROUTER_MANAGEMENT_KEY`), and only read from.
+- A running compaction, automatic or `/compact`, replaces the activity line with a small Tetris bot clearing rows and the message "Compacting context, please wait" (translated with `/language`), plus its elapsed time. A short terminal shows one board row.
+- Picking a model in `/model` (or through `/provider`) whose route would compact the current context asks first: it shows the context size, the new model's threshold and window, and whether the next request overflows. `y` switches, `n`/Esc goes back.
+
+### Fixed
+
+- When OpenRouter refuses a key its account credits, the footer balance shows that key's remaining credit limit instead of `$--`.
+
+### Changed
+
+- OpenRouter runs through DSCODE's own adapter instead of pi-ai. Models come from OpenRouter's live listing, cached for a day, so new models appear without a DSCODE release; the first lookup waits up to 10 seconds for the listing. DeepSeek, GLM, Kimi and Qwen are tuned and tested; every other model with tool support is listed on a best-effort basis. Each model offers its own reasoning levels (DeepSeek V4 keeps the official detents, and Ultra is offered on models with `max`). Every request sends the session id, so a session stays on one upstream endpoint and keeps its prompt cache; Qwen gets explicit cache breakpoints. OpenRouter still chooses the upstream endpoint, but only among endpoints that support every request parameter and do not serve fp4-quantized weights (native INT4 models such as Kimi stay routable). The inert pi-ai profile earlier builds wrote is removed from the settings.
+- OpenRouter errors route on their typed codes: failures reported inside a streaming response (such as an upstream 502) are retried, `Retry-After` is honoured, 402 means out of credits, and a context-length error starts compaction recovery.
+- OpenRouter calls are charged at the cost OpenRouter reports, which covers BYOK fees and per-provider prices; list prices estimate only a call that reports none.
+- `web_search` follows the session's route: an OpenRouter session searches through OpenRouter's web plugin (Exa), a DeepSeek session through DeepSeek. An OpenRouter-only user no longer needs a DeepSeek key to search.
+- Session titles no longer run reasoning at the route's default effort on OpenRouter models, and their output cap is 1,024 tokens instead of 64. Automatic approval review asks for low effort and allows 4,096 output tokens instead of 768, so a reasoning reviewer can finish its verdict.
+- The auto-compaction threshold follows the routed model's cache-read price over its input price: below 0.1 it compacts at 90% of the window, below 0.5 at 80%, otherwise at 60%. Unpriced routes keep 80%, and a `thresholdRatio` configured for compaction-basic, globally or per model, still wins.
+
 ## [0.7.6] - 2026-09-14
 
 ### Added

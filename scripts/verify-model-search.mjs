@@ -5,8 +5,9 @@ import { stripVTControlCharacters } from 'node:util';
 import { patchTui } from './patch-tui.mjs';
 import { dscodeFilterModels, patchModelSearch } from './patch-model-search.mjs';
 
-// /model search on the real patched Ink panel: typing filters, typed letters never
-// trigger the panel's own q/r/g keys, Esc clears, and Enter selects a filtered row.
+// /model on the real patched Ink panel: typing searches at once (letters are never shortcuts),
+// the first Enter or arrow focuses the first match, Enter on a focused row selects it, Esc
+// clears the search and then closes, Tab opens providers and Ctrl+R retries.
 const root = new URL('../', import.meta.url);
 patchTui(root.pathname);
 const source = readFileSync(new URL('node_modules/dsh-code/lib/index.mjs', root), 'utf8');
@@ -24,7 +25,7 @@ const rows = [
   row('openrouter', 'OpenRouter', 'qwen/qwen3-coder', 'Qwen: Qwen3 Coder'),
 ];
 assert.deepEqual(dscodeFilterModels(rows, 'openrouter CLAUDE').map(item => item.model), ['anthropic/claude-sonnet-4.5'], 'every word must match, ignoring case');
-assert.deepEqual(dscodeFilterModels(rows, 'deepseek').map(item => item.model), ['deepseek-flash', 'deepseek/deepseek-v4-flash']);
+assert.deepEqual(dscodeFilterModels(rows, 'deepseek').map(item => item.model).sort(), ['deepseek-flash', 'deepseek/deepseek-v4-flash'], 'ranked results keep only matching rows');
 assert.equal(dscodeFilterModels(rows, '   '), rows);
 try {
   const ui = await import(entry.href);
@@ -51,35 +52,48 @@ try {
   }
   for (const columns of [48, 80, 120]) {
     await panel(async ({ input, frame, selected, actions }) => {
-      if (columns >= 80) assert.match(frame(), /\/ search/, frame());
-      assert.match(frame(), /1\/5/);
-      await input('/');
-      if (columns >= 80) assert.match(frame(), /search: type to filter/, frame());
+      if (columns >= 80) assert.match(frame(), /1\/5 · type to search/, frame());
+      assert.match(frame(), /❯ DeepSeek · DeepSeek Flash/, 'the current model is focused on open');
       await input('claude');
       assert.match(frame(), /Claude Sonnet 4\.5/);
       assert.doesNotMatch(frame(), /GPT-5|Qwen3/);
+      assert.doesNotMatch(frame(), /❯/, 'a changed search focuses nothing');
+      if (columns >= 80) assert.match(frame(), /1 match · search: claude/, frame());
       await input('q');
-      assert.deepEqual(actions, [], 'a typed q filters instead of closing');
+      await input('r');
+      assert.deepEqual(actions, [], 'typed q and r search instead of closing or retrying');
       assert.match(frame(), /no models match the search/);
       await input('\x7f');
+      await input('\x7f');
       await input('\r');
-      assert.deepEqual(selected, ['openrouter/anthropic/claude-sonnet-4.5']);
+      assert.deepEqual(selected, [], 'the first Enter only focuses the first match');
+      assert.match(frame(), /❯ OpenRouter · Anthropic: Claude/);
+      await input('\r');
+      assert.deepEqual(selected, ['openrouter/anthropic/claude-sonnet-4.5'], 'Enter on the focused row selects it');
     }, columns);
   }
   await panel(async ({ input, frame, selected, actions }) => {
-    await input('/');
-    await input('gpt');
-    assert.match(frame(), /GPT-5/);
-    assert.doesNotMatch(frame(), /Claude/);
-    await input('\x1b');
-    await tick();
-    assert.match(frame(), /Claude/, 'Esc clears the search');
-    assert.match(frame(), /1\/5/);
+    await input('deepseek');
+    const ranked = dscodeFilterModels(rows, 'deepseek');
+    await input('\x1b[B');
+    assert.match(frame(), new RegExp(`❯ ${ranked[0].providerName} · ${ranked[0].modelName}`), 'the first arrow focuses the first match');
     await input('\x1b[B');
     await input('\r');
-    assert.deepEqual(selected, ['openrouter/deepseek/deepseek-v4-flash'], 'navigation works again after the search');
-    await input('q');
-    assert.deepEqual(actions, ['close']);
+    assert.deepEqual(selected, [`${ranked[1].provider}/${ranked[1].model}`], 'arrows then move the focus');
+    await input('\x1b');
+    await tick();
+    assert.match(frame(), /GPT-5/, 'Esc clears the search');
+    assert.match(frame(), /1\/5 · type to search/);
+    assert.deepEqual(actions, []);
+    await input('\t');
+    await input('\x12');
+    await input('\x1b');
+    await tick();
+    assert.deepEqual(actions, ['providers', 'retry', 'close'], 'Tab, Ctrl+R, and Esc on an empty search keep their actions');
   });
-  console.log('Model search passed: real Ink /model panel filters by provider and model words, keeps q/r/g as text while searching, Esc clears and Enter selects the filtered row.');
+  await panel(async ({ input, selected }) => {
+    await input('\r');
+    assert.deepEqual(selected, ['deepseek-official/deepseek-flash'], 'Enter right after opening selects the focused current model');
+  });
+  console.log('Model search passed: real Ink /model panel searches as you type, focuses the first match on Enter or an arrow, selects on Enter, clears then closes on Esc, and keeps Tab and Ctrl+R.');
 } finally { rmSync(entry, { force: true }); }

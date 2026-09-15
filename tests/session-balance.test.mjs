@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseBalance, parseOpenRouterCredits, refreshBalance, balanceNow, trustedNow } from '../plugins/session-metrics/balance.mjs';
+import { parseBalance, parseOpenRouterKeyRemaining, refreshBalance, balanceNow, trustedNow } from '../plugins/session-metrics/balance.mjs';
 import { isPeak, peakEmoji } from '../plugins/session-metrics/pricing.mjs';
 import { formatFooter } from '../plugins/session-metrics/view.mjs';
 
@@ -47,12 +47,13 @@ test('a transient failure keeps the last balance and retries sooner', async () =
   assert.equal(await refreshBalance({ key: 'k', fetch: async () => { throw new Error('offline'); } }), before);
 });
 
-test('OpenRouter credits are tracked apart from DeepSeek and the footer drops the peak marker', async () => {
-  assert.equal(parseOpenRouterCredits({ data: { total_credits: 20, total_usage: 7.25 } }), 12.75);
-  assert.equal(parseOpenRouterCredits({ data: { total_credits: 5, total_usage: 9 } }), 0);
-  assert.equal(parseOpenRouterCredits({ data: { total_credits: 'oops', total_usage: 1 } }), null);
-  assert.equal(parseOpenRouterCredits({ data: {} }), null);
-  assert.equal(parseOpenRouterCredits(null), null);
+test('OpenRouter key limits are tracked apart from DeepSeek and the footer drops the peak marker', async () => {
+  assert.equal(parseOpenRouterKeyRemaining({ data: { limit: 20, limit_remaining: 12.75, usage: 7.25 } }), 12.75);
+  assert.equal(parseOpenRouterKeyRemaining({ data: { limit: 5, limit_remaining: -1, usage: 6 } }), 0);
+  assert.equal(parseOpenRouterKeyRemaining({ data: { limit: null, limit_remaining: null, usage: 3 } }), null, 'a key without a limit exposes no balance');
+  assert.equal(parseOpenRouterKeyRemaining({ data: { limit_remaining: 'oops' } }), null);
+  assert.equal(parseOpenRouterKeyRemaining({ data: {} }), null);
+  assert.equal(parseOpenRouterKeyRemaining(null), null);
   const deepseek = balanceNow('deepseek-official');
   const urls = [];
   const fetch = async (url, init) => {

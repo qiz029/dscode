@@ -3,7 +3,8 @@ import { appendMetric } from './store.mjs';
 import { estimateCost, priceVersionFor } from './pricing.mjs';
 import { setMetricSource } from './view.mjs';
 import { BALANCE_PROVIDERS, refreshBalance } from './balance.mjs';
-import { refreshOpenRouterPrices } from './openrouter-prices.mjs';
+import { refreshOpenRouterModels } from '../openrouter/models.mjs';
+import { REPLAY_KIND } from '../openrouter/wire.mjs';
 import { providerSpec } from '../providers/catalog.mjs';
 import { createWindowRate } from './rate.mjs';
 import { currentCharge } from './attribution.mjs';
@@ -34,12 +35,17 @@ export function apply(ctx) {
   const credentials = ctx.get?.('credentials');
   const refresh = () => Promise.all(BALANCE_PROVIDERS.map(async provider => {
     try {
-      const ref = providerSpec(provider).credentialRef;
-      const resolved = await credentials?.resolve?.(ref);
-      const key = typeof resolved === 'string' ? resolved : resolved?.value;
-      await refreshBalance({ provider, key: key ?? process.env[ref] });
-      // OpenRouter list prices need no key, but only a session with an OpenRouter key uses them.
-      if (provider === 'openrouter' && (key ?? process.env[ref])) await refreshOpenRouterPrices({ home });
+      const spec = providerSpec(provider);
+      const secret = async ref => {
+        if (!ref) return undefined;
+        const resolved = await credentials?.resolve?.(ref);
+        return (typeof resolved === 'string' ? resolved : resolved?.value) || process.env[ref] || undefined;
+      };
+      // An OpenRouter management key, when stored, turns the balance into the account's credits.
+      const [key, managementKey] = await Promise.all([secret(spec.credentialRef), secret(spec.managementRef)]);
+      await refreshBalance({ provider, key, managementKey });
+      // The listing needs no key, but only a user with an OpenRouter key uses it; the adapter waits for it before its first call.
+      if (provider === 'openrouter' && key) await refreshOpenRouterModels({ home });
     } catch {
       /* balance stays unknown */
     }
@@ -64,19 +70,23 @@ export function apply(ctx) {
     }
     const save = entry => { for (const recipient of recipients) record(recipient, { ...entry, sessionId }); };
     save({ kind: 'start', id, time, provider: options.provider, model: options.model, purpose });
-    let usage, firstTokenTime;
+    let usage, firstTokenTime, billed;
     const liveSession = purpose === 'agent' ? ctx.agents.get(sessionId)?.session : undefined;
     try {
       for await (const chunk of next()) {
         if (chunk.type === 'usage') usage = chunk.usage;
         else if (firstTokenTime === undefined && OUTPUT_CHUNKS.has(chunk.type)) firstTokenTime = Date.now();
+        // OpenRouter reports what it charged; the finish of its response carries it.
+        if (chunk.type === 'finish' && chunk.replayState?.response?.kind === REPLAY_KIND && Number.isFinite(chunk.replayState.response.cost)) billed = chunk.replayState.response.cost;
         if (liveSession) liveRate.add(liveSession, chunk);
         yield chunk;
       }
     } finally {
       if (liveSession) liveRate.calibrate(liveSession, usage?.outputTokens);
       // `time` stays the start (it prices the call); `endTime` and `firstTokenTime` time it.
-      save({ kind: 'end', id, time, endTime: Date.now(), ...(firstTokenTime === undefined ? {} : { firstTokenTime }), usage: usage ?? null, cost: estimateCost(options.provider, options.model, usage, time), priceVersion: priceVersionFor(options.provider, options.model) });
+      save({ kind: 'end', id, time, endTime: Date.now(), ...(firstTokenTime === undefined ? {} : { firstTokenTime }), usage: usage ?? null, ...(billed === undefined
+        ? { cost: estimateCost(options.provider, options.model, usage, time), priceVersion: priceVersionFor(options.provider, options.model) }
+        : { cost: billed, priceVersion: 'openrouter-billed' }) });
     }
   });
 }

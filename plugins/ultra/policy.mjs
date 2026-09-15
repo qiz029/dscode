@@ -16,22 +16,6 @@ export function flashRequest(options, messages) {
   return copy;
 }
 
-/**
- * The same shaping for pi-ai routes (OpenRouter), on harness-format options:
- * Ultra sends max and adds the collaboration policy. Delegation tools are offered
- * at every effort (the shell policy keeps delegation rare below Ultra); workflow
- * and ralph never are. Returns a copy; the logged input is never mutated.
- */
-export function piAiRequest(options) {
-  const ultra = options.reasoningEffort === 'ultra';
-  const next = { ...options, ...(options.tools ? { tools: options.tools.filter(tool => tool.name !== 'workflow' && tool.name !== 'ralph') } : {}), ...(ultra ? { reasoningEffort: 'max' } : {}) };
-  if (!ultra || options.purpose || !options.tools?.some(t => t.name === 'subagent' || t.name === 'subagent_fork')) return next;
-  if (typeof next.system === 'string') return { ...next, system: next.system + '\n\n' + ULTRA_POLICY };
-  const [first, ...rest] = next.messages ?? [];
-  if (first?.role === 'system' && Array.isArray(first.content)) return { ...next, messages: [{ ...first, content: [...first.content, { type: 'text', text: '\n\n' + ULTRA_POLICY }] }, ...rest] };
-  return { ...next, messages: [{ role: 'system', content: [{ type: 'text', text: ULTRA_POLICY }] }, ...(next.messages ?? [])] };
-}
-
 export function ultraRequest(options, messages) {
   if (options.reasoningEffort !== 'ultra' || options.purpose || !options.tools?.some(t => t.name === 'subagent' || t.name === 'subagent_fork')) return messages;
   const copy = messages.map(m => ({ ...m }));

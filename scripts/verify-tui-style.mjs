@@ -18,7 +18,7 @@ const source = readFileSync(new URL('node_modules/dsh-code/lib/index.mjs', root)
 assert.equal(patchStyle(source), source);
 const entry = new URL(`node_modules/dsh-code/lib/.dscode-style-probe-${process.pid}.mjs`, root);
 // Use the actual bundled Ink renderer and theme, with a captured terminal.
-writeFileSync(entry, source + '\nexport { Header, DscodeActivityLine, DSCODE_ORBIT, dscodeSpinnerCells, AgentsLine, getPalette, StatusLine, StyledRows, dscodeChatLines, Box, Text, render, import_react as react, setTheme, visibleColumns, dscodeActivity, dscodeTpsTone, dscodeTelemetryParts, dscodeTelemetryNodes, DEFAULT_STATUSLINE_ITEMS };\n');
+writeFileSync(entry, source + '\nexport { Header, DscodeActivityLine, DSCODE_ORBIT, dscodeSpinnerCells, AgentsLine, getPalette, StatusLine, StyledRows, dscodeChatLines, Box, Text, render, import_react as react, setTheme, visibleColumns, dscodeActivity, dscodeTpsTone, dscodeTelemetryParts, dscodeTelemetryNodes, DEFAULT_STATUSLINE_ITEMS, DscodeCompactionLine, DscodeCompactionConfirmPanel, createTranscriptStore };\n');
 const out = new URL('artifacts/local/tui-style/', root);
 mkdirSync(out, { recursive: true });
 const now = Date.now();
@@ -180,6 +180,55 @@ try {
       }
     } finally { mounted.unmount(); mounted.cleanup(); stdout.destroy(); stdin.destroy(); stderr.destroy(); }
   }
+  // Compaction: the projection tracks a running compaction, the Tetris line fits every width, and the switch confirmation answers y.
+  const started = [{ seq: 0, type: 'turn/start', time: now - 5000, data: { turn: 1 } }, { seq: 1, type: 'compaction/start', time: now - 3000, data: { compactionId: 'fixture-compaction', turn: 1 } }];
+  assert.equal(ui.createTranscriptStore(started).getView().dscodeCompactingSince, now - 3000, 'a compaction start shows the indicator');
+  const ended = ui.createTranscriptStore([...started, { seq: 2, type: 'compaction/end', time: now, data: { compactionId: 'fixture-compaction', turn: 1 } }]).getView();
+  assert.equal(ended.dscodeCompactingSince, 0, 'a compaction end hides it');
+  assert(ended.entries.some(entry => entry.kind === 'compaction'), 'the compacted row still lands in the transcript');
+  const renderPlain = async (element, columns, marker, name, keys = '') => {
+    const stdout = new PassThrough();
+    Object.assign(stdout, { columns, rows: 30, isTTY: true });
+    const frames = [];
+    stdout.on('data', data => frames.push(data.toString()));
+    const stdin = new PassThrough();
+    Object.assign(stdin, { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
+    const stderr = new PassThrough();
+    const mounted = ui.render(element, { stdout, stderr, stdin, debug: true, patchConsole: false, exitOnCtrlC: false });
+    try {
+      await new Promise(resolve => setTimeout(resolve, 30));
+      if (keys) { stdin.write(keys); await new Promise(resolve => setTimeout(resolve, 30)); }
+      const frame = frames.filter(chunk => chunk.includes(marker)).at(-1);
+      assert(frame, `No frame with ${marker} at ${columns} columns`);
+      const plain = stripVTControlCharacters(frame);
+      for (const line of plain.split('\n')) assert(ui.visibleColumns(line) <= columns, `Overflow ${columns}: ${line}`);
+      writeFileSync(new URL(`compaction-${name}-${columns}.txt`, out), plain);
+      return plain;
+    } finally { mounted.unmount(); mounted.cleanup(); stdout.destroy(); stdin.destroy(); stderr.destroy(); }
+  };
+  for (const columns of [24, 32, 48, 80]) {
+    const board = await renderPlain(h(ui.DscodeCompactionLine, { since: now - 24000, rows: 5, animated: false }), columns, 'Compact', 'board');
+    const wells = board.split('\n').filter(line => /\|[ .[\]=]{16}\|/.test(line));
+    if (columns < 28) assert.equal(wells.length, 0, 'a very narrow terminal shows the message alone');
+    else {
+      assert.equal(wells.length, 4, `four well rows at ${columns} columns`);
+      assert(board.includes('+----------------+'));
+    }
+    if (columns >= 80) assert.match(board, /\|  Compacting context, please wait/);
+    const row = await renderPlain(h(ui.DscodeCompactionLine, { since: now - 24000, rows: 1, animated: false }), columns, 'Compact', 'row');
+    assert.equal(row.split('\n').filter(line => /\|[ .[\]=]{16}\|/.test(line)).length, columns < 28 ? 0 : 1, 'a short terminal keeps one well row');
+    if (columns >= 80) assert.match(row, /Compacting context, please wait · /);
+  }
+  let confirmed = 0, backed = 0;
+  const preview = { label: 'openrouter/plain/model', used: 412000, contextWindow: 400000, thresholdRatio: 0.6, threshold: 240000, compacts: true, overflows: true };
+  const panel = await renderPlain(h(ui.DscodeCompactionConfirmPanel, { preview, confirm: () => confirmed++, back: () => backed++ }), 80, 'Switching', 'confirm-yes', 'y');
+  assert.match(panel, /Switching to openrouter\/plain\/model will compact the conversation/);
+  assert.match(panel, /≥ compaction threshold .* × 60%/);
+  assert.match(panel, /already exceeds the .* window/);
+  assert.match(panel, /y switch · n\/esc back/);
+  assert.equal(confirmed, 1, 'y confirms the switch');
+  await renderPlain(h(ui.DscodeCompactionConfirmPanel, { preview, confirm: () => confirmed++, back: () => backed++ }), 80, 'Switching', 'confirm-no', 'n');
+  assert.deepEqual([confirmed, backed], [1, 1], 'n goes back without switching');
   console.log('TUI render passed: dark/light × 32/48/60/64/80/120 columns; real Ink frames in artifacts/local/tui-style.');
 } finally {
   clearMetricSource();

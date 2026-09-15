@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { Scalar, stringify } from 'yaml';
 
 export const customPlugins = Object.freeze([
-  'auto-review', 'session-metrics', 'session-cards', 'session-bridge', 'memory', 'tui-tools', 'email-tools',
+  'openrouter', 'auto-review', 'session-metrics', 'session-cards', 'session-bridge', 'memory', 'tui-tools', 'email-tools',
 ]);
 
 const expression = value => {
@@ -19,7 +19,7 @@ export function composePlugins({ root, bundle, hooks, presets }) {
   const inject = bundle ? { inject: ['dscodePaths'] } : {};
   const entries = customPlugins.map(name => ({
     id: `dscode-${name}`, name: plugin(name),
-    ...(name === 'auto-review' ? { config: { timeoutMs: 30000, maxOutputTokens: 768, maxReviewsPerTurn: 20 } } : {}),
+    ...(name === 'auto-review' ? { config: { timeoutMs: 30000, maxOutputTokens: 4096, maxReviewsPerTurn: 20 } } : {}),
   }));
   entries.push({
     id: 'dscode-hooks', name: '@deepseek-ai/dsh-hooks-codex', ...inject,

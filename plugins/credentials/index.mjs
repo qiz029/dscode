@@ -5,8 +5,8 @@ import { Context, Service } from '@deepseek-ai/cordis';
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment';
 import { PROVIDERS } from '../providers/catalog.mjs';
 
-// The `/provider` keys (DeepSeek, OpenRouter) live in the shared store.
-const SHARED = new Set(PROVIDERS.map(provider => provider.credentialRef));
+// The `/provider` keys (DeepSeek, OpenRouter and its management key) live in the shared store.
+const SHARED = new Set(PROVIDERS.flatMap(provider => [provider.credentialRef, provider.managementRef].filter(Boolean)));
 
 // Use the native locked, watched, owner-only store. Keep this independent of
 // the installed profile so upgrades and different projects share credentials.

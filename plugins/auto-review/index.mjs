@@ -3,13 +3,15 @@ import { BlockAssembler, createSystemMessage, createUserMessage } from '@deepsee
 import { REVIEW_POLICY, escalationDiagnosticGrant, needsMcpApproval, redact, fingerprint, contextFor, parseDecision } from './policy.mjs';
 import { join, resolve } from 'node:path';
 import { auditStore } from './audit.mjs';
+import { effortFor } from '../providers/effort.mjs';
 
 export const name = 'dscode-auto-review';
 export const inject = ['approval', 'permissionPresets', 'tools', 'llm', 'commands'];
 export const Config = z.object({
   provider: z.string().default(''), model: z.string().default(''),
   timeoutMs: z.number().min(100).max(120000).default(30000),
-  maxOutputTokens: z.number().step(1).min(128).max(2048).default(768),
+  // Reasoning tokens count against the cap: a reasoning model needs room before its verdict.
+  maxOutputTokens: z.number().step(1).min(128).max(16384).default(4096),
   maxReviewsPerTurn: z.number().step(1).min(1).max(100).default(20),
   maxEscalationGrantsPerTurn: z.number().step(1).min(0).max(10).default(2),
   auditDirectory: z.string(),
@@ -105,8 +107,11 @@ export function apply(ctx, config) {
       // file reads, or main-agent reasoning are added to the reviewer context.
       const operation = (async () => {
         let terminal = false;
+        // A verdict needs little deliberation: the lowest level near low the reviewer model offers.
+        const effort = await effortFor(ctx.llm, target, 'low', signal);
         for await (const chunk of ctx.llm.stream({
           provider: target.provider, model: target.model, sessionId: req.agent.session.id,
+          ...(effort === undefined ? {} : { reasoningEffort: effort }),
           messages: [createSystemMessage(REVIEW_POLICY, name), createUserMessage({
             content: [{ type: 'text', text: JSON.stringify({ action, context }) }],
             source: { kind: 'plugin', plugin: name },

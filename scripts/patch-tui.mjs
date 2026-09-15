@@ -19,6 +19,8 @@ import { patchClipboardImage } from './patch-clipboard-image.mjs';
 import { patchReview } from './patch-review.mjs';
 import { patchProvider } from './patch-provider.mjs';
 import { patchModelSearch } from './patch-model-search.mjs';
+import { patchCompactionTui } from './patch-compaction.mjs';
+import { patchOpenRouterTui, patchPickerCommands } from './patch-openrouter.mjs';
 
 export function patchText(text) {
   const before = '\t\t\tif (text === "/clear") {\n\t\t\t\trefresh();\n\t\t\t\tclearView();\n\t\t\t\tdismissNotice();\n\t\t\t\treturn;\n\t\t\t}';
@@ -60,6 +62,9 @@ export function patchTui(root) {
   after = patchReview(after);
   after = patchProvider(after);
   after = patchModelSearch(after);
+  after = patchCompactionTui(after, root);
+  after = patchOpenRouterTui(after);
+  after = patchPickerCommands(after);
   after = patchLanguage(after);
   cpSync(new URL('../plugins/email/', import.meta.url), join(dir, 'lib/dscode-email'), { recursive: true });
   cpSync(new URL('../plugins/providers/', import.meta.url), join(dir, 'lib/dscode-providers'), { recursive: true });

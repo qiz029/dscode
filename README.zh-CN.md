@@ -54,7 +54,7 @@ cd /path/to/project
 dscode
 ```
 
-首次启动会从 [DSH Plugin Hub](https://dshpluginhub.ai) 安装固定版本的完整 preset——无需手动拼装插件，也不需要全局安装 pnpm。之后输入 `/login`，在隐藏输入框中粘贴 DeepSeek API key：密钥以 `0600` 权限保存在本机 `~/.dscode/credentials.yaml`，不同项目和安装版本共用，不会发送给 agent。已设置的 `DEEPSEEK_API_KEY` 环境变量优先。想使用 OpenRouter，输入 `/provider openrouter`：DSCODE 会声明 OpenRouter 路由、提示输入 OpenRouter key（同样保存在本机，或读取 `OPENROUTER_API_KEY`），并把当前会话切到对应的 DeepSeek 模型；pi-ai OpenRouter 目录里的其他模型随后都会出现在 `/model` 中，按 `/` 可搜索。`/provider deepseek` 切回，`/login openrouter` 可更换 key。用 `/model` 选择模型或配置其他提供方，用 `/effort` 调整推理强度；默认路由是 `deepseek-official/deepseek-flash`。
+首次启动会从 [DSH Plugin Hub](https://dshpluginhub.ai) 安装固定版本的完整 preset——无需手动拼装插件，也不需要全局安装 pnpm。之后输入 `/login`，在隐藏输入框中粘贴 DeepSeek API key：密钥以 `0600` 权限保存在本机 `~/.dscode/credentials.yaml`，不同项目和安装版本共用，不会发送给 agent。已设置的 `DEEPSEEK_API_KEY` 环境变量优先。想使用 OpenRouter，输入 `/provider openrouter`：DSCODE 会提示输入 OpenRouter key（同样保存在本机，或读取 `OPENROUTER_API_KEY`），并把当前会话切到对应的 DeepSeek 模型；OpenRouter 实时模型列表里支持工具调用的模型随后都会出现在 `/model` 中，直接输入即可搜索。DeepSeek、GLM、Kimi 和 Qwen 经过适配和测试，其他模型尽力可用。`/provider deepseek` 切回，`/login openrouter` 可更换 key。用 `/model` 选择模型或配置其他提供方，用 `/effort` 调整推理强度；默认路由是 `deepseek-official/deepseek-flash`。
 
 ```sh
 dscode --continue                 # 继续上次会话
@@ -115,7 +115,7 @@ dscode update 0.7.6
 | 命令 | 作用 |
 |---|---|
 | `/login` | 在隐藏输入框粘贴 DeepSeek API key，保存到 `~/.dscode/`，启动自动加载 |
-| `/model`、`/effort` | 选择模型、配置其他凭据；支持四档的模型用横向 bar 调整 effort |
+| `/model`、`/effort` | 选择模型（直接输入即可搜索）、配置其他凭据；支持四档的模型用横向 bar 调整 effort |
 | `/mode` | 选择 Agent Preset；新会话默认 `dscode` |
 | `/status`、`/doctor` | 会话状态与运行时诊断 |
 | `/memories` | 全局记忆状态、后台用量、开关与清理 |
