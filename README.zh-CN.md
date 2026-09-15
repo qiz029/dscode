@@ -40,9 +40,9 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
-**0.7.6** — OpenRouter 支持整个模型目录。`/provider openrouter` 会列出 pi-ai 在 OpenRouter 上的全部模型（Anthropic、OpenAI、Google、Qwen、Kimi、GLM 等），`/model` 新增搜索，费用按 OpenRouter 的实时价格计算。推理强度改为跟随各模型自己的档位，不再套用 DeepSeek 的档位；任何 effort 都可以委派（低于 Ultra 时由提示词控制少委派）；review 不再把输出限制在 8192 个 token。0.7.5 让独立审查支持非 Git 工作区。
+**0.7.7** — OpenRouter 改由 DSCODE 自己的适配器直连，模型直接来自 OpenRouter 的实时列表，新模型不用等发版；DeepSeek、GLM、Kimi、Qwen 和 Muse Spark 都用真实请求验证过，费用按 OpenRouter 实际扣费记账，`web_search` 跟随会话的 provider。新增 `/openrouter` 查看账户余额和 key 的花费（配置 management key 后还能看所有 key 和最近 30 天花费），`/model` 边输入边用 BM25 搜索，压缩时显示俄罗斯方块动画，压缩阈值按模型的缓存价格调整。0.7.6 开放了 OpenRouter 的整个模型目录。
 
-每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.6 更新说明](docs/releases/0.7.6.md)。
+每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.7 更新说明](docs/releases/0.7.7.md)。
 
 ## 🚀 快速开始
 
@@ -83,11 +83,11 @@ npm start -- --cwd /path/to/project
 
 也可复制 `.env.example` 为 `.env`，仅在本机填写密钥；此方式会优先于 `/login` 保存的凭据。
 
-**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.6.tar.gz`，然后执行：
+**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.7.tar.gz`，然后执行：
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.6.tar.gz -C dscode-install
+tar -xzf dscode-0.7.7.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -96,14 +96,14 @@ sh dscode-install/install.sh
 **若 npm 包名查询暂时返回 404**，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.6.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.7.tgz
 ```
 
 **升级** —— 先更新启动器，再更新已安装的 profile：
 
 ```sh
-npm install -g @toddzheng024/dscode@0.7.6
-dscode update 0.7.6
+npm install -g @toddzheng024/dscode@0.7.7
+dscode update 0.7.7
 ```
 
 `dscode history` 查看保留的版本记录，`dscode rollback` 回到上个 preset 版本。源码、tar 与 npm/Hub 使用不同的数据目录，会话和凭据不会互相迁移。详见 [tar 分发说明](docs/distribution.md) 与 [npm + Hub 分发指南](docs/hub-distribution.md)。

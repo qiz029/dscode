@@ -40,9 +40,9 @@ DSCODE is a terminal coding agent for macOS, built on [DeepSeek Harness](https:/
 
 ## 🆕 What's new
 
-**0.7.6** — OpenRouter serves its whole catalog. `/provider openrouter` lists every model pi-ai knows on OpenRouter (Anthropic, OpenAI, Google, Qwen, Kimi, GLM and more), `/model` gains a search, and calls are priced from OpenRouter's live list prices. Reasoning effort now follows each model instead of DeepSeek's levels, delegation is available at every effort (the prompt keeps it rare below Ultra), and the review tool no longer caps its reviewer at 8,192 output tokens. 0.7.5 made independent review work outside Git.
+**0.7.7** — OpenRouter runs through DSCODE's own adapter over OpenRouter's live model listing, so new models appear without a release. DeepSeek, GLM, Kimi, Qwen and Muse Spark were tested with real requests, calls are charged at what OpenRouter bills, and `web_search` follows the session's provider. `/openrouter` shows the account balance and key spend (every key and 30-day spend with a management key), `/model` searches as you type with BM25, and compaction shows a small Tetris animation while its threshold follows each model's cache pricing. 0.7.6 opened OpenRouter's whole catalog.
 
-Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.6 notes](docs/releases/0.7.6.md) have the long version.
+Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.7 notes](docs/releases/0.7.7.md) have the long version.
 
 ## 🚀 Quick start
 
@@ -81,11 +81,11 @@ npm start
 npm start -- --cwd /path/to/project
 ```
 
-**From a tar package** — download `dscode-0.7.6.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
+**From a tar package** — download `dscode-0.7.7.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.6.tar.gz -C dscode-install
+tar -xzf dscode-0.7.7.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -94,14 +94,14 @@ The command lands in `~/.local/bin/dscode` by default—make sure that directory
 **If the npm name lookup returns 404**, install the same version straight from the official registry tarball:
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.6.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.7.tgz
 ```
 
 **Upgrade** — update the launcher first, then the installed profile:
 
 ```sh
-npm install -g @toddzheng024/dscode@0.7.6
-dscode update 0.7.6
+npm install -g @toddzheng024/dscode@0.7.7
+dscode update 0.7.7
 ```
 
 `dscode history` lists retained versions and `dscode rollback` returns to the previous preset revision. Source, tar and npm/Hub installs use different data directories, and sessions and credentials are not migrated between them. See the [tar distribution notes](docs/distribution.md) and the [npm + Hub guide](docs/hub-distribution.md).

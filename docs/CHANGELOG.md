@@ -10,6 +10,8 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes here. -->
 
+## [0.7.7] - 2026-09-14
+
 ### Added
 
 - `/model` searches as you type, with no `/` first, and ranks with BM25 on every keystroke: the model name counts most, then the model id, then the provider. The word being typed matches as a prefix (`kim` finds Kimi, `glm5` finds GLM 5.x); rows matching every word come first, and rows matching some words show only when none matches them all. A changed search focuses no row: Enter or an arrow focuses the first match, and Enter on a focused row selects it. Esc clears the search, then closes; Tab still opens providers and retry moves to Ctrl+R, since letters now always search.
