@@ -1,5 +1,8 @@
 process.env.DSCODE_UPDATE_CHECK = 'off'; // rendering never performs the startup registry read
 process.env.DSCODE_LANGUAGE = 'en';
+// GitHub Actions sets CI=true, where Ink paints only the static scrollback and never the
+// dynamic frame this probe measures. Pin the real-terminal path before the bundle loads.
+process.env.CI = '0';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
