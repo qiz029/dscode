@@ -45,7 +45,7 @@ test('launcher doctor boots a read-only headless diagnostic without taking the s
   const result=spawnSync(process.execPath,['--input-type=module','-e',`import { run } from ${JSON.stringify(manager)}; await run(['doctor'],{bundle:${JSON.stringify(bundle)}});`],{encoding:'utf8',env:{...process.env,DSCODE_HOME:home},timeout:10000});
   assert.equal(result.status,0,result.stderr);
   assert.match(result.stdout,/doctor-cli\.patch\.yml/);
-  assert.match(readFileSync(join(home,'diagnostics/doctor-cli.patch.yml'),'utf8'),/dscode-session-bridge\n  disabled: true/);
+  assert.match(readFileSync(join(home,'diagnostics/doctor-cli.patch.yml'),'utf8'),/dscode-session-bridge\n {2}disabled: true/);
  } finally {rmSync(home,{recursive:true,force:true});}
 });
 test('version mismatch warns once and still launches without confirmation',()=>{
@@ -101,7 +101,7 @@ console.log(JSON.stringify({argv,options,prompt:fs.readFileSync(options.promptFi
   assert.equal(seen.prompt,'fix it');
   assert.equal(seen.options.effort,'high'); assert.equal(seen.options.json,true);
   assert.equal(seen.cwd,realpathSync(home)); assert.equal(seen.options.cwd,realpathSync(home));
-  assert.match(seen.overlay,/tui-runner\n  disabled: true/);
+  assert.match(seen.overlay,/tui-runner\n {2}disabled: true/);
   assert(seen.overlay.includes(join(profile,'node_modules',release.bundle,'plugins/exec/index.mjs')));
   const help=spawnSync(process.execPath,['--input-type=module','-e',`import { run } from ${JSON.stringify(manager)}; await run(['exec','--help'],${JSON.stringify(release)});`],{encoding:'utf8',env:{...process.env,DSCODE_HOME:home},timeout:10000});
   assert.match(help.stdout,/Usage: dscode exec/);

@@ -1,5 +1,6 @@
 import test, { after } from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { auditStore } from '../plugins/auto-review/audit.mjs';
@@ -219,7 +220,19 @@ test('escalation grants are budgeted per turn', async () => {
 
 test('the diagnostic allowlist never spans shell metacharacters or interpreters', async () => {
   for (const command of ['ps -p 1', 'lsof -nP -a -p 1 -i', 'sysctl -n kern.ostype']) assert(escalationDiagnosticGrant('shell_retry', { command, sandbox_permissions: 'danger-full-access' }));
-  for (const command of ['', 'ps; rm -rf /', 'ps && rm -rf /', 'ps > /tmp/x', 'bash -c ps', 'python3 probe.py', 'cat /etc/passwd', 'ps `id`', "ps '$(id)'"]) assert.equal(escalationDiagnosticGrant('shell_retry', { command, sandbox_permissions: 'danger-full-access' }), undefined, command);
+  for (const command of ['', 'ps; rm -rf /', 'ps && rm -rf /', 'ps > /tmp/x', 'bash -c ps', 'python3 probe.py', 'cat /etc/passwd', 'ps `id`', "ps '$(id)'", 'sysctl -w kern.securelevel=0', 'sysctl kern.securelevel=0', 'hostname dscode-host', 'date -s 12:00']) assert.equal(escalationDiagnosticGrant('shell_retry', { command, sandbox_permissions: 'danger-full-access' }), undefined, command);
   assert.equal(escalationDiagnosticGrant('shell_retry', { command: 'ps -p 1' }), undefined, 'routine calls without escalation are not grants');
   assert.equal(escalationDiagnosticGrant('bash', { command: 'ps -p 1', sandbox_permissions: 'danger-full-access' }), undefined, 'only the retry shell escalates');
+});
+
+test('a torn audit line after a crash is skipped, never fatal', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'dscode-audit-test-'));
+  directories.push(directory);
+  const audit = auditStore(directory);
+  audit.append('fixture-session', { decision: 'allow' });
+  const path = join(directory, `${createHash('sha256').update('fixture-session').digest('hex')}.jsonl`);
+  appendFileSync(path, '{"torn":\n', { mode: 0o600 });
+  const records = audit.read('fixture-session');
+  assert.equal(records.length, 1);
+  assert.equal(records[0].decision, 'allow');
 });

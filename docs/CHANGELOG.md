@@ -10,6 +10,21 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes here. -->
 
+## [0.7.9] - 2026-09-15
+
+### Added
+
+- `dscode update` for tar installs: downloads the release tarball, verifies it against the release's sha256 digest, swaps the installation directory in place and migrates `.runtime`, `.env` and local `config/`; the previous installation stays as a sibling backup and source checkouts are refused.
+- npm/Hub `dscode update` replaces the launcher binary with npm before upgrading the profile to the same version; without an argument it checks npm for a newer launcher and falls back to the recommended version when the registry cannot be read.
+- `npm run lint` with an ESLint 10 flat config, included in `npm run check`.
+
+### Fixed
+
+- The escalation allowlist no longer auto-grants state-changing diagnostics (`sysctl -w`, assignment-like sysctl keys, argument forms of `hostname` and `date`).
+- Code review omits untracked files that vanish or turn unreadable during collection instead of failing the review; audit reads skip torn or corrupt lines instead of breaking every later approval.
+- A failed session-bridge recovery fails closed once and is retried by the next step instead of failing every later step.
+- Email stores and verification scripts no longer throw from `finally` blocks, so cleanup cannot mask a success or the original error; the checks script reports both the runtime-integrity violation and the suite failure; six catch sites attach error causes.
+
 ## [0.7.8] - 2026-09-14
 
 ### Changed

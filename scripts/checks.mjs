@@ -54,15 +54,19 @@ async function main() {
     const paths = upstreamPackages.map(name => join(root, 'node_modules', name, 'lib/index.' + (name === 'dsh-code' ? 'mjs' : 'js')));
     const hashes = () => paths.map(path => createHash('sha256').update(readFileSync(path)).digest('hex'));
     const before = hashes();
+    let failed;
     try {
       if (suite === 'coverage') {
         mkdirSync(output, { recursive: true });
         await run(['--test', '--experimental-test-coverage', '--test-reporter=spec', '--test-reporter-destination=stdout', '--test-reporter=lcov', `--test-reporter-destination=${join(output, 'loaded.lcov')}`, ...tests]);
         coverage();
       } else await run(['--test', ...tests]);
-    } finally {
-      if (JSON.stringify(before) !== JSON.stringify(hashes())) throw Error('Tests modified the developer runtime in node_modules');
-    }
+    } catch (error) { failed = error; }
+    const modified = JSON.stringify(before) !== JSON.stringify(hashes());
+    // Both findings surface: neither the integrity violation nor the suite's own error hides the other.
+    if (modified && failed) throw Error('Tests modified the developer runtime in node_modules; the suite itself also failed.', { cause: failed });
+    if (modified) throw Error('Tests modified the developer runtime in node_modules');
+    if (failed) throw failed;
     return;
   }
   const groups = {

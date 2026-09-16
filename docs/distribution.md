@@ -30,7 +30,7 @@ dscode
 
 支持 `dscode --continue`、`dscode --resume SESSION_ID` 和 `dscode --cwd /path/to/project`。默认操作当前终端目录；状态保存在安装目录 `.runtime`。自定义位置可在安装时设置绝对路径的 `DSCODE_INSTALL_DIR`、`DSCODE_BIN_DIR`。
 
-安装器不会覆盖已有安装或命令。此版本没有自动升级器；升级前应备份旧安装的 `.runtime`、`.env` 和本地 config，并保留回退副本。
+安装器不会覆盖已有安装或命令。自包含 `dscode update` 的版本起，tar 安装支持自升级：`dscode update [精确版本号]` 从 GitHub Releases 下载 tar 包并按发布方 sha256 摘要校验，迁移 `.runtime`、`.env` 与本地 config，原位换目录（`dscode` 命令路径不变，无需重新链接），旧安装保留为同级备份目录，可手动换回或丢弃。更新要求没有正在运行的会话；npm ci 下载锁定依赖，需要联网。更早版本的 tar 安装没有升级器，请把新 tar 包装到新目录并手动迁移一次状态。
 
 ## 为什么当前不直接 npm install -g
 

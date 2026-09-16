@@ -46,7 +46,7 @@ try {
       assert(existsSync(join(destination, 'vendor/tui/dscode-providers/openrouter-account.mjs')), 'the /openrouter panel reads its account module beside the TUI');
       assert.match(readFileSync(join(destination, 'vendor/tui/index.mjs'), 'utf8'), /dscode-openrouter-account-v1/);
       const bundlePatch = readFileSync(join(destination, 'cordis.patch.yml'), 'utf8');
-      assert.match(bundlePatch, /- id: llm-pi-ai\n  disabled: true\n/);
+      assert.match(bundlePatch, /- id: llm-pi-ai\n {2}disabled: true\n/);
       assert.match(bundlePatch, /searchProvider: dscode-web/);
       assert.match(bundlePatch, /name: ['"]?@toddzheng024\/dscode-bundle\/openrouter['"]?\n/);
       assert(!bundlePatch.includes('dscode-bundle/pi-ai'));

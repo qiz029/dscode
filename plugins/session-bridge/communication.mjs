@@ -57,13 +57,22 @@ export class CommunicationService {
     };
     agent.cancel = state.cancelWrapper;
     this.states.set(agent.id, state);
-    state.ready = this.background(this.recover(state));
+    this.ensureReady(state);
   }
   state(agent) {
     const state = this.states.get(agent.id);
     if (!state || state.agent !== agent) fail('target_unavailable', 'Session communication owner is not ready');
     this.store.authenticate(state.auth);
     return state;
+  }
+  /** Recovery runs once per agent; a failed attempt fails closed for the step that awaited
+   * it and is retried by the next step, instead of failing every later step forever. */
+  ensureReady(state) {
+    if (!state.ready || state.readyFailed) {
+      state.readyFailed = false;
+      state.ready = this.background(this.recover(state).catch(error => { state.readyFailed = true; throw error; }));
+    }
+    return state.ready;
   }
   async remove(agent) {
     const state = this.states.get(agent.id);
@@ -161,7 +170,7 @@ export class CommunicationService {
     for (const m of messages) if (communicationId(m)) {
       batch.add(communicationId(m)); this.store.transition(state.auth, communicationId(m), 'admitted', `${state.auth.generation}:${turn}`);
     }
-    await state.ready;
+    await this.ensureReady(state);
     await this.confirm(state);
     signal.throwIfAborted();
     if (step === 1 && !state.cutoffs.has(turn)) fail('missing_cutoff', 'Missing turn-start mailbox cutoff');
@@ -193,7 +202,7 @@ export class CommunicationService {
   }
   async receive(agent, payload) {
     const state = this.state(agent);
-    await state.ready;
+    await this.ensureReady(state);
     this.store.authenticate(state.auth);
     // Reply routing is checked both here and by the shared admission transaction.
     let admission;
@@ -210,7 +219,7 @@ export class CommunicationService {
   }
   async send(agent, args, reply = false) {
     if (agent.session.header.origin === 'subagent') fail('root_session_required', 'Cross-session requests and replies belong to the root session; report this to your parent agent.');
-    const state = this.state(agent); await state.ready;
+    const state = this.state(agent); await this.ensureReady(state);
     let destination = args.session_id, kind = args.kind, inReplyTo = args.in_reply_to;
     if (reply) {
       const original = this.store.get(args.request_message_id);

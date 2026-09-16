@@ -39,7 +39,7 @@ async function git(dir, cwd, args, { index, signal, env = {} } = {}) {
     });
     return stdout;
   } catch (error) {
-    if (error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') throw Error('Review diff exceeds 160 KiB. Use --path to review a smaller part.');
+    if (error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') throw Error('Review diff exceeds 160 KiB. Use --path to review a smaller part.', { cause: error });
     throw error;
   }
 }

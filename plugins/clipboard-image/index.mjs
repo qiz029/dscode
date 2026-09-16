@@ -51,9 +51,9 @@ export async function readClipboardImage() {
     await execFile(binary, [path], { timeout: 10_000, maxBuffer: 1024 });
   } catch (error) {
     await rm(directory, { recursive: true, force: true });
-    if (error?.code === 2) throw Error('Clipboard has no image');
-    if (error?.code === 4) throw Error('Clipboard image is too large');
-    throw Error('Could not read clipboard image');
+    if (error?.code === 2) throw Error('Clipboard has no image', { cause: error });
+    if (error?.code === 4) throw Error('Clipboard image is too large', { cause: error });
+    throw Error('Could not read clipboard image', { cause: error });
   }
   clipboardDirs.add(directory);
   if (!cleanupRegistered) {

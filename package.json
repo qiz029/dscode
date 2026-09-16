@@ -1,6 +1,6 @@
 {
   "name": "todd-dsh-tui-harness",
-  "version": "0.7.8",
+  "version": "0.7.9",
   "private": true,
   "type": "module",
   "bin": {
@@ -28,10 +28,11 @@
     "test:ui": "node scripts/checks.mjs ui",
     "test:package": "node scripts/checks.mjs package",
     "test:coverage": "node scripts/checks.mjs coverage",
-    "check": "npm run test:coverage && npm run test:integration && npm run test:ui && npm run test:package && npm run test:eval",
+    "check": "npm run lint && npm run test:coverage && npm run test:integration && npm run test:ui && npm run test:package && npm run test:eval",
     "test:eval": "node --test eval/compaction/tests/*.test.mjs eval/continuation/tests/*.test.mjs eval/deepswe/tests/*.test.mjs",
     "eval:compaction": "node eval/compaction/runner.mjs",
-    "eval:continuation": "node eval/continuation/runner.mjs"
+    "eval:continuation": "node eval/continuation/runner.mjs",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@anionex/dsh-computer-use": "0.3.2",
@@ -92,8 +93,11 @@
   "devDependencies": {
     "@dsh-plugin-hub/cli": "0.4.0",
     "@dsh-plugin-hub/schemas": "0.4.0",
+    "@eslint/js": "^10.0.1",
     "@modelcontextprotocol/sdk": "1.29.0",
+    "eslint": "^10.10.0",
     "fflate": "0.8.2",
+    "globals": "^17.12.0",
     "yaml": "2.8.1"
   },
   "dsh": {

@@ -39,7 +39,7 @@ const matchesPath = (file, path) => !path || file === path || file.startsWith(`$
 const safeLabel = value => JSON.stringify(value);
 const sensitiveFile = file => /^(?:\.env(?:\..*)?|\.npmrc|\.pypirc|id_(?:rsa|ed25519))$|\.(?:pem|p12|pfx|key)$/i.test(posix.basename(file));
 
-async function untracked(cwd, path, signal) {
+export async function untracked(cwd, path, signal) {
   const args = ['ls-files', '--others', '--exclude-standard', '-z', '--', ...(path ? [path] : [])];
   const names = (await git(cwd, args, signal)).split('\0').filter(Boolean).filter(file => matchesPath(file, path));
   const chunks = [], omitted = [];
@@ -51,13 +51,21 @@ async function untracked(cwd, path, signal) {
       continue;
     }
     const full = join(cwd, file);
-    const info = await lstat(full);
-    if (!info.isFile() || info.size > 128 * 1024) {
+    let data;
+    try {
+      const info = await lstat(full);
+      if (!info.isFile() || info.size > 128 * 1024) {
+        omitted.push(file);
+        chunks.push(`Untracked file omitted from review: ${safeLabel(file)} (not a small regular file)\n`);
+        continue;
+      }
+      data = await readFile(full);
+    } catch {
+      // A file that vanishes or turns unreadable between listing and reading is omitted, never fatal.
       omitted.push(file);
-      chunks.push(`Untracked file omitted from review: ${safeLabel(file)} (not a small regular file)\n`);
+      chunks.push(`Untracked file omitted from review: ${safeLabel(file)} (unreadable or vanished during collection)\n`);
       continue;
     }
-    const data = await readFile(full);
     if (data.includes(0)) {
       omitted.push(file);
       chunks.push(`Untracked binary file omitted from review: ${safeLabel(file)}\n`);
@@ -88,7 +96,7 @@ export function isGitWorkspaceSync(cwd, run = execFileSync, now = Date.now()) {
   // Any failure (no repository, missing directory, git unavailable) means the review tool cannot work here.
   let value = false;
   try { run('git', ['rev-parse', '--is-inside-work-tree'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 }); value = true; }
-  catch { value = false; }
+  catch { /* any failure means the review tool cannot work here */ }
   gitWorkspaceCache.set(cwd, { at: now, value });
   return value;
 }
@@ -99,7 +107,7 @@ export function isGitAvailableSync(run = execFileSync) {
   if (run === execFileSync && gitAvailable !== undefined) return gitAvailable;
   let value = false;
   try { run('git', ['--version'], { stdio: 'ignore', timeout: 3000 }); value = true; }
-  catch { value = false; }
+  catch { /* git is unavailable */ }
   if (run === execFileSync) gitAvailable = value;
   return value;
 }

@@ -40,9 +40,9 @@ DSCODE is a terminal coding agent for macOS, built on [DeepSeek Harness](https:/
 
 ## 🆕 What's new
 
-**0.7.8** — Automatic review is bounded to two passes of at most 90 seconds. The agent is instructed to provide progress updates in normal mode and finish against stable acceptance criteria. Session metrics caching, mailbox retention and patch build validation are improved.
+**0.7.9** — `dscode update` updates the whole installation: the tar install gains a sha256-verified, in-place self-update and the npm/Hub launcher replaces itself with npm before upgrading the profile. ESLint 10 gates the repository. The agent is instructed to provide progress updates in normal mode and finish against stable acceptance criteria. Session metrics caching, mailbox retention and patch build validation are improved.
 
-Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.8 notes](docs/releases/0.7.8.md) have the long version.
+Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.9 notes](docs/releases/0.7.9.md) have the long version.
 
 ## 🚀 Quick start
 
@@ -81,11 +81,11 @@ npm start
 npm start -- --cwd /path/to/project
 ```
 
-**From a tar package** — download `dscode-0.7.8.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
+**From a tar package** — download `dscode-0.7.9.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.8.tar.gz -C dscode-install
+tar -xzf dscode-0.7.9.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -94,17 +94,17 @@ The command lands in `~/.local/bin/dscode` by default—make sure that directory
 **If the npm name lookup returns 404**, install the same version straight from the official registry tarball:
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.8.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.9.tgz
 ```
 
-**Upgrade** — update the launcher first, then the installed profile:
+**Upgrade** — `dscode update [exact-version]` updates the whole installation in one step, and requires no running DSCODE sessions. On the npm/Hub install it replaces the launcher binary with npm and then upgrades the installed profile to the same version. On a tar install it downloads the release tarball, verifies it against the release's sha256 digest, swaps the installation directory in place and migrates `.runtime`, `.env` and local `config/`; the previous installation is kept as a sibling backup directory. A source checkout refuses and points at git pull instead.
 
 ```sh
-npm install -g @toddzheng024/dscode@0.7.8
-dscode update 0.7.8
+dscode update                  # latest release
+dscode update 0.7.9            # an exact version
 ```
 
-`dscode history` lists retained versions and `dscode rollback` returns to the previous preset revision. Source, tar and npm/Hub installs use different data directories, and sessions and credentials are not migrated between them. See the [tar distribution notes](docs/distribution.md) and the [npm + Hub guide](docs/hub-distribution.md).
+`dscode history` lists retained versions and `dscode rollback` returns to the previous preset revision (npm/Hub install). Tar installs older than the first release with `dscode update` upgrade by installing the new tarball into a fresh directory and migrating the state once. Source, tar and npm/Hub installs use different data directories, and sessions and credentials are not migrated between them. See the [tar distribution notes](docs/distribution.md) and the [npm + Hub guide](docs/hub-distribution.md).
 
 </details>
 

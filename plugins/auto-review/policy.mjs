@@ -25,7 +25,7 @@ export function redact(text) {
   return String(text)
     .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g, '[REDACTED]')
     .replace(/\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{16,}|github_pat_[A-Za-z0-9_]{16,}|AKIA[A-Z0-9]{16})\b/g, '[REDACTED]')
-    .replace(/\b(Bearer\s+)[A-Za-z0-9._~+\/-]{8,}=*/gi, '$1[REDACTED]')
+    .replace(/\b(Bearer\s+)[A-Za-z0-9._~+/-]{8,}=*/gi, '$1[REDACTED]')
     .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization|cookie)["']?\s*[:=]\s*["']?)([^\s"',;}]+)/gi, '$1[REDACTED]')
     .replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]+@/g, '$1[REDACTED]@');
 }
@@ -65,7 +65,7 @@ export function parseDecision(text) {
 const ESCALATION_DIAGNOSTICS = new Set(['ps', 'lsof', 'pgrep', 'sw_vers', 'uname', 'id', 'date', 'hostname', 'pwd', 'sysctl']);
 // Quotes, substitution, redirects and chaining all mean the command can do more
 // than the diagnostic whose name it starts with.
-const SHELL_META = /[;&|<>`$(){}\[\]\n\\'"]/;
+const SHELL_META = /[;&|<>`$()[\]\n\\'"]/;
 
 /**
  * Match one pending escalation against the read-only diagnostic allowlist.
@@ -80,5 +80,9 @@ export function escalationDiagnosticGrant(toolName, args) {
   if (command.length === 0 || command.length > 200 || SHELL_META.test(command)) return undefined;
   const argv = command.split(/\s+/);
   if (!ESCALATION_DIAGNOSTICS.has(argv[0])) return undefined;
+  // A diagnostic is only safe read-only: `sysctl -w` and assignment-like sysctl keys write
+  // kernel state, and arguments can turn hostname/date into a system change when privileged.
+  if (argv[0] === 'sysctl' && argv.some(token => token === '-w' || token.includes('='))) return undefined;
+  if ((argv[0] === 'hostname' || argv[0] === 'date') && argv.length > 1) return undefined;
   return { command, argv };
 }

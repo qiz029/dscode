@@ -186,7 +186,7 @@ export function createGmailConnector({ inbox = createEmailInbox(), directory = j
           store.write('state.json', next); return { accepted: next.accepted, skipped: next.skipped };
         } catch (error) {
           const safe = error.status ? error.message : /^(Google|Gmail|Grant|Set DSCODE_|Cannot read|Invalid Gmail)/.test(error.message) ? error.message : 'Gmail sync interrupted. Retry sync.';
-          store.write('state.json', { ...state, error: safe }); throw Error(safe);
+          store.write('state.json', { ...state, error: safe }); throw Error(safe, { cause: error });
         }
       });
     },

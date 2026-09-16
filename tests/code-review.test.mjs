@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { collectReviewDiff, parseReviewCommand, reviewSpec, gitWorkspace, isGitAvailableSync, isGitWorkspaceSync } from '../plugins/code-review/git.mjs';
+import { collectReviewDiff, parseReviewCommand, reviewSpec, untracked, gitWorkspace, isGitAvailableSync, isGitWorkspaceSync } from '../plugins/code-review/git.mjs';
 import { baselineStore } from '../plugins/code-review/baseline.mjs';
 import { apply, independentReview, REVIEW_LIMITS } from '../plugins/code-review/index.mjs';
 import { patchReview } from '../scripts/patch-review.mjs';
@@ -390,4 +390,23 @@ test('the review deadline bounds stalled model metadata and streams and returns 
       assert.equal(result.reviewBudget.used, 1);
     } finally { mock.mock.restore(); }
   }
+});
+
+test('untracked files that turn unreadable during collection are omitted, not fatal', async () => {
+  if (process.getuid?.() === 0) return; // chmod-based unreadability needs a non-root runner
+  const cwd = await mkdtemp(join(tmpdir(), 'dscode-review-'));
+  try {
+    await git(cwd, 'init', '-q');
+    await git(cwd, 'config', 'user.email', '[EMAIL]');
+    await writeFile(join(cwd, 'readable.txt'), 'content\n');
+    await writeFile(join(cwd, 'locked.txt'), 'secret\n');
+    await chmod(join(cwd, 'locked.txt'), 0o000);
+    try {
+      const { text, omitted } = await untracked(cwd, '', undefined);
+      assert.match(text, /readable\.txt/);
+      assert.deepEqual(omitted, ['locked.txt']);
+      assert.match(text, /unreadable or vanished/);
+      assert.doesNotMatch(text, /secret/);
+    } finally { await chmod(join(cwd, 'locked.txt'), 0o644); }
+  } finally { await rm(cwd, { recursive: true, force: true }); }
 });

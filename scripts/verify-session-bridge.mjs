@@ -20,6 +20,6 @@ try {
   if (readdirSync(socketDirectory(home)).some(name => name.endsWith('.sock'))) throw Error('Host exited without removing its socket');
   console.log(output.split('\n').find(line => line.includes('SESSION_BRIDGE_PROBE_PASSED')));
 } finally {
-  try { rmSync(socketDirectory(home), { recursive: true, force: true }); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  try { rmSync(socketDirectory(home), { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
   rmSync(home, { recursive: true, force: true });
 }

@@ -141,7 +141,7 @@ test('the SSE reader skips keep-alive comments and reassembles split lines', asy
 });
 
 test('the SSE reader drops a bare data line instead of failing the stream on it', async () => {
-  const payloads = await collect(sseData(chunks('data:\n\n', 'data: {\"a\":1}\n\n', 'data:\ndata:\n\n', 'data: [DONE]\n\n')));
+  const payloads = await collect(sseData(chunks('data:\n\n', 'data: {"a":1}\n\n', 'data:\ndata:\n\n', 'data: [DONE]\n\n')));
   assert.deepEqual(payloads, ['{"a":1}', '[DONE]']);
 });
 

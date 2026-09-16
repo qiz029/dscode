@@ -34,7 +34,7 @@ export async function acquireLock(home, { waitMs = 2000 } = {}) {
     return Object.assign(() => { if (!released) { released = true; closeSync(fd); } }, { fd });
   } catch (error) {
     closeSync(fd);
-    if (contended(error)) throw Error('DSCODE is starting or changing versions. Retry when that operation finishes.');
+    if (contended(error)) throw Error('DSCODE is starting or changing versions. Retry when that operation finishes.', { cause: error });
     throw error;
   }
 }

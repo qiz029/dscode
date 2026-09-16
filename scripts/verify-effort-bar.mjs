@@ -108,7 +108,7 @@ try {
     try {
       await tick(130);
       const frame = frames.filter(value => value.includes('ULTRA')).at(-1) ?? '';
-      assert.match(frame, /✦  ULTRA/);
+      assert.match(frame, /✦ {2}ULTRA/);
       assert.equal(frame.split('\n').length, 3);
       for (const line of frame.split('\n')) assert(ui.visibleColumns(line) <= columns);
     } finally { mounted.unmount(); mounted.cleanup(); stdin.destroy(); stdout.destroy(); stderr.destroy(); }

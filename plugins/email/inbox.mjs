@@ -52,7 +52,7 @@ export function createEmailInbox({ directory = process.env.DSCODE_EMAIL_DIR || j
       try {
         writeFileSync(temp, json, { flag: 'wx', mode: 0o600 });
         renameSync(temp, target);
-      } finally { try { unlinkSync(temp); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
+      } finally { try { unlinkSync(temp); } catch { /* best-effort cleanup: never mask the write's own outcome */ } }
       return mail;
     },
     list() {

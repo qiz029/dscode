@@ -126,7 +126,7 @@ try {
       } else assert.match(plain, /❄ DSCODE/);
       assert(!plain.includes('Deep diving'));
       assert(!plain.includes('⠋'), 'Braille spinner should be gone');
-      assert.match(plain, columns >= 64 ? /❄  Running · shell/ : /❄  Runn/, 'Static snowflake leads the activity line (English by default)');
+      assert.match(plain, columns >= 64 ? /❄ {2}Running · shell/ : /❄ {2}Runn/, 'Static snowflake leads the activity line (English by default)');
       if (columns >= 64) assert.match(plain, /Esc to interrupt/); else assert(!plain.includes('Esc to interrupt'), 'the interrupt hint yields to the label on narrow terminals');
       assert.match(plain, /this turn/, 'activity suffix is localized');
       assert(!plain.includes('secret command'));
@@ -214,7 +214,7 @@ try {
       assert.equal(wells.length, 4, `four well rows at ${columns} columns`);
       assert(board.includes('+----------------+'));
     }
-    if (columns >= 80) assert.match(board, /\|  Compacting context, please wait/);
+    if (columns >= 80) assert.match(board, /\| {2}Compacting context, please wait/);
     const row = await renderPlain(h(ui.DscodeCompactionLine, { since: now - 24000, rows: 1, animated: false }), columns, 'Compact', 'row');
     assert.equal(row.split('\n').filter(line => /\|[ .[\]=]{16}\|/.test(line)).length, columns < 28 ? 0 : 1, 'a short terminal keeps one well row');
     if (columns >= 80) assert.match(row, /Compacting context, please wait · /);

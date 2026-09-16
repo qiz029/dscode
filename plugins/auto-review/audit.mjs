@@ -10,7 +10,11 @@ export function auditStore(directory) {
     read(id) {
       const path = pathFor(id);
       if (!existsSync(path)) return [];
-      return readFileSync(path, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
+      // A torn or corrupt line is skipped, never allowed to break every later read.
+      // Audit rows are a telemetry sidecar: silent skips are accepted and the usable trail stays readable.
+      return readFileSync(path, 'utf8').split('\n').filter(Boolean).flatMap(line => {
+        try { return [JSON.parse(line)]; } catch { return []; }
+      });
     },
     append(id, record) {
       mkdirSync(directory, { recursive: true, mode: 0o700 });

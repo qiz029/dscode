@@ -95,3 +95,16 @@ test('late disposal of a previous agent cannot unregister the replacement owner'
   assert.equal(f.service.store.authenticate(state.auth).generation, state.auth.generation);
   assert((await f.service.receive(replacement, f.request('replacement'))).accepted);
 });
+
+test('a failed recovery fails closed once and is retried by the next step', async t => {
+  const f = await fixture(t);
+  const state = f.service.state(f.agent);
+  state.ready = null;
+  const original = f.service.store.pending;
+  f.service.store.pending = () => { throw Error('store unavailable'); };
+  await assert.rejects(f.service.ensureReady(state), /store unavailable/);
+  assert.equal(state.readyFailed, true);
+  f.service.store.pending = original;
+  await f.service.ensureReady(state);
+  assert.equal(state.readyFailed, false);
+});

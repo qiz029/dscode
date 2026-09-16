@@ -39,7 +39,7 @@ export async function apply(ctx) {
   }, async ({ project, workspace, cursor = 0, limit = 20 }) => {
     if (!Number.isSafeInteger(cursor) || cursor < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw Error('Invalid pagination');
     const all = (await discover(home)).filter(s => (!project || s.card?.project?.id === project) && (!workspace || s.cwd === workspace)).sort((a, b) => a.id.localeCompare(b.id));
-    return { sessions: all.slice(cursor, cursor + limit).map(({ socket, ...s }) => s), nextCursor: cursor + limit < all.length ? cursor + limit : null };
+    return { sessions: all.slice(cursor, cursor + limit).map(({ socket: _socket, ...s }) => s), nextCursor: cursor + limit < all.length ? cursor + limit : null };
   });
   register('read_session', 'Read a session event page without waking it or collecting deferred notes.', {
     session_id: field('Complete active session ID', true), after: field('Last seen session event sequence', false, 'number'), limit: field('1..100', false, 'number'),

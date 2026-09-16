@@ -6,7 +6,7 @@ import { tryLockExclusive } from '@deepseek-ai/node-addon-system/flock';
 export function emailStore(directory, label = 'email') {
   const read = name => {
     try { return JSON.parse(readFileSync(join(directory, name), 'utf8')); }
-    catch (error) { if (error.code === 'ENOENT') return null; throw Error('Cannot read local ' + label + ' configuration.'); }
+    catch (error) { if (error.code === 'ENOENT') return null; throw Error('Cannot read local ' + label + ' configuration.', { cause: error }); }
   };
   return {
     directory, read,
@@ -17,7 +17,7 @@ export function emailStore(directory, label = 'email') {
       try {
         writeFileSync(temp, JSON.stringify(value), { flag: 'wx', mode: 0o600 });
         renameSync(temp, join(directory, name));
-      } finally { try { unlinkSync(temp); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
+      } finally { try { unlinkSync(temp); } catch { /* best-effort cleanup: never mask the write's own outcome */ } }
     },
     async locked(action) {
       mkdirSync(directory, { recursive: true, mode: 0o700 });

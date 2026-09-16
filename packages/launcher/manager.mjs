@@ -12,7 +12,7 @@ const loadExecCli = () => import(existsSync(new URL('./exec/cli.mjs', import.met
 export function stateHome(env = process.env) {
   return resolve(env.DSCODE_HOME || join(homedir(), '.local/share/dscode-hub'));
 }
-export function commandPlan(args, release, installed) {
+export function commandPlan(args, release, installed, launcherVersion) {
   const [command, ...rest] = args;
   if (command === 'exec') return { exec: rest, install: !installed };
   if (command === 'resume') {
@@ -22,7 +22,13 @@ export function commandPlan(args, release, installed) {
   const flags = ['--profile', 'dscode'];
   if (command === 'install' || command === 'update') {
     if (rest.length > 1 || rest[0] && !/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(rest[0])) throw Error('Usage: dscode install|update [exact-version]');
-    return { hub: ['profile', installed ? 'upgrade' : 'apply', release.slug, '--version', rest[0] ?? release.version, ...flags] };
+    if (command === 'install') return { hub: ['profile', installed ? 'upgrade' : 'apply', release.slug, '--version', rest[0] ?? release.version, ...flags] };
+    // An exact argument updates launcher and profile to that version; without one, a newer
+    // launcher found on npm moves both, and otherwise the profile follows this launcher.
+    const wanted = rest[0] ?? launcherVersion;
+    const version = wanted ?? release.version;
+    return { hub: ['profile', installed ? 'upgrade' : 'apply', release.slug, '--version', version, ...flags],
+      ...(wanted && wanted !== release.version ? { launcherUpdate: wanted } : {}) };
   }
   if (command === 'rollback') {
     if (rest.length > 1 || rest[0]?.startsWith('-')) throw Error('Usage: dscode rollback [revision]');
@@ -70,6 +76,57 @@ export function warnCompatibility(profile, release, metadata, warn = console.err
   if (differences.length) warn(`[DSCODE warning] This installation differs from the recommended version combination:\n${differences.map(line => `  ${line}`).join('\n')}\nContinuing without confirmation. Compatibility has not been verified for this combination.\n`);
   return differences;
 }
+const LAUNCHER_PACKAGE = '@toddzheng024/dscode';
+/** Semver-shaped comparison: numeric core, then a prerelease below its release. */
+export function compareVersion(left, right) {
+  const split = value => {
+    const at = value.indexOf('-');
+    return { core: (at === -1 ? value : value.slice(0, at)).split('.').map(Number), pre: at === -1 ? [] : value.slice(at + 1).split('.') };
+  };
+  const a = split(left), b = split(right);
+  for (let index = 0; index < Math.max(a.core.length, b.core.length); index++) {
+    const x = a.core[index] ?? 0, y = b.core[index] ?? 0;
+    if (x !== y) return Math.sign(x - y);
+  }
+  if (a.pre.length === 0 || b.pre.length === 0) return Math.sign(b.pre.length - a.pre.length);
+  for (let index = 0; index < Math.min(a.pre.length, b.pre.length); index++) {
+    const x = a.pre[index], y = b.pre[index];
+    const numeric = [ /^\d+$/.test(x), /^\d+$/.test(y) ];
+    if (numeric[0] && numeric[1] && Number(x) !== Number(y)) return Math.sign(Number(x) - Number(y));
+    if (numeric[0] !== numeric[1]) return numeric[0] ? -1 : 1;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * The launcher version `dscode update` should move to: an explicit argument wins; without
+ * one, the newest published launcher when it is newer than this one. A registry that cannot
+ * be read falls back to this launcher's recommended version.
+ */
+export async function launcherUpdateVersion(arg, release, { fetchImpl = fetch, log = console.error } = {}) {
+  if (arg) return arg;
+  try {
+    const response = await fetchImpl(`https://registry.npmjs.org/${LAUNCHER_PACKAGE}/latest`, { headers: { accept: 'application/vnd.npm.install-v1+json' } });
+    if (!response.ok) throw Error(`HTTP ${response.status}`);
+    const version = (await response.json()).version;
+    return typeof version === 'string' && /^\d+\.\d+\.\d+/.test(version) && compareVersion(version, release.version) > 0 ? version : undefined;
+  } catch (error) {
+    log(`[DSCODE] Could not check npm for a newer launcher (${error.message}); updating the profile to ${release.version}.`);
+    return undefined;
+  }
+}
+
+/** Replace the globally installed launcher binary itself; the profile step only runs when this kept its promise. */
+export function installLauncher(version, { spawnImpl = spawn, log = console.error } = {}) {
+  return new Promise((resolvePromise, reject) => {
+    log(`Updating the DSCODE launcher to ${version} with npm…`);
+    const child = spawnImpl('npm', ['install', '-g', `${LAUNCHER_PACKAGE}@${version}`], { stdio: 'inherit' });
+    child.once('error', error => reject(Error(`npm could not update the launcher (${error.message}); run npm install -g ${LAUNCHER_PACKAGE}@${version} manually.`)));
+    child.once('exit', code => code === 0 ? resolvePromise() : reject(Error(`npm install -g ${LAUNCHER_PACKAGE}@${version} exited with ${code}; the profile was not changed.`)));
+  });
+}
+
 export async function run(args, release) {
   const home = stateHome();
   const envFile = join(home, '.env');
@@ -123,10 +180,20 @@ export async function run(args, release) {
     const state = join(home, '.hub/installations/dscode/current.json');
     const installed = existsSync(state) && existsSync(join(profile, 'package.json'));
     if (!installed && existsSync(profile)) throw Error('Existing unmanaged/incomplete dscode profile; inspect ' + profile);
-    const plan = commandPlan(args, release, installed);
+    const launcherVersion = args[0] === 'update' ? await launcherUpdateVersion(args[1], release) : undefined;
+    const plan = commandPlan(args, release, installed, launcherVersion);
     const running = await activeRuns(home);
     const mutatesProfile = plan.install || plan.hub && !['history', 'doctor'].includes(plan.hub[1]);
     if (mutatesProfile && running.length) throw Error('DSCODE sessions are running. Exit them before installing, updating or rolling back this profile.');
+    if (plan.launcherUpdate) {
+      await installLauncher(plan.launcherUpdate);
+      // The launcher binary is replaced now; if the profile step fails, the next
+      // `dscode update <version>` skips the npm pass and finishes the profile upgrade.
+      try { return await exec(hub, plan.hub, process.cwd(), releaseLock); }
+      catch (error) {
+        throw Error(`The launcher itself was updated to ${plan.launcherUpdate}, but the profile upgrade failed: ${error.message}. Run "dscode update ${plan.launcherUpdate}" again to finish it.`, { cause: error });
+      }
+    }
     if (plan.hub) return await exec(hub, plan.hub, process.cwd(), releaseLock);
     if (plan.install) {
       (execOptions ? console.error : console.log)(`Installing DSCODE ${release.version} from dshpluginhub.ai…`);
