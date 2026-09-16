@@ -59,7 +59,7 @@ try {
   ]);
   assert(settled.plain.includes('first prompt') && settled.plain.includes('Reply number 1'), 'settled history must be written to the scrollback stream');
   assert(settled.plain.includes('─'.repeat(8)), 'a finished turn keeps its rule');
-  assert(settled.plain.includes('type a message'), 'the composer stays under the history');
+  assert(settled.plain.includes('steer into this turn'), 'the composer stays under the history');
   assert(!settled.raw.includes('\x1b[?1000h'), 'no mouse capture may be enabled');
 
   view.busy = true;

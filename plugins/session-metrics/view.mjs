@@ -34,7 +34,10 @@ export function summarize(rows, events = [], corrupt = false) {
     if (!Number.isFinite(row.cost)) unknown = true;
     else cost += row.cost;
     const u = row.usage;
-    if (!u || !Number.isFinite(u.inputTokens) || !Number.isFinite(u.outputTokens)) { cacheUnknown = true; continue; }
+    // An auxiliary call (memory, review, an aborted stream) can end without a usage chunk: that
+    // call is unaccounted, not a cache miss, so it must not blank the whole session's ratio.
+    if (!u) continue;
+    if (!Number.isFinite(u.inputTokens) || !Number.isFinite(u.outputTokens)) { cacheUnknown = true; continue; }
     const total = u.inputTokens + (u.cacheReadTokens ?? 0) + (u.cacheWriteTokens ?? 0);
     // OpenRouter reports cache reads only when there are some: a missing count is zero, not unknown.
     input += total; hit += u.cacheReadTokens ?? 0;
@@ -60,10 +63,10 @@ export function formatFooter(metrics, context, columns = 80, rates, locale = 'en
     `${label('footer.average')}: ${Number.isFinite(rates.average) ? rates.average.toFixed(1) : '--'} tps`,
     `${label('footer.context')}: ${ctx}`, dollars, `${label('footer.cache')}: ${cache}`,
   ] : [`${label('footer.context')}: ${ctx}`, dollars, `${label('footer.cache')}: ${cache}`];
-  // Narrow terminals shed the quietest figures first: average, cache hit, current. The
+  // Narrow terminals shed the quietest figures first: average, current, context. The
   // model header then falls back to its bare `model @ effort` form, then context goes,
   // and only then the header itself — the running cost is the last thing standing.
-  const drops = rates ? [1, 4, 0, 2] : [2, 0];
+  const drops = rates ? [1, 0, 2, 4] : [0, 2];
   const offset = header === '' ? 0 : 1;
   const parts = header === '' ? base : [header, ...base];
   const short = header.replace(/^[^:]+: /, '');

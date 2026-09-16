@@ -95,7 +95,8 @@ test('session totals weight input tokens, retain unknowns and survive replay', (
   assert.deepEqual(summarize(JSON.parse(JSON.stringify(rows))), summary);
   assert.equal(summarize([...rows, { kind: 'start', id: 'pending', time: 20 }]).cache, 9);
   assert(summarize([...rows, { kind: 'end', id: 'failed', cost: null }]).unknown);
-  assert.equal(summarize([...rows, { kind: 'end', id: 'failed', cost: null }]).cache, null);
+  assert.equal(summarize([...rows, { kind: 'end', id: 'failed', cost: null }]).cache, 9, 'a call that ends without usage is unaccounted, not a cache miss');
+  assert.equal(summarize([...rows, { kind: 'end', id: 'broken', cost: 0, usage: { inputTokens: 'x', outputTokens: 1 } }]).cache, null, 'a malformed usage still makes the ratio unknowable');
   assert.equal(summarize([...rows, { kind: 'end', id: 'openrouter', cost: 0, usage: { inputTokens: 9000, outputTokens: 5 } }]).cache, 900 / 19000 * 100, 'a call reporting no cache reads counts as zero, not unknown');
   for (const columns of [20, 32, 48, 80, 120]) assert(formatFooter(summary, 43.2, columns).length <= columns);
   assert.match(formatFooter(summary, 43.2), /context: 43%.*\$0\.00 \/ \$(?:--|\d+\.\d{2}).*cache hit: 9\.0%/);
@@ -157,8 +158,8 @@ test('footer protects the money and the context, dropping the rates first', () =
   const money = "\\$0\\.00 \\/ \\$-- ";
   for (const columns of [24, 28, 36, 40, 44, 56, 80, 100]) assert(formatFooter(metrics, 43, columns, rates).length <= columns);
   assert.match(formatFooter(metrics, 43, 24, rates), /^\$0\.00 \/ \$-- /, 'a very narrow footer keeps the money alone');
-  assert.match(formatFooter(metrics, 43, 36, rates), new RegExp('^context: 43% \\| ' + money), 'context and money outrank the rates');
-  assert.match(formatFooter(metrics, 43, 56, rates), new RegExp('^current: ~12\\.3 tps \\| context: 43% \\| ' + money), 'the current rate returns before the average');
+  assert.match(formatFooter(metrics, 43, 36, rates), new RegExp('^' + money + '.*\\| cache hit: 90\\.0%$'), 'the cache rate survives next to the money');
+  assert.match(formatFooter(metrics, 43, 56, rates), new RegExp('^context: 43% \\| ' + money + '.*\\| cache hit: 90\\.0%$'), 'context returns before the rates and the cache stays');
   assert.match(formatFooter(metrics, 43, 80, rates), new RegExp('^current: ~12\\.3 tps \\| context: 43% \\| ' + money + '.*\\| cache hit: 90\\.0%$'), 'the cache rate returns last');
   assert.match(formatFooter(metrics, 43, 100, rates), /^current: ~12\.3 tps \| average: 2\.4 tps \| context: 43% \| \$0\.00 \/ \$-- .* \| cache hit: 90\.0%$/, 'both rates fit on a wide terminal');
 });
@@ -168,9 +169,9 @@ test('the model header leads the footer and sheds the provider before the money'
   const long = 'deepseek-official: deepseek-flash @ ultra';
   const line = columns => formatFooter(metrics, 43, columns, rates, 'en', long);
   assert(line(140).startsWith(long + ' | current: ~12.3 tps | average: 2.4 tps'), 'the full header leads a wide footer');
-  assert.match(line(92), /^deepseek-flash @ ultra \| current: ~12\.3 tps \| context: 43% \| \$0\.00/, 'the bare model keeps a rate the provider form cannot afford');
-  assert.match(line(74), new RegExp('^' + long.replace(/[.:]/g, '\\$&') + ' \\| context: 43% \\| \\$0\\.00'), 'the provider form returns as soon as it fits again');
-  assert.match(line(60), /^deepseek-flash @ ultra \| context: 43% \| \$0\.00/, 'the bare model and the context still fit at 60 columns');
+  assert.match(line(92), new RegExp('^' + long.replace(/[.:]/g, '\\$&') + ' \\| context: 43% \\| \\$0\\.00'), 'the provider form fits as soon as the rates go');
+  assert.match(line(74), /^deepseek-flash @ ultra \| context: 43% \| \$0\.00/, 'the bare model returns before the money goes');
+  assert.match(line(60), /^deepseek-flash @ ultra \| \$0\.00 \/ \$-- [^|]*\| cache hit: 90\.0%$/, 'the cache outlives context at 60 columns');
   assert.match(line(40), /^deepseek-flash @ ultra \| \$0\.00 \/ \$--/, 'a narrow footer keeps the model and the money');
   assert.match(line(20), /^\$0\.00 \/ \$--/, 'the money is the last thing standing');
 });

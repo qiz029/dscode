@@ -11,6 +11,7 @@ import { patchLogin } from './patch-login.mjs';
 import { patchWelcome } from './patch-welcome.mjs';
 import { patchEffort } from './patch-effort.mjs';
 import { patchEmail } from './patch-email.mjs';
+import { patchFrame } from './patch-frame.mjs';
 import { patchInterrupt } from './patch-interrupt.mjs';
 import { patchTurnDivider } from './patch-turn-divider.mjs';
 import { patchLanguage } from './patch-language.mjs';
@@ -25,6 +26,7 @@ import { patchCompactionTui } from './patch-compaction.mjs';
 import { patchOpenRouterTui, patchPickerCommands } from './patch-openrouter.mjs';
 import { patchUpdateCheck } from './patch-update-tui.mjs';
 import { patchErrors } from './patch-errors.mjs';
+import { patchShellMode } from './patch-shell-mode.mjs';
 
 export function patchText(text) {
   const before = '\t\t\tif (text === "/clear") {\n\t\t\t\trefresh();\n\t\t\t\tclearView();\n\t\t\t\tdismissNotice();\n\t\t\t\treturn;\n\t\t\t}';
@@ -74,6 +76,7 @@ export function patchTui(root) {
   after = patchWelcome(after, JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version);
   after = patchEffort(after);
   after = patchEmail(after);
+  after = patchFrame(after);
   after = patchInterrupt(after);
   after = patchTurnDivider(after);
   after = patchUserBackground(after);
@@ -88,6 +91,7 @@ export function patchTui(root) {
   after = patchPickerCommands(after);
   after = patchLanguage(after);
   after = patchErrors(after);
+  after = patchShellMode(after);
   after = patchUpdateCheck(after, JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version);
   cpSync(new URL('../plugins/email/', import.meta.url), join(dir, 'lib/dscode-email'), { recursive: true });
   cpSync(new URL('../plugins/providers/', import.meta.url), join(dir, 'lib/dscode-providers'), { recursive: true });

@@ -42,6 +42,10 @@ export function imeWriter(stream, anchors) {
 
 export function patchIme(text) {
   if (text.includes('// dscode-ime-v1')) return text;
+  // 1.2.0 anchors the IME cursor itself (useImeCursorAnchor with rowsBelowComposer, so the
+  // rows below the composer are accounted for). Bundle-level parking would fight it and
+  // park the candidate window above the input, so it is only installed on older bundles.
+  if (text.includes('useImeCursorAnchor')) return text;
   const patch = (from, to) => { text = replaceOnce(text, from, to); };
   patch('const create = (stream, { showCursor = false } = {}) => {', 'const create = (stream, { showCursor = false } = {}) => {\n\tconst ime = imeWriter(stream, dscodeImeAnchors);');
   patch('if (output === previousOutput) return;', 'if (output === previousOutput) { ime.park(output.split("\\n").length - 1); return; }');

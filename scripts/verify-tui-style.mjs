@@ -89,7 +89,7 @@ try {
     { label: '检查取消行为', state: 'idle', activity: 'waiting', updatedAt: 4 },
     { label: '检查写锁', state: 'done', activity: 'finished', updatedAt: 2 },
   ];
-  for (const theme of ['dark', 'light']) for (const columns of [32, 48, 60, 64, 80, 120]) {
+  for (const theme of ['dark', 'light']) for (const columns of [32, 48, 60, 64, 80, 100, 120, 130, 150, 160]) {
     ui.setTheme(theme);
     const userRows = ui.dscodeChatLines({ kind: 'user', text: '请检查这段用户输入的背景。\n第二行继续。', notice: false }, columns - 2);
     assert(userRows.length >= 3, 'three rows: two content rows and the blank one under the prompt');
@@ -154,11 +154,17 @@ try {
       assert(!plain.includes('● deepseek-flash'), 'the model must not stay on row 1');
       const telemetry = plain.split('\n').find(line => line.includes('deepseek-flash @ ultra'));
       if (columns >= 48) assert(telemetry, 'the model leads the footer telemetry row');
-      if (columns >= 48 && columns <= 64) assert.match(telemetry, /deepseek-flash @ ultra \| \$0\.00 \/ \$--/, 'a narrow telemetry row keeps the model and the money');
-      if (columns === 80) assert.match(telemetry, /deepseek-flash @ ultra \| context: 43% \| \$0\.00 \/ \$--/, 'context returns before the rates');
-      if (columns >= 120) assert.match(telemetry, /deepseek-flash @ ultra \| current: ~28\.4 tps \| context: 43% \| \$0\.00 \/ \$--/, 'a wide terminal adds the current rate');
-      if (columns >= 48) assert(!telemetry.includes('average: '), 'the provider form and the average stay out until the terminal can afford them');
-      if (columns === 120) {
+      // Measured thresholds after the cache figure became the last to drop: cache joins at 80
+      // columns, context at 100, the provider form at 120, the current rate at 130, average at 150.
+      if (columns >= 48 && columns <= 64) assert.match(telemetry, /deepseek-flash @ ultra \| \$0\.00 \/ \$--/, 'a narrow row keeps the model and the money');
+      if (columns === 80) assert.match(telemetry, /deepseek-flash @ ultra \| \$0\.00 \/ \$-- [^|]*\| cache hit: [0-9.]+%/, 'the cache rate joins before context');
+      if (columns === 100) assert.match(telemetry, /deepseek-flash @ ultra \| context: 43% \| \$0\.00 \/ \$-- [^|]*\| cache hit: [0-9.]+%/, 'context returns before the rates');
+      if (columns === 120) assert.match(telemetry, /deepseek-official: deepseek-flash @ ultra \| context: 43% \| \$0\.00 \/ \$-- [^|]*\| cache hit: [0-9.]+%/, 'the provider form returns before the rates');
+      if (columns >= 130 && columns < 150) assert.match(telemetry, /deepseek-flash @ ultra \| current: ~28\.4 tps \| context: 43% \| \$0\.00 \/ \$-- [^|]*\| cache hit: [0-9.]+%/, 'the current rate returns before the average');
+      if (columns >= 150) assert.match(telemetry, /current: ~28\.4 tps \| average: 4\.0 tps/, 'the average returns last');
+      if (columns >= 48 && columns < 150) assert(!telemetry.includes('average: '), 'the average stays out until the terminal can afford it');
+      if (columns >= 80) assert.match(telemetry, /cache hit: [0-9.]+%/, `cache hit missing at ${columns}: ${telemetry}`);
+      if (columns >= 130) {
         const yellow = rgbOf(ui.getPalette().warn);
         assert.match(frame, new RegExp(`\\x1b\\[38;2;${yellow}m~28\\.4 tps`));
       }

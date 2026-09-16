@@ -65,6 +65,7 @@ test('chat hides reasoning and tools by default and shows them dimmed in verbose
   assert.equal(patchInteraction(source), source);
   assert(source.includes('label: "/verbose"') && source.includes('if (text === "/verbose")') && source.includes('dscodeSaveFlag("verbose", next);') && source.includes('useState)(() => dscodeLoadFlag("verbose"))'), 'verbose command, dispatch, persistence and localized toggle notice are wired');
   assert.throws(() => patchInteraction('unknown upstream'), /drift/);
+  assert(source.includes('const [submitMode, setSubmitMode] = (0, import_react.useState)("steer");'), 'the composer starts in steer: a running turn is steered, an idle one sends normally');
 });
 test('resume supports latest, exact IDs, and remaining launch options', () => {
   assert.deepEqual(commandPlan(['resume'], {}, true), { launch: ['--continue'], install: false });

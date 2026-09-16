@@ -50,3 +50,26 @@ test('filesystem conflicts retain source and both paths without loading bodies i
     assert(!result.includes('PRIVATE_BODY'));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('a user shell command reaches the agent with its secrets redacted', async () => {
+  const commands = new Map();
+  const flushes = [];
+  const ctx = {
+    commands: { register: definition => commands.set(definition.name, definition) },
+    get: name => name === 'sessions' ? { flush: async session => { flushes.push(session); } } : undefined,
+  };
+  apply(ctx);
+  const inbox = [];
+  const session = { header: { cwd: process.cwd() } };
+  const agent = { session, followup: message => inbox.push(message), steer: () => {} };
+  const result = await commands.get('shell-exec').handler({ rawInput: 'echo hello && echo sk-abcdefghijklmnop', agent });
+  assert.equal(result.kind, 'success', result.text);
+  assert.match(result.text, /\[output handed to the agent\]/);
+  assert.equal(inbox.length, 1, 'exactly one message reaches the agent');
+  const text = inbox[0].content.filter(block => block.type === 'text').map(block => block.text).join('\n');
+  assert.match(text, /\[shell\] \$ echo hello/);
+  assert.match(text, /hello/);
+  assert.match(text, /\[REDACTED\]/, 'a secret in the output never reaches the agent verbatim');
+  assert.doesNotMatch(text, /sk-abcdefghijklmnop/);
+  assert.deepEqual(flushes, [session], 'the handover is flushed before the notice claims it');
+});

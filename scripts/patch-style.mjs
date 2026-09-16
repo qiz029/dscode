@@ -139,6 +139,10 @@ export function patchStyle(text) {
   patch('const groupSeparator = visibleColumns(" | ");', 'const groupSeparator = visibleColumns(" ｜ ");');
   patch('}, " | "));', '}, " ｜ "));');
   patch('const row2Budget = Math.max(0, budget - 2 - (facts.telemetry ? visibleColumns(facts.telemetry) + 3 : 0));', 'const row2Budget = Math.max(0, budget - 1 - (facts.telemetry ? visibleColumns(facts.telemetry) + 3 : 0));');
+  // Our telemetry rides row 2's RIGHT side, so the row-count the App budgets for must see it:
+  // reporting one row while two render pushes the dynamic frame to the terminal height, and Ink
+  // then clears the screen plus the scrollback on every frame (the composer drifts back up).
+  patch('const statusRowCount = layout.row2.left.length > 0 ? 2 : 1;', 'const statusRowCount = layout.row2.left.length > 0 || layout.row2.right.length > 0 ? 2 : 1;');
   patch('const rightParts = [];\n\t\trow.right.forEach', 'const rightParts = [];\n        if (key === "s2" && row.left.length > 0 && row.right.length > 0) rightParts.push((0, import_react.createElement)(Text, { key: key + "divider", color: inkColor(getPalette().dim) }, "｜ "));\n\t\trow.right.forEach');
   patch(telemetryTextAnchor, telemetryColorRender);
   patch('case "model": return {\n\t\t\tcolor: inkColor(getPalette().code),\n\t\t\tbold: true,', 'case "model": return {\n\t\t\tcolor: void 0,\n\t\t\tbold: void 0,');

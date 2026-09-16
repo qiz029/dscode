@@ -83,6 +83,12 @@ export function patchInteraction(text) {
   text = replaceOrAdopt(text, 'if (ctrl) return "\\n";\n\t\tif (alt)', 'if (ctrl || shift) return "\\n";\n\t\tif (alt)', 'if (ctrl || shift) return "\\n";\n\t\tif (alt) return "\\x1B\\r";');
   patch('function normalizeKeyboardChunk(chunk) {', 'function normalizeKeyboardChunk(chunk) {\n\tchunk = chunk.replace(/\\x1b\\[27;2;13~/g, "\\n");');
   patch('if (key.return) {\n\t\t\tif (pasteBracketRef.current)', 'if (input === "\\n" || key.ctrl && input === "j" || key.return && key.shift) {\n\t\t\tapplyEdit(insertText(liveValue, liveCursor, "\\n"));\n\t\t\treturn;\n\t\t}\n\t\tif (key.return) {\n\t\t\tif (pasteBracketRef.current)');
+  // 1.2.0 gave submission an explicit mode that starts at `queue`; DSCODE keeps the older
+  // contract where a running turn is steered and an idle one just sends ("a running driver
+  // consumes it at its next step boundary, an idle one starts a turn with it"), so Tab opts
+  // into queueing instead of the other way round.
+  patch('const [submitMode, setSubmitMode] = (0, import_react.useState)("queue");',
+    'const [submitMode, setSubmitMode] = (0, import_react.useState)("steer");');
   patch('const currentMentions = mentions;\n\t\tif (images.length', 'const currentMentions = mentions;\n\t\tif (images.length === 0 && line.startsWith("!")) {\n\t\t\trunSlash("/shell-exec " + line.slice(1));\n\t\t\treturn;\n\t\t}\n\t\tif (images.length');
   patch('await sessions.flush(currentSession);\n\t\t\t\t}', 'await sessions.flush(currentSession);\n\t\t\t\t\tinternals.stderr.write("\\nResume this session: dscode resume " + currentSession.id + "\\n");\n\t\t\t\t}');
   // Keep the raw projection intact for export and the explicit history inspector.

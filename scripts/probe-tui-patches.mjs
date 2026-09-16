@@ -11,6 +11,7 @@ import { patchLogin } from './patch-login.mjs';
 import { patchWelcome } from './patch-welcome.mjs';
 import { patchEffort } from './patch-effort.mjs';
 import { patchEmail } from './patch-email.mjs';
+import { patchFrame } from './patch-frame.mjs';
 import { patchInterrupt } from './patch-interrupt.mjs';
 import { patchTurnDivider } from './patch-turn-divider.mjs';
 import { patchUserBackground } from './patch-user-background.mjs';
@@ -25,6 +26,7 @@ import { patchOpenRouterTui } from './patch-openrouter.mjs';
 import { patchPickerCommands } from './patch-openrouter.mjs';
 import { patchLanguage } from './patch-language.mjs';
 import { patchErrors } from './patch-errors.mjs';
+import { patchShellMode } from './patch-shell-mode.mjs';
 import { patchUpdateCheck } from './patch-update-tui.mjs';
 
 // Which TUI patches still apply to the installed dsh-code bundle. Upgrading that package
@@ -49,6 +51,7 @@ const steps = [
   ['welcome', () => patchWelcome(text, version)],
   ['effort', () => patchEffort(text)],
   ['email', () => patchEmail(text)],
+  ['frame', () => patchFrame(text)],
   ['interrupt', () => patchInterrupt(text)],
   ['turnDivider', () => patchTurnDivider(text)],
   ['userBackground', () => patchUserBackground(text)],
@@ -63,6 +66,7 @@ const steps = [
   ['pickerCommands', () => patchPickerCommands(text)],
   ['language', () => patchLanguage(text)],
   ['errors', () => patchErrors(text)],
+  ['shellMode', () => patchShellMode(text)],
   ['updateCheck', () => patchUpdateCheck(text, version)],
 ];
 const failed = [];

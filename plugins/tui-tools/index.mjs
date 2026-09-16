@@ -4,6 +4,7 @@ import { readLanguage, t } from '../i18n/messages.mjs';
 import { readFile, readdir, access } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
+import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { standingMountFor } from '@deepseek-ai/dsh-agent-presets';
 import { hookEvents, validateHooks } from './hooks.mjs';
 import { redact } from '../auto-review/policy.mjs';
@@ -83,7 +84,19 @@ export function apply(ctx) {
     try { const result = await handler(inv); return { ...result, text: redact(result.text ?? '') }; }
     catch (e) { return fail(redact(`${name}: ${e.message}`)); }
   }});
-  register('shell-exec', 'Run a user shell command (also !command)', ({ rawInput, agent, signal }) => runShell(rawInput, { cwd: agent.session.header.cwd ?? process.cwd(), signal }));
+  register('shell-exec', 'Run a user shell command (also !command)', async ({ rawInput, agent, signal }) => {
+    const result = await runShell(rawInput, { cwd: agent.session.header.cwd ?? process.cwd(), signal });
+    // What the user ran belongs to the conversation: the command and its (redacted) output
+    // are handed to the agent, which then gets a turn to react to them.
+    const handover = redact(`[shell] $ ${rawInput.trim()}\n${result.text}`).slice(0, 8000);
+    try {
+      agent.followup(createUserMessage({ content: [{ type: 'text', text: handover }], source: { kind: 'plugin', plugin: 'dscode-shell-exec' } }));
+      await ctx.get('sessions')?.flush?.(agent.session);
+    } catch (error) {
+      return fail(`shell: the command ran, but its output could not reach the agent (${error.message})`);
+    }
+    return { ...result, text: `${result.text}\n\n[output handed to the agent]` };
+  });
   register('status', 'Session, model, permissions, usage and plugin health', ({ agent }) => {
     const session = agent.session;
     const route = session.requestHeader()?.config ?? agent.options;
