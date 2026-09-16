@@ -10,6 +10,12 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes here. -->
 
+## [0.7.10] - 2026-09-16
+
+### Fixed
+
+- `dscode --version` (and `-v`) on the tar and source entry prints the DSCODE version; previously it fell through to the DSH CLI and reported the runtime version (`0.1.5-rc.1`).
+
 ## [0.7.9] - 2026-09-15
 
 ### Added

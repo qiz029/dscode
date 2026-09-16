@@ -40,9 +40,9 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
-**0.7.9** — `dscode update` 一步更新整个安装：tar 安装获得带 sha256 校验的原位自升级，npm/Hub 启动器会先用 npm 替换自身再升级 profile。仓库接入 ESLint 10。
+**0.7.10** — `dscode --version` 在所有安装路径下都输出 DSCODE 版本，而不是 DSH 运行时版本。`dscode update` 一步更新整个安装：tar 安装获得带 sha256 校验的原位自升级，npm/Hub 启动器会先用 npm 替换自身再升级 profile。仓库接入 ESLint 10。
 
-每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.9 更新说明](docs/releases/0.7.9.md)。
+每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.10 更新说明](docs/releases/0.7.10.md)。
 
 ## 🚀 快速开始
 
@@ -61,6 +61,7 @@ dscode --continue                 # 继续上次会话
 dscode --resume SESSION_ID        # 恢复指定会话
 dscode --cwd /another/project     # 在指定目录工作
 dscode doctor                     # 分析近期运行日志和 session trace
+dscode --version                  # 输出 DSCODE 版本
 ```
 
 npm 启动器会核对已安装 bundle 与 Harness 依赖的推荐版本组合；版本不一致时集中显示一次 warning 并继续运行，不会修改依赖，也不会自动降级。浏览器与桌面工具按需授权：Chrome 使用独立临时 profile，不接管日常浏览器登录态；桌面工具通过 skill 渐进加载，截图理解需要支持图片的模型；当前 MCP bridge 提供 tools，不提供 resources/prompts；Computer Use 的辅助功能和录屏权限需在 macOS 中单独授予。
@@ -83,11 +84,11 @@ npm start -- --cwd /path/to/project
 
 也可复制 `.env.example` 为 `.env`，仅在本机填写密钥；此方式会优先于 `/login` 保存的凭据。
 
-**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.9.tar.gz`，然后执行：
+**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.10.tar.gz`，然后执行：
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.9.tar.gz -C dscode-install
+tar -xzf dscode-0.7.10.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -96,14 +97,14 @@ sh dscode-install/install.sh
 **若 npm 包名查询暂时返回 404**，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.9.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.10.tgz
 ```
 
 **升级** —— 除源码检出外，`dscode update [精确版本号]` 一步完成整个安装的更新，且要求没有正在运行的 DSCODE 会话。npm/Hub 安装会先用 npm 替换 launcher 本体，再把已安装的 profile 升到同一版本；tar 安装会下载 release tar 包、按发布方 sha256 校验、原位换目录并迁移 `.runtime`、`.env` 和本地 `config/`，旧安装保留为同级备份目录。源码安装会拒绝并提示改用 git pull。
 
 ```sh
 dscode update                  # 最新版本
-dscode update 0.7.9            # 指定版本
+dscode update 0.7.10           # 指定版本
 ```
 
 `dscode history` 查看保留的版本记录，`dscode rollback` 回到上个 preset 版本（npm/Hub 安装）。带 `dscode update` 之前的旧 tar 安装，请把新 tar 包装到新目录并手动迁移一次状态。源码、tar 与 npm/Hub 使用不同的数据目录，会话和凭据不会互相迁移。详见 [tar 分发说明](docs/distribution.md) 与 [npm + Hub 分发指南](docs/hub-distribution.md)。

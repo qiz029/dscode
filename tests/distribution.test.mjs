@@ -109,3 +109,14 @@ console.log(JSON.stringify({argv,options,prompt:fs.readFileSync(options.promptFi
   assert.notEqual(bad.status,0); assert.match(bad.stderr,/--effort expects/);
  } finally {rmSync(home,{recursive:true,force:true});}
 });
+
+test('the dscode entry answers --version with the DSCODE version, not the DSH runtime',()=>{
+ const root=join(import.meta.dirname,'..');
+ const version=JSON.parse(readFileSync(join(root,'package.json'),'utf8')).version;
+ for(const flag of ['--version','-v']){
+  const result=spawnSync(process.execPath,[join(root,'bin/dscode.mjs'),flag],{encoding:'utf8',timeout:10000});
+  assert.equal(result.status,0,result.stderr);
+  assert.equal(result.stdout.trim(),version);
+  assert.doesNotMatch(result.stdout,/rc\.1/,`${flag} must not fall through to the DSH runtime version`);
+ }
+});
