@@ -19,11 +19,20 @@ const { getAccessToken } = await import('../node_modules/@dsh-plugin-hub/cli/dis
 const { HubApiClient } = await import('../node_modules/@dsh-plugin-hub/cli/dist/api-client.js');
 const profile = await new HubApiClient(undefined, () => getAccessToken()).profile('dscode');
 console.log(`Hub credential OK: the dscode profile is ${profile.visibility}, latest ${profile.latestVersion ?? 'unknown'}`);
-const free = [];
-for (const name of ['@toddzheng024/dscode-bundle', '@toddzheng024/dscode']) {
+// The publish phases are idempotent: an identical version already on npm is a re-run, not a
+// conflict. Only a different build under the same version has to stop the release.
+const verified = JSON.parse(readFileSync(join(root, 'artifacts/local/hub-verification.json'), 'utf8'));
+const expected = new Map([
+  ['@toddzheng024/dscode-bundle', verified.integrity],
+  ['@toddzheng024/dscode', verified.launcherIntegrity],
+]);
+let free = 0;
+for (const [name, integrity] of expected) {
   const published = npmWithToken(token, ['view', `${name}@${manifest.version}`, 'version'], { stdio: ['ignore', 'pipe', 'ignore'] });
   const taken = published.status === 0 && (published.stdout ?? '').trim() !== '';
-  console.log(`${name}@${manifest.version}: ${taken ? 'already on npm — bump the version before releasing' : 'free to publish'}`);
-  if (!taken) free.push(name);
+  if (!taken) { console.log(`${name}@${manifest.version}: free to publish`); free += 1; continue; }
+  const served = npmWithToken(token, ['view', `${name}@${manifest.version}`, 'dist.integrity'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  if (served.status !== 0 || (served.stdout ?? '').trim() !== integrity) throw new Error(`${name}@${manifest.version} is already on npm with a different build; bump the version before pushing a release tag.`);
+  console.log(`${name}@${manifest.version}: already on npm with the tested integrity — the publish phases will skip it`);
 }
-if (free.length === 0) throw new Error(`Every package already carries ${manifest.version}; bump the version before pushing a release tag.`);
+if (free === 0) console.log(`All packages already carry ${manifest.version} with the tested integrity; this release is a re-run.`);
