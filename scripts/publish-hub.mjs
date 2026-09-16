@@ -72,7 +72,17 @@ else if(phase==='profile') {
     await sleep(WAIT_MS);
   }
   await client.saveProfileDraft({...read(join(out,'profile-draft.json')),visibility:'public'});
-  console.log(JSON.stringify(await client.publishProfile('dscode',pack.version,true),null,2));
+  try {
+    console.log(JSON.stringify(await client.publishProfile('dscode',pack.version,true),null,2));
+  } catch (error) {
+    // Hub versions are immutable. A re-run after a later phase failed must be able to skip the
+    // profile it already published instead of dying on the 409 and dragging the remaining
+    // phases (launcher, release asset) down with it.
+    const message = error instanceof Error ? error.message : String(error);
+    const published = message.includes('version_is_immutable') ? await client.profile('dscode') : undefined;
+    if (!published?.versions?.some(entry => (entry.version ?? entry) === pack.version)) throw error;
+    console.log(`Hub already holds dscode@${pack.version}; skipping the immutable re-publish.`);
+  }
 } else {
   await npmMetadata();
   const profile=await client.profile('dscode');
