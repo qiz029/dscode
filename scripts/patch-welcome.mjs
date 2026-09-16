@@ -100,7 +100,7 @@ export function patchWelcome(text, version) {
   const patched = text.includes('// dscode-welcome-v1');
   if (patched) {
     // Both header generations start alike; the newer one also takes `animated`.
-    const start = text.indexOf('function Header({ cwd = "", model = "", effort = ""');
+    const start = text.indexOf('function Header(');
     const tail = '}, project))));\n  }';
     const end = text.indexOf(tail, start) + tail.length;
     if (start < 0 || end <= start + tail.length) throw Error('Patched TUI welcome header drift');
@@ -108,15 +108,21 @@ export function patchWelcome(text, version) {
     if (!text.includes('// dscode-welcome-v2')) text = '// dscode-welcome-v2\n' + 'const WELCOME_ART = ' + JSON.stringify(WELCOME_ART) + ';\nconst WELCOME_ART_SMALL = ' + JSON.stringify(WELCOME_ART_SMALL) + ';\n' + welcomeArtRows.toString() + '\n' + text;
     return patchWelcomeScroll(text);
   }
-  const start = text.indexOf('function Header({ resumed, cwd = "", branch = "", title = "" }) {');
+  // 1.2.0 owns a fixed `{ resumed }` header whose facts arrive through the settled-row
+  // headerFacts spread that patch-style adds, so the header is replaced by position.
+  const start = text.indexOf('function Header(');
   const end = text.indexOf('\n}', start) + 2;
   if (start < 0 || end <= start) throw Error('Pinned TUI welcome header drift');
   text = text.slice(0, start) + welcomeHeaderSource(version) + text.slice(end);
   // Mode A: the header is the first Static row, so patch-style already threads
   // headerFacts through; give it the snowflake header's own fields.
-  text = replaceOnce(text,
-    'SETTLED_ROW_CAP, { cwd: props.cwd, branch: props.branch, title: view.title });',
-    'SETTLED_ROW_CAP, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel, animated: animations });');
+  // patch-style already threads the settled-row header facts; only an older bundle needs it.
+  const facts = 'SETTLED_ROW_CAP, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel, animated: animations });';
+  const legacyFacts = 'SETTLED_ROW_CAP, { cwd: props.cwd, branch: props.branch, title: view.title });';
+  const bare = 'props.resumed, refreshEpoch, terminalSize.columns);';
+  if (text.includes(facts)) text = text;
+  else if (text.includes(legacyFacts)) text = text.replace(legacyFacts, facts);
+  else text = replaceOnce(text, bare, 'props.resumed, refreshEpoch, terminalSize.columns, ' + facts);
   return patchWelcomeScroll('// dscode-welcome-v1\n// dscode-welcome-v2\n' + welcomePath.toString() + '\nconst WELCOME_ART = ' + JSON.stringify(WELCOME_ART) + ';\nconst WELCOME_ART_SMALL = ' + JSON.stringify(WELCOME_ART_SMALL) + ';\n' + welcomeArtRows.toString() + '\n' + text);
 }
 

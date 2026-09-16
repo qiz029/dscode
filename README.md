@@ -40,9 +40,9 @@ DSCODE is a terminal coding agent for macOS, built on [DeepSeek Harness](https:/
 
 ## 🆕 What's new
 
-**0.7.10** — `dscode --version` reports the DSCODE version on every install path instead of the DSH runtime's. `dscode update` updates the whole installation: the tar install gains a sha256-verified, in-place self-update and the npm/Hub launcher replaces itself with npm before upgrading the profile. ESLint 10 gates the repository. The agent is instructed to provide progress updates in normal mode and finish against stable acceptance criteria. Session metrics caching, mailbox retention and patch build validation are improved.
+**0.7.11** — The vendored TUI moves to `dsh-code` 1.2.0 with all 25 DSCODE patches re-anchored, on DSH `0.1.5-rc.2`. `dscode update` upgrades a whole installation, update texts exist in all seven languages, `/model` lists only the session provider alphabetically, and code review keeps a larger budget with a started-at-the-lightest reasoning level.
 
-Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.10 notes](docs/releases/0.7.10.md) have the long version.
+Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.11 notes](docs/releases/0.7.11.md) have the long version.
 
 ## 🚀 Quick start
 
@@ -54,7 +54,7 @@ cd /path/to/project
 dscode
 ```
 
-The first launch installs the pinned complete preset from [DSH Plugin Hub](https://dshpluginhub.ai)—no manual plugin assembly, no global pnpm. Then enter `/login` and paste your DeepSeek API key into the hidden input: it is stored locally in `~/.dscode/credentials.yaml` with `0600` permissions, shared across projects and installed versions, and never sent to the agent. A `DEEPSEEK_API_KEY` environment variable takes precedence. To use OpenRouter, enter `/provider openrouter`: DSCODE asks for your OpenRouter key (stored the same way, or taken from `OPENROUTER_API_KEY`) and switches the session to the DeepSeek model you were on; every model in OpenRouter's live listing that can call tools is then listed in `/model`, where typing searches. DeepSeek, GLM, Kimi and Qwen models are tuned and tested; other models work on a best-effort basis. `/provider deepseek` switches back, and `/login openrouter` replaces the key. Use `/model` to pick a model or another provider, and `/effort` to adjust reasoning effort; the default route is `deepseek-official/deepseek-flash`.
+The first launch installs the pinned complete preset from [DSH Plugin Hub](https://dshpluginhub.ai)—no manual plugin assembly, no global pnpm. Then enter `/login` and paste your DeepSeek API key into the hidden input: it is stored locally in `~/.dscode/credentials.yaml` with `0600` permissions, shared across projects and installed versions, and never sent to the agent. A `DEEPSEEK_API_KEY` environment variable takes precedence. To use OpenRouter, enter `/provider openrouter`: DSCODE asks for your OpenRouter key (stored the same way, or taken from `OPENROUTER_API_KEY`) and switches the session to the DeepSeek model you were on; every model in OpenRouter's live listing that can call tools is then listed in `/model`, where typing searches. DeepSeek, GLM, Kimi and Qwen models are tuned and tested; other models work on a best-effort basis. `/provider deepseek` switches back, and `/login openrouter` replaces the key. Use `/model` to pick a model or another provider, and `/effort` to adjust reasoning effort; the default route is `deepseek-official/deepseek-flash`. The TUI checks npm for a newer release at startup and `/update` upgrades the whole installation after you exit.
 
 ```sh
 dscode --continue                 # continue the last session
@@ -82,11 +82,11 @@ npm start
 npm start -- --cwd /path/to/project
 ```
 
-**From a tar package** — download `dscode-0.7.10.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
+**From a tar package** — download `dscode-0.7.11.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.10.tar.gz -C dscode-install
+tar -xzf dscode-0.7.11.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -95,14 +95,14 @@ The command lands in `~/.local/bin/dscode` by default—make sure that directory
 **If the npm name lookup returns 404**, install the same version straight from the official registry tarball:
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.10.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.11.tgz
 ```
 
 **Upgrade** — `dscode update [exact-version]` updates the whole installation in one step, and requires no running DSCODE sessions. On the npm/Hub install it replaces the launcher binary with npm and then upgrades the installed profile to the same version. On a tar install it downloads the release tarball, verifies it against the release's sha256 digest, swaps the installation directory in place and migrates `.runtime`, `.env` and local `config/`; the previous installation is kept as a sibling backup directory. A source checkout refuses and points at git pull instead.
 
 ```sh
 dscode update                  # latest release
-dscode update 0.7.10           # an exact version
+dscode update 0.7.11           # an exact version
 ```
 
 `dscode history` lists retained versions and `dscode rollback` returns to the previous preset revision (npm/Hub install). Tar installs older than the first release with `dscode update` upgrade by installing the new tarball into a fresh directory and migrating the state once. Source, tar and npm/Hub installs use different data directories, and sessions and credentials are not migrated between them. See the [tar distribution notes](docs/distribution.md) and the [npm + Hub guide](docs/hub-distribution.md).
@@ -164,7 +164,7 @@ npm run dist                # build the fallback tar installer
 | `@toddzheng024/dscode-bundle` | Base layer, Computer Use, custom plugins and the modified TUI/runtime |
 | Hub profile `dscode` | Pinned bundle and runtime versions with integrity hashes |
 
-The bundle generates its modified modules at build time and never rewrites third-party sources on a user's machine. DSH dependencies are pinned to `0.1.5-rc.1`; the TUI is based on `dsh-code@1.0.6`, Chrome MCP on `1.9.0` and Computer Use on `0.3.2`. The full pipeline—bundle, then Hub release, then launcher—is in the [distribution guide](docs/hub-distribution.md). Context-compaction evaluation lives under [`eval/`](eval/README.md) and runs with `npm run eval:compaction`.
+The bundle generates its modified modules at build time and never rewrites third-party sources on a user's machine. DSH dependencies are pinned to `0.1.5-rc.2`; the TUI is based on `dsh-code@1.0.6`, Chrome MCP on `1.9.0` and Computer Use on `0.3.2`. The full pipeline—bundle, then Hub release, then launcher—is in the [distribution guide](docs/hub-distribution.md). Context-compaction evaluation lives under [`eval/`](eval/README.md) and runs with `npm run eval:compaction`.
 
 ## 📚 Documentation
 

@@ -9,7 +9,12 @@ export function apply(ctx) {
     async resolveModel(provider, model) { return { provider, id: model, name: model, reasoning: { efforts: ['low', 'high', 'max', 'ultra'].map(id => ({ id, name: id })), defaultEffort: 'high' }, context: { contextWindow: 100000 } }; }
     async *stream(options) {
       const textOf = m => (Array.isArray(m?.content) ? m.content.filter(b => b.type === 'text').map(b => b.text) : [String(m?.content ?? '')]).filter(t => !/^\s*(<system-reminder>|Current runtime context)/.test(t)).join('').trim();
-      const text = textOf(options.messages.findLast(m => m.role === 'user' && textOf(m)));
+      // The harness injects a time-context block as its own user message; the fixture echoes
+      // the requesting prompt, so skip that block and stay deterministic across releases.
+      const isInjectedContext = value => /^Time sampled while preparing turn/.test(value.trim());
+      const userMessages = options.messages.filter(m => m.role === 'user' && textOf(m));
+      const prompt = userMessages.findLast(m => !isInjectedContext(textOf(m))) ?? userMessages.at(-1);
+      const text = prompt === void 0 ? '' : textOf(prompt);
       const usedTool = options.messages.some(m => m.role === 'tool' || (Array.isArray(m.content) && m.content.some(b => b.type === 'tool-result' || b.type === 'tool_result')));
       const toolText = options.messages.flatMap(m => {
         const blocks = Array.isArray(m?.content) ? m.content : [{ type: 'text', text: String(m?.content ?? '') }];

@@ -7,7 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { collectReviewDiff, parseReviewCommand, reviewSpec, untracked, gitWorkspace, isGitAvailableSync, isGitWorkspaceSync } from '../plugins/code-review/git.mjs';
 import { baselineStore } from '../plugins/code-review/baseline.mjs';
-import { apply, independentReview, REVIEW_LIMITS } from '../plugins/code-review/index.mjs';
+import { apply, describeAttempt, independentReview, reviewRoute, REVIEW_LIMITS } from '../plugins/code-review/index.mjs';
 import { patchReview } from '../scripts/patch-review.mjs';
 
 const exec = promisify(execFile);
@@ -67,9 +67,9 @@ test('independent review uses a separate tool-free model request and caches unch
   const first = await independentReview(ctx, agent, {}, undefined, collect);
   assert.equal(first.status, 'reviewed');
   assert.equal(first.usage.inputTokens, 40);
-  assert.equal(calls[0].reasoningEffort, 'low');
+  assert.equal(calls[0].reasoningEffort, 'minimal', 'the reviewer starts at the lightest level');
   assert.equal(calls[0].purpose, 'review');
-  assert.equal(calls[0].maxTokens, 8192, 'review has its own bounded output budget');
+  assert.equal(calls[0].maxTokens, 32768, 'review budget leaves room for reasoning plus the report');
   assert.equal(calls[0].tools, undefined);
   assert.match(JSON.stringify(calls[0].messages), /Fix the bug/);
   const second = await independentReview(ctx, agent, {}, undefined, collect);
@@ -132,7 +132,7 @@ test('slash review and model tool share the review registration; TUI patch route
   assert.match(sections[0].text({ scope: { session: { header: { origin: 'user', agentPreset: 'dscode' } } } }), /After you finish code changes/);
   assert.equal(sections[0].text({ scope: { session: { header: { origin: 'subagent', agentPreset: 'dscode' } } } }), '');
   assert.equal(sections[0].text({}), '');
-  const before = 'if (text === "/review" || text.startsWith("/review ")) {\n\t\t\t\treviewChanges(text.slice(7));\n\t\t\t\treturn;\n\t\t\t}';
+  const before = 'if (text === "/review" || text.startsWith("/review ")) {\n\t\t\t\tconst argument = text.slice(7).trim();\n\t\t\t\tif (argument === "") {\n\t\t\t\t\topenReviewPicker();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\ttry {\n\t\t\t\t\treviewChanges(parseReviewArgument(argument));\n\t\t\t\t} catch (error) {\n\t\t\t\t\tnotify(error instanceof Error ? error.message : String(error), "warning");\n\t\t\t\t}\n\t\t\t\treturn;\n\t\t\t}';
   const after = patchReview(before);
   assert.match(after, /dispatch\(text\)/);
   assert.equal(patchReview(after), after);
@@ -258,7 +258,15 @@ test('review retries once after a non-stop finish, surfaces the provider reason,
   assert.equal(cut.status, 'partial');
   assert.match(cut.report, /Finding: null check missing[\s\S]*hit its output limit/);
   assert.equal(truncated.calls(), 1, 'a truncated but usable report is not retried');
-  assert.match((await independentReview(stream({ finish: { kind: 'max-tokens' } }), agent(), {}, undefined, collect)).error, /ran out of output tokens/);
+  process.env.DSCODE_REVIEW_RETRY_MS = '0';
+  try {
+    const burned = stream({ finish: { kind: 'max-tokens' } }, { text: 'No actionable findings in the supplied diff.', finish: { kind: 'stop' } });
+    const recoveredReport = await independentReview(burned, agent(), {}, undefined, collect);
+    assert.equal(recoveredReport.status, 'reviewed', 'an empty truncated attempt retries instead of reporting a dead review');
+    assert.equal(burned.calls(), 2, 'one retry with a larger budget');
+    const starved = stream({ finish: { kind: 'max-tokens' } });
+    assert.match((await independentReview(starved, agent(), {}, undefined, collect)).error, /ran out of output tokens before writing the report/);
+  } finally { delete process.env.DSCODE_REVIEW_RETRY_MS; }
 });
 
 test('review covers a merge commit and the commits a task made when nothing is left uncommitted', async () => {
@@ -409,4 +417,20 @@ test('untracked files that turn unreadable during collection are omitted, not fa
       assert.doesNotMatch(text, /secret/);
     } finally { await chmod(join(cwd, 'locked.txt'), 0o644); }
   } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test('reviewRoute pins the reviewer model and effort like codex review_model', () => {
+  const fallback = { provider: 'session', model: 'small' };
+  assert.deepEqual(reviewRoute(fallback, {}), { route: fallback, effort: 'minimal' });
+  assert.deepEqual(reviewRoute(fallback, { DSCODE_REVIEW_MODEL: 'deepseek-official/deepseek-flash' }), { route: { provider: 'deepseek-official', model: 'deepseek-flash' }, effort: 'minimal' });
+  assert.deepEqual(reviewRoute(fallback, { DSCODE_REVIEW_MODEL: 'big-model' }).route, { provider: 'session', model: 'big-model' });
+  assert.equal(reviewRoute(fallback, { DSCODE_REVIEW_MODEL: 'p/m', DSCODE_REVIEW_EFFORT: ' high ' }).effort, 'high');
+  assert.equal(reviewRoute(undefined, { DSCODE_REVIEW_MODEL: 'p/m' }).route.model, 'm');
+  assert.deepEqual(reviewRoute(fallback, { DSCODE_REVIEW_MODEL: '/' }).route, fallback, 'a malformed override keeps the session route');
+});
+
+test('describeAttempt reports the budget the reviewer had and how it spent it', () => {
+  assert.equal(describeAttempt(8192, { usage: { reasoningTokens: 7253, outputTokens: 8098 } }, { kind: 'max-tokens' }),
+    '8192 tokens allowed, stopped max-tokens, used 7253 reasoning, 8098 output');
+  assert.equal(describeAttempt(32768, { usage: null }, undefined), '32768 tokens allowed, stopped without a finish');
 });

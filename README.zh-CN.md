@@ -40,9 +40,9 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
-**0.7.10** — `dscode --version` 在所有安装路径下都输出 DSCODE 版本，而不是 DSH 运行时版本。`dscode update` 一步更新整个安装：tar 安装获得带 sha256 校验的原位自升级，npm/Hub 启动器会先用 npm 替换自身再升级 profile。仓库接入 ESLint 10。
+**0.7.11** — 内置 TUI 升级到 `dsh-code` 1.2.0，25 个 DSCODE 补丁全部重新对齐，运行时固定 DSH `0.1.5-rc.2`。`dscode update` 一条命令升级整个安装，更新提示支持七种语言，`/model` 只列当前 provider 并按字母序，代码审查预算更宽裕且默认使用最低推理档。
 
-每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.10 更新说明](docs/releases/0.7.10.md)。
+每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.11 更新说明](docs/releases/0.7.11.md)。
 
 ## 🚀 快速开始
 
@@ -54,7 +54,7 @@ cd /path/to/project
 dscode
 ```
 
-首次启动会从 [DSH Plugin Hub](https://dshpluginhub.ai) 安装固定版本的完整 preset——无需手动拼装插件，也不需要全局安装 pnpm。之后输入 `/login`，在隐藏输入框中粘贴 DeepSeek API key：密钥以 `0600` 权限保存在本机 `~/.dscode/credentials.yaml`，不同项目和安装版本共用，不会发送给 agent。已设置的 `DEEPSEEK_API_KEY` 环境变量优先。想使用 OpenRouter，输入 `/provider openrouter`：DSCODE 会提示输入 OpenRouter key（同样保存在本机，或读取 `OPENROUTER_API_KEY`），并把当前会话切到对应的 DeepSeek 模型；OpenRouter 实时模型列表里支持工具调用的模型随后都会出现在 `/model` 中，直接输入即可搜索。DeepSeek、GLM、Kimi 和 Qwen 经过适配和测试，其他模型尽力可用。`/provider deepseek` 切回，`/login openrouter` 可更换 key。用 `/model` 选择模型或配置其他提供方，用 `/effort` 调整推理强度；默认路由是 `deepseek-official/deepseek-flash`。
+首次启动会从 [DSH Plugin Hub](https://dshpluginhub.ai) 安装固定版本的完整 preset——无需手动拼装插件，也不需要全局安装 pnpm。之后输入 `/login`，在隐藏输入框中粘贴 DeepSeek API key：密钥以 `0600` 权限保存在本机 `~/.dscode/credentials.yaml`，不同项目和安装版本共用，不会发送给 agent。已设置的 `DEEPSEEK_API_KEY` 环境变量优先。想使用 OpenRouter，输入 `/provider openrouter`：DSCODE 会提示输入 OpenRouter key（同样保存在本机，或读取 `OPENROUTER_API_KEY`），并把当前会话切到对应的 DeepSeek 模型；OpenRouter 实时模型列表里支持工具调用的模型随后都会出现在 `/model` 中，直接输入即可搜索。DeepSeek、GLM、Kimi 和 Qwen 经过适配和测试，其他模型尽力可用。`/provider deepseek` 切回，`/login openrouter` 可更换 key。用 `/model` 选择模型或配置其他提供方，用 `/effort` 调整推理强度；默认路由是 `deepseek-official/deepseek-flash`。 TUI 启动时会检查 npm 上的新版本，`/update` 可在退出后自动完成整个安装的升级。
 
 ```sh
 dscode --continue                 # 继续上次会话
@@ -84,11 +84,11 @@ npm start -- --cwd /path/to/project
 
 也可复制 `.env.example` 为 `.env`，仅在本机填写密钥；此方式会优先于 `/login` 保存的凭据。
 
-**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.10.tar.gz`，然后执行：
+**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.11.tar.gz`，然后执行：
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.10.tar.gz -C dscode-install
+tar -xzf dscode-0.7.11.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -97,14 +97,14 @@ sh dscode-install/install.sh
 **若 npm 包名查询暂时返回 404**，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.10.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.11.tgz
 ```
 
 **升级** —— 除源码检出外，`dscode update [精确版本号]` 一步完成整个安装的更新，且要求没有正在运行的 DSCODE 会话。npm/Hub 安装会先用 npm 替换 launcher 本体，再把已安装的 profile 升到同一版本；tar 安装会下载 release tar 包、按发布方 sha256 校验、原位换目录并迁移 `.runtime`、`.env` 和本地 `config/`，旧安装保留为同级备份目录。源码安装会拒绝并提示改用 git pull。
 
 ```sh
 dscode update                  # 最新版本
-dscode update 0.7.10           # 指定版本
+dscode update 0.7.11           # 指定版本
 ```
 
 `dscode history` 查看保留的版本记录，`dscode rollback` 回到上个 preset 版本（npm/Hub 安装）。带 `dscode update` 之前的旧 tar 安装，请把新 tar 包装到新目录并手动迁移一次状态。源码、tar 与 npm/Hub 使用不同的数据目录，会话和凭据不会互相迁移。详见 [tar 分发说明](docs/distribution.md) 与 [npm + Hub 分发指南](docs/hub-distribution.md)。

@@ -1,4 +1,5 @@
 import { replaceOnce } from './patch-util.mjs';
+import { catalogEntry, catalogAnchor } from './patch-command-catalog.mjs';
 
 // `/openrouter` shows the OpenRouter account: balance, this key's usage, every key and
 // the last 30 days of spend. A management key (optional, offered after the OpenRouter
@@ -153,8 +154,10 @@ export function patchOpenRouterTui(text) {
     return resynced.slice(0, resynced.indexOf(UI_START)) + UI_SOURCE + resynced.slice(resynced.indexOf(UI_END) + UI_END.length);
   }
   const patch = (from, to) => { text = replaceOnce(text, from, to); };
-  patch('{ label: "/provider", description: "switch between DeepSeek and OpenRouter" },',
-    '{ label: "/provider", description: "switch between DeepSeek and OpenRouter" },\n{ label: "/openrouter", description: "OpenRouter account: balance, key usage and 30-day spend" },');
+  // The 1.2.0 catalog already carries the OpenRouter row; an older tree needs it appended.
+  if (!text.includes(catalogEntry('openrouter'))) {
+    patch(catalogAnchor('provider'), catalogAnchor('provider') + catalogAnchor('openrouter'));
+  }
   patch('openLogin, openProvider, openModel, openEffort,', 'openLogin, openProvider, openOpenRouter, openModel, openEffort,');
   patch('if (trimmed === "/provider" || /^\\/provider\\s/.test(trimmed)) {', `if (trimmed === "/openrouter") {
                 valueRef.current = ""; cursorRef.current = 0;

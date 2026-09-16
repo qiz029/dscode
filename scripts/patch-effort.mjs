@@ -43,7 +43,7 @@ export function patchEffort(text) {
       '\t\t\tcurrent: effortLabel,\n\t\t\tselect: (effortId) => applyModel(effortFor, effortId),',
       '\t\t\tcurrent: effortLabel,\n\t\t\tanimations,\n\t\t\tselect: (effortId) => applyModel(effortFor, effortId),');
   }
-  text = replaceOnce(text, 'function Input({ active, frozen, busy,', 'function Input({ effortSurface, ultraPulse, active, frozen, busy,');
+  text = replaceOnce(text, 'function Input({ active, frozen, frozenHint, busy,', 'function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy,');
   text = replaceOnce(text,
     '\tif (frozen) {\n\t\tif (deleteConfirm !== void 0) {',
     '\tif (effortSurface !== void 0) return effortSurface;\n\tif (ultraPulse !== 0 && animations) return (0, import_react.createElement)(DscodeUltraRipple, { key: ultraPulse, columns });\n\tif (frozen) {\n\t\tif (deleteConfirm !== void 0) {');

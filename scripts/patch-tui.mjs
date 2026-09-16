@@ -1,3 +1,5 @@
+import { replaceOnce } from './patch-util.mjs';
+import { CATALOG_ENTRIES, catalogEntry, patchCommandCatalogMessages } from './patch-command-catalog.mjs';
 import { readFileSync, writeFileSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import { patchIme } from './patch-ime.mjs';
@@ -21,6 +23,8 @@ import { patchProvider } from './patch-provider.mjs';
 import { patchModelSearch } from './patch-model-search.mjs';
 import { patchCompactionTui } from './patch-compaction.mjs';
 import { patchOpenRouterTui, patchPickerCommands } from './patch-openrouter.mjs';
+import { patchUpdateCheck } from './patch-update-tui.mjs';
+import { patchErrors } from './patch-errors.mjs';
 
 export function patchText(text) {
   const before = '\t\t\tif (text === "/clear") {\n\t\t\t\trefresh();\n\t\t\t\tclearView();\n\t\t\t\tdismissNotice();\n\t\t\t\treturn;\n\t\t\t}';
@@ -31,7 +35,7 @@ export function patchText(text) {
 }
 export function patchTui(root) {
   const dir = join(root, 'node_modules/dsh-code');
-  if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== '1.0.6') throw new Error('Revalidate TUI patch before upgrading dsh-code');
+  if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== '1.2.0') throw new Error('Revalidate TUI patch before upgrading dsh-code');
   const path = join(dir, 'lib/index.mjs');
   const before = readFileSync(path, 'utf8');
   let after = patchText(before);
@@ -39,10 +43,27 @@ export function patchTui(root) {
   // deleted the upstream Static rows; that text cannot be repaired in place.
   if (after.includes('// dscode-viewport-v1')) throw new Error('This installation carries the DSCODE in-place viewport generation; refresh the dependencies (npm ci) before starting the native-scrollback build.');
   const anchor = 'const LOCAL_COMMANDS = [';
-  if (!after.includes('// dscode: startup command discovery')) {
+  const catalogMarker = '// dscode: startup command discovery';
+  // 1.2.0 resolves every catalog row through t(descriptionKey) and its message lookup gains
+  // the DSCODE keys; the older generation reads a literal description per row.
+  const keyedCatalog = after.includes('(CATALOGS[activeName][key] ?? en[key])');
+  if (keyedCatalog) {
+    if (!after.includes(catalogMarker)) {
+      if (after.split(anchor).length !== 2) throw new Error('Unsupported TUI command catalog');
+      after = after.replace(anchor, anchor + '\n' + catalogMarker + '\n' + CATALOG_ENTRIES.map(([name]) => catalogEntry(name)).join('\n') + '\n');
+    } else {
+      // A tree provisioned by an earlier release keeps its patched catalog, so entries added
+      // since then are appended one by one instead of being skipped with the marker.
+      for (const [name] of CATALOG_ENTRIES) {
+        const entry = catalogEntry(name);
+        if (after.includes(entry)) continue;
+        after = replaceOnce(after, catalogMarker + '\n', catalogMarker + '\n' + entry + '\n');
+      }
+    }
+    after = patchCommandCatalogMessages(after);
+  } else if (!after.includes(catalogMarker)) {
     if (after.split(anchor).length !== 2) throw new Error('Unsupported TUI command catalog');
-    const commands = [['status', 'session, model, permissions and usage'], ['doctor', 'read-only runtime diagnostics'], ['mcp', 'list and manage MCP servers'], ['skills', 'skill sources and conflicts'], ['hooks', 'hook configuration and reload']];
-    after = after.replace(anchor, anchor + '\n// dscode: startup command discovery\n' + commands.map(([name, description]) => JSON.stringify({ label: '/' + name, description }) + ',').join('\n'));
+    after = after.replace(anchor, anchor + '\n' + catalogMarker + '\n' + CATALOG_ENTRIES.map(([name]) => JSON.stringify({ label: '/' + name, description: CATALOG_ENTRIES.find(([entry]) => entry[0] === name)[1] })).join('\n') + '\n');
   }
   after = patchInteraction(after);
   after = patchSessionBridge(after);
@@ -66,6 +87,8 @@ export function patchTui(root) {
   after = patchOpenRouterTui(after);
   after = patchPickerCommands(after);
   after = patchLanguage(after);
+  after = patchErrors(after);
+  after = patchUpdateCheck(after, JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version);
   cpSync(new URL('../plugins/email/', import.meta.url), join(dir, 'lib/dscode-email'), { recursive: true });
   cpSync(new URL('../plugins/providers/', import.meta.url), join(dir, 'lib/dscode-providers'), { recursive: true });
   if (before !== after) writeFileSync(path, after);

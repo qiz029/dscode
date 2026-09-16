@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { patchDeepSeek, patchBash, patchPersistent, patchSubagent, patchSubagentCore, patchSubagentDriver, patchTerminalBash, patchMacStdinPackage } from '../scripts/patch-runtime.mjs';
+import { patchDeepSeek, patchBash, patchPersistent, patchSubagent, patchSubagentCore, patchSubagentDriver, patchTerminalBash, patchMacStdinPackage, RUNTIME_VERSION } from '../scripts/patch-runtime.mjs';
 import { patchCompactionBasic } from '../scripts/patch-compaction.mjs';
 import { patchMacStdin, MAC_INSPECTOR_ANCHOR } from '../scripts/patch-mac-stdin.mjs';
 import { createTestRuntime } from '../scripts/test-runtime.mjs';
@@ -93,7 +93,7 @@ test('the macOS stdin inspector is patched, reported unchanged, or refused loudl
   assert.equal(patchMacStdinPackage(missing, { required: false }), 'missing');
   const dir = join(missing, 'node_modules/@deepseek-ai/dsh-subprocess-local');
   mkdirSync(join(dir, 'lib'), { recursive: true });
-  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-subprocess-local', version: '0.1.5-rc.1' }));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-subprocess-local', version: RUNTIME_VERSION }));
   const file = join(dir, 'lib/index.js');
   writeFileSync(file, `class MacProcessInspector {\n${MAC_INSPECTOR_ANCHOR}\n}\n`);
   assert.equal(patchMacStdinPackage(missing), 'patched');

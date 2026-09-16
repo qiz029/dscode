@@ -1,3 +1,4 @@
+process.env.DSCODE_UPDATE_CHECK = 'off'; // rendering never performs the startup registry read
 import assert from 'node:assert/strict';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
@@ -26,7 +27,10 @@ const rows = [
 ];
 assert.deepEqual(dscodeFilterModels(rows, 'openrouter CLAUDE').map(item => item.model), ['anthropic/claude-sonnet-4.5'], 'every word must match, ignoring case');
 assert.deepEqual(dscodeFilterModels(rows, 'deepseek').map(item => item.model).sort(), ['deepseek-flash', 'deepseek/deepseek-v4-flash'], 'ranked results keep only matching rows');
-assert.equal(dscodeFilterModels(rows, '   '), rows);
+assert.deepEqual(dscodeFilterModels(rows, '   ', 'openrouter').map(item => item.model),
+  ['anthropic/claude-sonnet-4.5', 'deepseek/deepseek-v4-flash', 'openai/gpt-5', 'qwen/qwen3-coder'], 'one provider, alphabetical by displayed label');
+assert.deepEqual(dscodeFilterModels(rows, '   ', 'deepseek-official').map(item => item.model), ['deepseek-flash'], 'another provider never leaks in');
+assert.equal(dscodeFilterModels(rows, '   ').length, rows.length, 'no provider means the whole directory');
 try {
   const ui = await import(entry.href);
   async function panel(run, columns = 80) {
@@ -37,7 +41,7 @@ try {
     stdout.on('data', data => frames.push(data.toString()));
     stderr.on('data', data => errors.push(data.toString()));
     const mounted = ui.render(ui.react.createElement(ui.ModelPanel, {
-      directory: { rows, failures: [] }, current: 'deepseek-official/deepseek-flash',
+      directory: { rows, failures: [] }, current: 'openrouter/deepseek/deepseek-v4-flash',
       onSelect: item => selected.push(`${item.provider}/${item.model}`), onProviders: () => actions.push('providers'),
       onRetry: () => actions.push('retry'), onClose: () => actions.push('close'),
     }), { stdin, stdout, stderr, debug: true, patchConsole: false, exitOnCtrlC: false });
@@ -52,8 +56,9 @@ try {
   }
   for (const columns of [48, 80, 120]) {
     await panel(async ({ input, frame, selected, actions }) => {
-      if (columns >= 80) assert.match(frame(), /1\/5 · type to search/, frame());
-      assert.match(frame(), /❯ DeepSeek · DeepSeek Flash/, 'the current model is focused on open');
+      if (columns >= 80) assert.match(frame(), /2\/4 · type to search/, frame());
+      assert.match(frame(), /❯ OpenRouter · DeepSeek V4 Flash/, 'the current model is focused on open, from this provider only');
+      assert.doesNotMatch(frame(), /DeepSeek Flash$|DeepSeek · DeepSeek Flash/, 'a same-name model of the other provider is not listed');
       await input('claude');
       assert.match(frame(), /Claude Sonnet 4\.5/);
       assert.doesNotMatch(frame(), /GPT-5|Qwen3/);
@@ -73,17 +78,18 @@ try {
     }, columns);
   }
   await panel(async ({ input, frame, selected, actions }) => {
-    await input('deepseek');
-    const ranked = dscodeFilterModels(rows, 'deepseek');
+    await input('gpt qwen');
+    const ranked = dscodeFilterModels(rows, 'gpt qwen', 'openrouter');
+    assert.equal(ranked.length, 2, 'rows matching some words show only when none matches every word');
     await input('\x1b[B');
-    assert.match(frame(), new RegExp(`❯ ${ranked[0].providerName} · ${ranked[0].modelName}`), 'the first arrow focuses the first match');
+    assert.match(frame(), new RegExp(`❯ ${ranked[0].providerName} · ${ranked[0].modelName}`), 'the first arrow focuses the first match, in display order');
     await input('\x1b[B');
     await input('\r');
     assert.deepEqual(selected, [`${ranked[1].provider}/${ranked[1].model}`], 'arrows then move the focus');
     await input('\x1b');
     await tick();
     assert.match(frame(), /GPT-5/, 'Esc clears the search');
-    assert.match(frame(), /1\/5 · type to search/);
+    assert.match(frame(), /2\/4 · type to search/);
     assert.deepEqual(actions, []);
     await input('\t');
     await input('\x12');
@@ -93,7 +99,7 @@ try {
   });
   await panel(async ({ input, selected }) => {
     await input('\r');
-    assert.deepEqual(selected, ['deepseek-official/deepseek-flash'], 'Enter right after opening selects the focused current model');
+    assert.deepEqual(selected, ['openrouter/deepseek/deepseek-v4-flash'], 'Enter right after opening selects the focused current model');
   });
   console.log('Model search passed: real Ink /model panel searches as you type, focuses the first match on Enter or an arrow, selects on Enter, clears then closes on Esc, and keeps Tab and Ctrl+R.');
 } finally { rmSync(entry, { force: true }); }

@@ -54,6 +54,6 @@ export function patchIme(text) {
     ref: dscodeImeRef
   }, ...editorRows);`);
   patch('editorScrollRef.current = editorWindowStart;', 'editorScrollRef.current = editorWindowStart;\n  Object.assign(dscodeImeState.current, { row: caret.row - editorWindowStart, column: 2 + caret.column, active: active && !frozen && !preparingImages });');
-  patch('const inputTerminalRows = useStdout().stdout?.rows ?? 30;', 'const inputTerminalRows = useStdout().stdout?.rows ?? 30;\n\tconst dscodeImeStdout = useStdout().stdout;\n  const dscodeImeState = (0, import_react.useRef)({});\n  const dscodeImeRef = (0, import_react.useCallback)(node => {\n    dscodeImeState.current.node = node;\n    if (node) dscodeImeAnchors.set(dscodeImeStdout, dscodeImeState.current);\n    else dscodeImeAnchors.delete(dscodeImeStdout);\n  }, [dscodeImeStdout]);');
+  patch('const inputTerminalRows = inputStdout?.rows ?? 30;', 'const inputTerminalRows = inputStdout?.rows ?? 30;\n\tconst dscodeImeStdout = inputStdout;\n  const dscodeImeState = (0, import_react.useRef)({});\n  const dscodeImeRef = (0, import_react.useCallback)(node => {\n    dscodeImeState.current.node = node;\n    if (node) dscodeImeAnchors.set(dscodeImeStdout, dscodeImeState.current);\n    else dscodeImeAnchors.delete(dscodeImeStdout);\n  }, [dscodeImeStdout]);');
   return '// dscode-ime-v1\nconst dscodeImeAnchors = new WeakMap();\n' + imePosition.toString() + '\n' + imeWriter.toString() + '\n' + text;
 }

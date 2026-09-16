@@ -95,13 +95,15 @@ test('TUI renders relay body as a visible message while preserving plugin attrib
   assert(context.dscodeVisibleRelay({ source: { kind: 'plugin', plugin: 'dscode-session-bridge', form: 'relay' } }));
   assert(!context.dscodeVisibleRelay({ source: { kind: 'plugin', plugin: 'other', form: 'relay' } }));
   const tui = patchSessionBridge(readFileSync(new URL('../node_modules/dsh-code/lib/index.mjs', import.meta.url), 'utf8'));
-  const start = tui.indexOf('if (message.source.kind === "user" || dscodeVisibleRelay(message))');
+  // 1.2.0 also pends reminder-plugin messages, so the relay arm precedes that clause.
+  const start = tui.indexOf('if (message.source.kind === "user" || dscodeVisibleRelay(message)');
   assert(start >= 0);
   const branch = tui.slice(start, tui.indexOf('const notice = message.source.kind', start));
   let visible;
   context.appendReplayEntry = (_acc, entry) => { visible = entry; };
   context.estimateTokens = () => 1;
-  vm.runInContext(`function renderRelay(message) { const text = message.content[0].text, images = [], files = []; const acc = { stats: { contextSegments: { prompt: 0 } } }; ${branch} }`, context);
+  // 1.2.0 reads the delivery origin from the claim map before the replay branch.
+  vm.runInContext(`function renderRelay(message) { const text = message.content[0].text, images = [], files = [], delivery = {}; const acc = { stats: { contextSegments: { prompt: 0 } } }; ${branch} }`, context);
   const message = { source: { kind: 'plugin', plugin: 'dscode-session-bridge', form: 'relay' }, content: [{ type: 'text', text: '[External source: editor]\n完整的外部消息' }] };
   context.renderRelay(message);
   assert.equal(visible.text, message.content[0].text); assert.equal(visible.notice, false);

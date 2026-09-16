@@ -1,4 +1,5 @@
 import { replaceOnce } from './patch-util.mjs';
+import { catalogEntry, catalogAnchor } from './patch-command-catalog.mjs';
 import { DscodeEmailPanel } from './email-panel.mjs';
 import { DscodeImapSetup } from './imap-panel.mjs';
 
@@ -8,7 +9,10 @@ export function patchEmail(text) {
   if (text.includes('// dscode-email-v2')) return addSteer(addImap(text));
   if (text.includes('// dscode-email-v1')) return addSteer(addImap(addGmail(text)));
   const patch = (from, to) => { text = replaceOnce(text, from, to); };
-  patch('const LOCAL_COMMANDS = [', 'const LOCAL_COMMANDS = [\n{ label: "/email", description: "browse email and insert into this session" },');
+  // The 1.2.0 DSCODE catalog already carries the /email row; older trees need it inserted.
+  if (!text.includes(catalogEntry('email'))) {
+    patch(catalogAnchor('login'), catalogAnchor('email') + catalogAnchor('login'));
+  }
   patch('quit, openLogin,', 'quit, openEmail, emailFill, emailConsumed, openLogin,');
   patch('const text = submissionPayload(liveValue);', `const text = submissionPayload(liveValue);
             if (/^\\/email(?:\\s|$)/.test(trimmed)) {
@@ -44,7 +48,7 @@ export function patchEmail(text) {
       pick: mail => { setEmailFill({ text: dscodeEmailPrompt(mail), sessionKey: props.sessionKey }); setEmailOpen(false); }
     }) : void 0,
     transcriptVisible ? (0, import_react.createElement)(Box, { flexDirection: "column" }, auditedLiveLines.length === 0`);
-  patch('openLogin: () => {', 'openEmail: () => setEmailOpen(true),\n        emailFill, emailConsumed,\n        openLogin: () => {');
+  patch('\t\topenLogin: () => {', '\t\topenEmail: () => setEmailOpen(true),\n\t\temailFill, emailConsumed,\n\t\topenLogin: () => {');
   return addSteer(addImap(addGmail('// dscode-email-v1\nimport { createEmailInbox as dscodeCreateEmailInbox, emailKey as dscodeEmailKey, emailPrompt as dscodeEmailPrompt, emailText as dscodeEmailText } from "./dscode-email.mjs";\n' + DscodeEmailPanel.toString() + '\n' + text)));
 }
 
@@ -81,7 +85,7 @@ function addGmail(text) {
 function addSteer(text) {
   text = replaceOnce(text, '// dscode-email-v3', '// dscode-email-v4');
   text = replaceOnce(text, 'pick: mail => { setEmailFill({ text: dscodeEmailPrompt(mail), sessionKey: props.sessionKey }); setEmailOpen(false); }', 'pick: mail => { props.steer(dscodeEmailPrompt(mail), [], props.sessionKey); setEmailOpen(false); }');
-  text = replaceOnce(text, 'browse email and insert into this session', 'browse email and steer into this session');
+  // The catalog row now renders through cmd.dscode.email, so the steer wording rides the key's text.
   // Refresh panel help on existing locally patched runtimes as well.
   const start = text.indexOf('function DscodeEmailPanel('), end = text.indexOf('\n}\n', start);
   if (start < 0 || end < 0) throw Error('Pinned email panel drift');

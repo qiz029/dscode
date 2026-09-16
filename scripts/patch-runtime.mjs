@@ -150,10 +150,13 @@ export function patchSubagentDriver(text) {
  * (the repository install); a staged release build passes false, because a published
  * package cannot carry its own copy of that package.
  */
+/** The upstream DSH release every runtime patch in this file was validated against. */
+export const RUNTIME_VERSION = '0.1.5-rc.2';
+
 export function patchRuntime(root, { requireMacStdin = true } = {}) {
   for (const [pkg, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-subagent-in-process-driver', patchSubagentDriver], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash], ['dsh-compaction-basic', patchCompactionBasic]]) {
     const dir = join(root, 'node_modules/@deepseek-ai', pkg);
-    if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== '0.1.5-rc.1') throw new Error('Revalidate runtime patches before upgrading ' + pkg);
+    if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== RUNTIME_VERSION) throw new Error('Revalidate runtime patches before upgrading ' + pkg);
     const path = join(dir, 'lib/index.js');
     const before = readFileSync(path, 'utf8');
     const after = patch(before);
@@ -172,7 +175,7 @@ export function patchMacStdinPackage(root, { required = true } = {}) {
     process.emitWarning(note);
     return 'missing';
   }
-  if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== '0.1.5-rc.1') throw new Error('Revalidate runtime patches before upgrading dsh-subprocess-local');
+  if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== RUNTIME_VERSION) throw new Error('Revalidate runtime patches before upgrading dsh-subprocess-local');
   const lib = join(dir, 'lib');
   // An already patched chunk carries the probe signature (and the marker) instead of the
   // stub, so recognise both: a re-run must report `unchanged`, not drift.

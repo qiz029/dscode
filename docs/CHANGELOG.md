@@ -10,6 +10,27 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes here. -->
 
+## [0.7.11] - 2026-09-16
+
+### Changed
+
+- The vendored TUI is upgraded to `dsh-code` 1.2.0 with every DSCODE patch re-anchored: the local command catalog moved to i18n description keys (DSCODE injects its own fallback instead of editing upstream tables), the header was rewritten upstream, and `/language` and `/review` became upstream features that DSCODE deliberately takes over. The runtime stays pinned to DSH `0.1.5-rc.2`.
+
+### Added
+
+- The TUI checks the npm registry once at startup and offers `/update` when a newer release exists; `/update` starts a detached helper that upgrades the whole installation (launcher binary plus profile, or the tar/source self-update) after the session exits, logging to `$DSH_HOME/update.log`. Set `DSCODE_UPDATE_CHECK=off` to skip the startup check.
+
+### Changed
+
+- DSH is pinned to `0.1.5-rc.2` across the dependency graph and the runtime patch gates; all nine runtime patches (including the macOS stdin inspector) were re-validated against the release, and the launcher's Hub CLI follows the version this repository verifies against.
+- The `/model` picker lists only the session provider's models and presents them in alphabetical order of the displayed name (digits compare naturally); a search narrows the rows without re-ranking the remaining ones.
+- Code review keeps a 32,768-token output budget (reasoning tokens count against it) and retries an attempt that spent the whole budget without writing anything at double the room, up to 65,536; the reviewer starts at the lightest reasoning level the model offers, and `DSCODE_REVIEW_MODEL=provider/model` with `DSCODE_REVIEW_EFFORT=<level>` pin its route the way Codex's `review_model` does. A review that still cannot finish reports what each attempt was allowed and how the model spent it.
+- Update texts (`update.available`, `update.scheduled`, `update.usage`, `update.newest`) exist in all seven interface languages; the startup notice resolves through the TUI language runtime and `/update` follows the saved language.
+
+### Fixed
+
+- A turn that stopped for a reason the user did not ask for — an aborted hook, a blocked turn or a restart — now renders in the error color instead of the dim turn marker; user cancels and the model's output ceiling stay quiet.
+
 ## [0.7.10] - 2026-09-16
 
 ### Fixed

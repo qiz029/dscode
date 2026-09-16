@@ -1,9 +1,14 @@
 import { replaceOnce } from './patch-util.mjs';
+import { catalogEntry } from './patch-command-catalog.mjs';
 
 export function patchLogin(text) {
   if (text.includes('// dscode-login-v1')) return text;
   const patch = (from, to) => { text = replaceOnce(text, from, to); };
-  patch('const LOCAL_COMMANDS = [', 'const LOCAL_COMMANDS = [\n{ label: "/login", description: "save a DeepSeek API key locally" },');
+  // The DSCODE catalog already carries this row in the 1.2.0 generation; only an
+  // older bundle needs it inserted here.
+  if (!text.includes(catalogEntry('login'))) {
+    patch('const LOCAL_COMMANDS = [', 'const LOCAL_COMMANDS = [\n' + catalogEntry('login') + '\n');
+  }
   patch('quit, openModel, openEffort,', 'quit, openLogin, openModel, openEffort,');
   // Intercept before attachment handling, history, queueing and model dispatch.
   patch('const text = submissionPayload(liveValue);', `const text = submissionPayload(liveValue);

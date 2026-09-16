@@ -1,4 +1,5 @@
-import { replaceOnce } from './patch-util.mjs';
+import { replaceOnce, replaceOrAdopt } from './patch-util.mjs';
+import { catalogAnchor } from './patch-command-catalog.mjs';
 
 // Chat rendering: quiet by default; /verbose (or Ctrl/Alt+R) shows thinking and tool calls in dim text.
 export const CHAT_LINES_SOURCE = `function dscodeChatLines(entry, columns, verbose = false) {
@@ -25,8 +26,8 @@ function dscodeThinkingLines(reasoning, width) {
   return lines.length <= cap ? lines : [...lines.slice(0, cap), ...textLines("  … " + (lines.length - cap) + " more lines · Ctrl+O opens the full history", width, "dim")];
 }
 `;
-const CATALOG_ANCHOR = '\t{\n\t\tlabel: "/todos",\n\t\tdescription: "inspect the full todo list"\n\t},\n';
-const CATALOG_ENTRY = '\t{\n\t\tlabel: "/verbose",\n\t\tdescription: "toggle thinking and tool call details in the chat"\n\t},\n';
+const CATALOG_ANCHOR = '\t{\n\t\tlabel: "/todos",\n\t\tdescriptionKey: "cmd.todos"\n\t},\n';
+const CATALOG_ENTRY = catalogAnchor('verbose');
 const DISPATCH_ANCHOR = '\t\t\tif (text === "/todos") {\n\t\t\t\topenTodos();';
 const DISPATCH_ENTRY = '\t\t\tif (text === "/verbose") {\n\t\t\t\ttoggleReasoning();\n\t\t\t\treturn;\n\t\t\t}\n';
 const TOGGLE_V1 = '\t\ttoggleReasoning: () => {\n\t\t\tsetShowReasoning((current) => !current);\n\t\t\trefreshScreen();\n\t\t},';
@@ -57,7 +58,8 @@ function patchVerbose(text) {
   text = withCurrentChatLines(text);
   text = text.split('dscodeChatLines(entry, columns);').join('dscodeChatLines(entry, columns, showReasoning);');
   text = text.split('dscodeChatLines(entry, Math.max(1, terminalColumns - 2))').join('dscodeChatLines(entry, Math.max(1, terminalColumns - 2), showReasoning)');
-  text = replaceOnce(text, CATALOG_ANCHOR, CATALOG_ANCHOR + CATALOG_ENTRY);
+  // The DSCODE catalog carries the /verbose row in the 1.2.0 generation.
+  if (!text.includes(catalogAnchor('verbose'))) text = replaceOnce(text, CATALOG_ANCHOR, CATALOG_ANCHOR + CATALOG_ENTRY);
   text = replaceOnce(text, DISPATCH_ANCHOR, DISPATCH_ENTRY + DISPATCH_ANCHOR);
   text = replaceOnce(text, TOGGLE_V1, TOGGLE_V4);
   return withVerbosePersistence('// dscode-interaction-v2\n' + text);
@@ -77,7 +79,8 @@ export function withLiveReasoning(text) {
 export function patchInteraction(text) {
   if (text.includes('// dscode-interaction-v1')) return patchVerbose(withLiveReasoning(text.replace('runSlash("/shell " + line.slice(1))', 'runSlash("/shell-exec " + line.slice(1))')));
   const patch = (from, to) => { text = replaceOnce(text, from, to); };
-  patch('if (ctrl) return "\\n";\n\t\tif (alt)', 'if (ctrl || shift) return "\\n";\n\t\tif (alt)');
+  // 1.2.0 decodes Shift+Enter to a newline itself; older bundles need the rewrite.
+  text = replaceOrAdopt(text, 'if (ctrl) return "\\n";\n\t\tif (alt)', 'if (ctrl || shift) return "\\n";\n\t\tif (alt)', 'if (ctrl || shift) return "\\n";\n\t\tif (alt) return "\\x1B\\r";');
   patch('function normalizeKeyboardChunk(chunk) {', 'function normalizeKeyboardChunk(chunk) {\n\tchunk = chunk.replace(/\\x1b\\[27;2;13~/g, "\\n");');
   patch('if (key.return) {\n\t\t\tif (pasteBracketRef.current)', 'if (input === "\\n" || key.ctrl && input === "j" || key.return && key.shift) {\n\t\t\tapplyEdit(insertText(liveValue, liveCursor, "\\n"));\n\t\t\treturn;\n\t\t}\n\t\tif (key.return) {\n\t\t\tif (pasteBracketRef.current)');
   patch('const currentMentions = mentions;\n\t\tif (images.length', 'const currentMentions = mentions;\n\t\tif (images.length === 0 && line.startsWith("!")) {\n\t\t\trunSlash("/shell-exec " + line.slice(1));\n\t\t\treturn;\n\t\t}\n\t\tif (images.length');

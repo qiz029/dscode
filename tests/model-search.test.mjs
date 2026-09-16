@@ -24,16 +24,29 @@ test('every keystroke searches, matching the word being typed as a prefix', () =
   assert.deepEqual(ids('glm 5.3'), ['z-ai/glm-5.3-flash']);
   assert.deepEqual(sorted(ids('deepseek fl')), ['deepseek-flash', 'deepseek/deepseek-v4-flash']);
   assert.deepEqual(sorted(ids('openrouter flash')), ['deepseek/deepseek-v4-flash', 'z-ai/glm-5.3-flash'], 'the provider narrows too');
-  assert.equal(dscodeFilterModels(ROWS, '   '), ROWS, 'an empty search keeps the directory');
+  assert.deepEqual(dscodeFilterModels(ROWS, '   ').map(entry => entry.model), [
+    'deepseek-flash', 'deepseek-v4-pro', 'deepseek/deepseek-v4-flash', 'meta/muse-spark-1.3',
+    'moonshotai/kimi-k2.6', 'qwen/qwen3.8-27b', 'z-ai/glm-5.2', 'z-ai/glm-5.3-flash',
+  ], 'an empty search lists the whole directory alphabetically by displayed label');
 });
 
-test('results rank by BM25, and rows matching some words show only when none matches all', () => {
+test('search narrows to the matching rows, which stay in alphabetical order', () => {
   const partial = ids('muse flash');
-  assert.equal(partial[0], 'meta/muse-spark-1.3', 'the rarer word ranks its row first');
-  assert.deepEqual(sorted(partial), ['deepseek-flash', 'deepseek/deepseek-v4-flash', 'meta/muse-spark-1.3', 'z-ai/glm-5.3-flash']);
-  assert.equal(ids('glm')[0], 'z-ai/glm-5.2', 'a shorter entry with the same match ranks higher');
-  const ties = [row('p', 'P', 'a/x', 'X'), row('p', 'P', 'a/y', 'Y')];
-  assert.deepEqual(dscodeFilterModels(ties, 'a').map(entry => entry.model), ['a/x', 'a/y'], 'ties keep directory order');
+  assert.deepEqual(partial, ['deepseek-flash', 'deepseek/deepseek-v4-flash', 'meta/muse-spark-1.3', 'z-ai/glm-5.3-flash'],
+    'rows matching some words show only when none matches all, still alphabetical by label');
+  assert.deepEqual(ids('glm'), ['z-ai/glm-5.2', 'z-ai/glm-5.3-flash'], 'the display label decides the order');
+  const unordered = [row('p', 'P', 'a/y', 'Y'), row('p', 'P', 'a/x', 'X')];
+  assert.deepEqual(dscodeFilterModels(unordered, 'a').map(entry => entry.model), ['a/x', 'a/y'], 'directory order is ignored');
+});
+
+test('the picker lists one provider, alphabetically, with natural digit order', () => {
+  assert.deepEqual(dscodeFilterModels(ROWS, '', 'openrouter').map(entry => entry.model), [
+    'deepseek/deepseek-v4-flash', 'meta/muse-spark-1.3', 'moonshotai/kimi-k2.6', 'qwen/qwen3.8-27b', 'z-ai/glm-5.2', 'z-ai/glm-5.3-flash',
+  ], 'only the session provider, ordered by label (GLM 5.2 before GLM 5.3)');
+  assert.deepEqual(ids('openrouter flash'), ['deepseek/deepseek-v4-flash', 'z-ai/glm-5.3-flash']);
+  assert.deepEqual(dscodeFilterModels(ROWS, 'deepseek', 'openrouter').map(entry => entry.model), ['deepseek/deepseek-v4-flash'],
+    'a same-name model of another provider never leaks into the scoped list');
+  assert.deepEqual(dscodeFilterModels(ROWS, '', undefined).length, ROWS.length, 'no provider means the whole directory');
 });
 
 test('an install on an earlier search patch upgrades to type-to-search in place', () => {

@@ -1,20 +1,30 @@
 import { replaceOnce } from './patch-util.mjs';
 
 /**
- * Models ranked for a /model search, recomputed on every keystroke. BM25 over the model
- * name (weight 3), the model id (2) and the provider (1); letters and digits split into
- * separate tokens, so "glm5" finds GLM 5.3. The word still being typed matches the tokens
- * it starts ("kim" finds Kimi). Rows matching every word come first by score; when none
- * does, rows matching some words are shown instead. Ties keep directory order.
+ * The /model picker's rows for one provider, recomputed on every keystroke. Only the
+ * session's current provider is listed. Search is BM25 over the model name (weight 3), the
+ * model id (2) and the provider (1); letters and digits split into separate tokens, so
+ * "glm5" finds GLM 5.3, and the word still being typed matches the tokens it starts ("kim"
+ * finds Kimi). Rows matching every word win over rows matching some. Whatever matches is
+ * presented in alphabetical order of the displayed label, with digits compared naturally.
  */
-export function dscodeFilterModels(rows, query) {
+export function dscodeFilterModels(rows, query, provider) {
+  // One provider at a time: the picker lists the routes the session can actually select.
+  const directory = provider === void 0 ? rows : rows.filter(row => row.provider === provider);
+  const label = row => String(row.modelName ?? row.model ?? "");
+  // Display order is the label itself, so the list reads alphabetically and digits inside a
+  // name compare naturally ("GLM 5.2" before "GLM 5.3"); searching narrows rows, never re-ranks them.
+  const byLabel = (left, right) => label(left).localeCompare(label(right), void 0, {
+    numeric: true,
+    sensitivity: "base"
+  }) || String(left.model ?? "").localeCompare(String(right.model ?? "")) || String(left.provider ?? "").localeCompare(String(right.provider ?? ""));
   const tokenize = text => String(text ?? '').normalize('NFKC').toLowerCase().match(/[a-z]+|[0-9]+|[^\s\x00-\x7f]+/g) ?? [];
   const raw = String(query ?? '');
   const words = tokenize(raw);
-  if (words.length === 0) return rows;
+  if (words.length === 0) return [...directory].sort(byLabel);
   const typing = /\s$/.test(raw) ? -1 : words.length - 1;
   const fields = [['modelName', 3], ['model', 2], ['providerName', 1], ['provider', 1]];
-  const docs = rows.map(row => {
+  const docs = directory.map(row => {
     const counts = new Map();
     let length = 0;
     for (const [field, weight] of fields) for (const token of tokenize(row[field])) { counts.set(token, (counts.get(token) ?? 0) + weight); length += weight; }
@@ -41,10 +51,10 @@ export function dscodeFilterModels(rows, query) {
       hits += 1;
       score += term.idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * doc.length / average));
     }
-    return { row: doc.row, score, hits, index };
+    return { row: doc.row, score, hits };
   }).filter(entry => entry.hits > 0);
   const complete = scored.filter(entry => entry.hits === terms.length);
-  return (complete.length > 0 ? complete : scored).sort((left, right) => right.score - left.score || left.index - right.index).map(entry => entry.row);
+  return (complete.length > 0 ? complete : scored).map(entry => entry.row).sort(byLabel);
 }
 
 // The /model panel, serialized over the upstream one: typing searches at once, so letters
@@ -59,7 +69,9 @@ function ModelPanel({ directory, error, current, onSelect, onProviders, onRetry,
   const stdout = useStdout().stdout;
   const viewport = panelViewport(stdout?.columns ?? 80, stdout?.rows ?? 30);
   const dscodeRows = directory?.rows ?? [];
-  const rows = (0, import_react.useMemo)(() => dscodeFilterModels(dscodeRows, dscodeQuery), [dscodeRows, dscodeQuery]);
+  // `current` is "provider/model"; the provider never contains "/", so the first segment is it.
+  const dscodeProvider = typeof current === "string" && current.includes("/") ? current.slice(0, current.indexOf("/")) : void 0;
+  const rows = (0, import_react.useMemo)(() => dscodeFilterModels(dscodeRows, dscodeQuery, dscodeProvider), [dscodeRows, dscodeQuery, dscodeProvider]);
   const positioned = (0, import_react.useRef)(false);
   (0, import_react.useEffect)(() => {
     if (rows.length === 0) {

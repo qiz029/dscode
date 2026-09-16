@@ -40,6 +40,6 @@ export function patchInterrupt(text) {
   patch('\t}, active);\n\tconst waveKey = waveTier', '\t}, true);\n\tconst waveKey = waveTier');
   patch('const quit = () => {\n\t\tif (quitting) return;', 'const quit = (fast = false) => {\n\t\tif (quitting) return;');
   patch('\t\trunQuitSequence([\n\t\t\t...currentSession', '\t\tif (fast) setTimeout(() => process.exit(0), 250);\n\t\trunQuitSequence([\n\t\t\t...currentSession');
-  patch('"  esc interrupt the running turn · ctrl+c cancel / clear / quit · ctrl+d exit"', '"  ctrl+c stop running turn · ctrl+c again exit · ctrl+d exit"');
+  patch('esc interrupt the running turn · ctrl+c cancel / clear / quit · ctrl+d exit', '  ctrl+c stop running turn · ctrl+c again exit · ctrl+d exit');
   return '// dscode-interrupt-v1\n' + ctrlCAction.toString() + '\n' + text;
 }

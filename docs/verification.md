@@ -22,7 +22,7 @@ The GitHub Actions workflow runs the gate on macOS with Node 22.19 and 24. Addin
 
 ## Passed
 
-- Clean npm dependency resolution with every `@deepseek-ai/dsh*` module pinned to `0.1.5-rc.1`; lockfile integrity retained.
+- Clean npm dependency resolution with every `@deepseek-ai/dsh*` module pinned to `0.1.5-rc.2`; lockfile integrity retained.
 - Native DSH composition dump and actual DSH-Code `1.0.6` TUI startup with `--mode standard`; `/plugin` inspector rendered.
 - Real standard Agent composition: 57 tools before progressive Computer Use activation, including live Chrome MCP tool discovery.
 - Native Computer Use helper `0.3.2` initialized; its own integrity check and health handshake completed.
@@ -80,7 +80,7 @@ Run `npm run doctor` to regenerate local evidence. On this workstation the agent
 - 28 unit/contract tests passed.
 - The launcher tarball installed independently with npm in a temporary prefix.
 - A loopback registry supplied the unpublished bundle to the real Hub lifecycle and dsh-cli installer. The launcher's private npm-exec wrapper pinned DSH and pnpm together; no development runtime substitution was used in the final run.
-- The installed shared DSH modules matched 0.1.5-rc.1. The real installed bundle passed deterministic agent tests for shell, approvals, skills, hooks, subagents, compaction, session resume and telemetry.
+- The installed shared DSH modules matched 0.1.5-rc.2. The real installed bundle passed deterministic agent tests for shell, approvals, skills, hooks, subagents, compaction, session resume and telemetry.
 - A deliberately rejected upgrade retained the old profile. A successful 0.1.0 -> 0.1.1-test upgrade and rollback restored 0.1.0 while retaining state outside the profile directory.
 - The installed launcher opened the real TUI; Ultra appeared in the effort menu and the telemetry footer was right-aligned.
 - `artifacts/local/hub-verification.json` records exact npm tarball integrities and the disposable test home. Publish tooling requires those exact tested artifacts.

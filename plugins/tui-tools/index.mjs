@@ -1,4 +1,6 @@
 import { runShell } from './shell.mjs';
+import { VERSION_PATTERN, scheduleUpdate } from './update.mjs';
+import { readLanguage, t } from '../i18n/messages.mjs';
 import { readFile, readdir, access } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
@@ -102,6 +104,13 @@ export function apply(ctx) {
       `Plugins: ${entries(agent).filter(e => state(e) === 'active').length} active, ${entries(agent).filter(e => state(e) === 'failed').length} failed`,
       'Use /doctor for diagnostics; /statusline for live context/token display.',
     ].join('\n'));
+  });
+  register('update', 'Upgrade DSCODE after this session exits', ({ rawInput }) => {
+    const version = rawInput.trim() || 'latest';
+    const locale = readLanguage();
+    if (version !== 'latest' && !VERSION_PATTERN.test(version)) return fail(t(locale, 'update.usage'));
+    const { log } = scheduleUpdate({ helperModuleUrl: new URL('./update.mjs', import.meta.url), pid: process.pid, version });
+    return ok(t(locale, 'update.scheduled', { version: version === 'latest' ? t(locale, 'update.newest') : version, log }));
   });
   register('doctor', 'Analyze recent runtime logs and session traces', async ({ agent, signal, rawInput }) => {
     const action = rawInput.trim();

@@ -1,5 +1,6 @@
 import { replaceOnce } from './patch-util.mjs';
 import { ALIASES, LANGUAGES, MESSAGES, normalizeLanguage, languageName, t } from '../plugins/i18n/messages.mjs';
+import { catalogEntry, catalogAnchor } from './patch-command-catalog.mjs';
 
 // Runtime half of /language inside the TUI bundle: the message tables, the
 // current locale (from DSCODE_LANGUAGE or ~/.dsh/dsh-code/language.json),
@@ -33,9 +34,9 @@ function dscodeSaveFlag(name, value) {
 `;
 
 // Mode A owns the whole terminal: there is no mouse command, so the language entry rides the verbose entry.
-const CATALOG_ANCHOR = '\t{\n\t\tlabel: "/verbose",\n\t\tdescription: "toggle thinking and tool call details in the chat"\n\t},\n';
-const CATALOG_ENTRY = '\t{\n\t\tlabel: "/language",\n\t\tdescription: "show or set the interface language: en, zh-CN, zh-TW, ja, ko, es"\n\t},\n';
-const DISPATCH_ANCHOR = '\t\t\tif (text === "/todos") {\n\t\t\t\topenTodos();';
+const CATALOG_ANCHOR = catalogAnchor('verbose');
+const CATALOG_ENTRY = catalogAnchor('language');
+const DISPATCH_ANCHOR = '\t\t\tif (text === "/language" || text.startsWith("/language ")) {';
 const NOARG_V1 = '\t\t\t\tif (!wanted) { notify(dscodeT("language.current", { name: dscodeLanguageName(dscodeLocale) })); return; }';
 const NOARG_V2 = '\t\t\t\tif (!wanted) { openLanguage(); return; }';
 const DISPATCH_ENTRY = `\t\t\tif (text === "/language" || text.startsWith("/language ")) {
@@ -52,7 +53,7 @@ ${NOARG_V2}
 `;
 
 // The picker: rows are the supported languages, the current one is marked, ↑↓ moves, enter applies, esc closes.
-const PANEL_SOURCE = `function LanguagePanel({ current, select, close }) {
+const PANEL_SOURCE = `function DscodeLanguagePanel({ current, select, close }) {
 	const rows = DSCODE_LANGUAGES;
 	const [cursor, setCursor] = (0, import_react.useState)(() => Math.max(0, rows.findIndex((language) => language.code === current)));
 	const stdout = useStdout().stdout;
@@ -78,7 +79,7 @@ const PANEL_SOURCE = `function LanguagePanel({ current, select, close }) {
 		(0, import_react.createElement)(Text, { dimColor: true, wrap: "truncate-end" }, truncateColumns("↑↓ choose · enter apply · esc/q close", viewport.contentColumns)));
 }
 `;
-const PANEL_RENDER = `}) : void 0, languageOpen && !approvalPending && !questionPending ? (0, import_react.createElement)(LanguagePanel, {
+const PANEL_RENDER = `}) : void 0, languageOpen && !approvalPending && !questionPending ? (0, import_react.createElement)(DscodeLanguagePanel, {
 		current: dscodeLocale,
 		select: (code) => {
 			dscodeLocale = code;
@@ -93,13 +94,25 @@ const PANEL_RENDER = `}) : void 0, languageOpen && !approvalPending && !question
 /** Wire the picker into the App: state, focus and modal conditions, close-all, the Input prop, the render slot and the component. */
 function patchLanguagePanel(text) {
   if (text.includes('// dscode-language-v2')) return text;
-  text = replaceOnce(text, '\tconst [themeOpen, setThemeOpen] = (0, import_react.useState)(false);\n', '\tconst [themeOpen, setThemeOpen] = (0, import_react.useState)(false);\n\tconst [languageOpen, setLanguageOpen] = (0, import_react.useState)(false);\n');
+  // 1.2.0 declares the language panel state and modal wiring for its own picker, so every
+  // injection here is conditional: the older generation needs it, the newer one owns it.
+  const stateAnchor = '\tconst [themeOpen, setThemeOpen] = (0, import_react.useState)(false);\n';
+  if (!text.includes(stateAnchor + '\tconst [languageOpen, setLanguageOpen] = (0, import_react.useState)(false);\n')) {
+    text = replaceOnce(text, stateAnchor, stateAnchor + '\tconst [languageOpen, setLanguageOpen] = (0, import_react.useState)(false);\n');
+  }
   if (text.split('!themeOpen').length !== 3) throw Error('Pinned TUI panel focus drift');
   text = text.split('!themeOpen').join('!themeOpen && !languageOpen');
   text = replaceOnce(text, 'themeOpen ||', 'themeOpen || languageOpen ||');
-  text = replaceOnce(text, '\t\tsetThemeOpen(false);\n\t\tsetHistoryOpen(false);\n', '\t\tsetThemeOpen(false);\n\t\tsetLanguageOpen(false);\n\t\tsetHistoryOpen(false);\n');
-  text = replaceOnce(text, '\t\topenTheme: () => setThemeOpen(true),\n', '\t\topenTheme: () => setThemeOpen(true),\n\t\topenLanguage: () => setLanguageOpen(true),\n');
-  text = replaceOnce(text, 'openStatusline, openTheme, openHistory,', 'openStatusline, openTheme, openLanguage, openHistory,');
+  if (!text.includes('\t\tsetThemeOpen(false);\n\t\tsetLanguageOpen(false);\n')) {
+    text = replaceOnce(text, '\t\tsetThemeOpen(false);\n\t\tsetHistoryOpen(false);\n', '\t\tsetThemeOpen(false);\n\t\tsetLanguageOpen(false);\n\t\tsetHistoryOpen(false);\n');
+  }
+  if (!text.includes('\t\topenTheme: () => setThemeOpen(true),\n\t\topenLanguage: () => setLanguageOpen(true),\n')) {
+    text = replaceOnce(text, '\t\topenTheme: () => setThemeOpen(true),\n', '\t\topenTheme: () => setThemeOpen(true),\n\t\topenLanguage: () => setLanguageOpen(true),\n');
+  }
+  // 1.2.0 already destructures openLanguage (plus saveLanguage) in this signature.
+  if (!text.includes('openTheme, openLanguage,')) {
+    text = replaceOnce(text, 'openStatusline, openTheme, openHistory,', 'openStatusline, openTheme, openLanguage, openHistory,');
+  }
   text = replaceOnce(text, '}) : void 0, historyOpen && !approvalPending && !questionPending ? (0, import_react.createElement)(HistoryPanel, {', PANEL_RENDER);
   text = replaceOnce(text, 'function ThemePanel({ current, select, close }) {', PANEL_SOURCE + 'function ThemePanel({ current, select, close }) {');
   text = text.replace(NOARG_V1, NOARG_V2);
@@ -134,7 +147,14 @@ export function patchLanguage(text) {
     if (current !== LANGUAGE_SOURCE) text = text.slice(0, start) + LANGUAGE_SOURCE + text.slice(close);
     return patchLanguagePanel(text);
   }
-  text = replaceOnce(text, CATALOG_ANCHOR, CATALOG_ANCHOR + CATALOG_ENTRY);
+  // The 1.2.0 DSCODE catalog already carries both rows; older trees need them inserted.
+  const verboseRow = catalogAnchor('verbose');
+  if (!text.includes(verboseRow)) text = replaceOnce(text, CATALOG_ANCHOR, CATALOG_ANCHOR + CATALOG_ENTRY);
+  else if (!text.includes(catalogEntry('language'))) {
+    // A 1.2.0-shaped row has no trailing blank line to anchor on; the row itself is the anchor.
+    const languageRow = catalogAnchor('language');
+    text = replaceOnce(text, CATALOG_ANCHOR, CATALOG_ANCHOR + languageRow);
+  }
   text = replaceOnce(text, DISPATCH_ANCHOR, DISPATCH_ENTRY + DISPATCH_ANCHOR);
   return patchLanguagePanel('// dscode-language-v1\n' + LANGUAGE_SOURCE + text);
 }

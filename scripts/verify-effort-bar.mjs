@@ -1,3 +1,4 @@
+process.env.DSCODE_UPDATE_CHECK = 'off'; // rendering never performs the startup registry read
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
@@ -114,7 +115,8 @@ try {
     } finally { mounted.unmount(); mounted.cleanup(); stdin.destroy(); stdout.destroy(); stderr.destroy(); }
   }
   const inert = snapshot => ({ subscribe: () => () => {}, getSnapshot: () => snapshot });
-  const view = { entries: [], busy: false, streaming: '', streamingReasoning: '', busySince: 0, title: 'New session', stats: { usage: {}, contextWindow: 100000 }, permission: '', todos: [] };
+  // 1.2.0's view carries the pending inbox rows the live tree still owns.
+  const view = { entries: [], pending: { 'next-turn': [], 'next-step': [] }, busy: false, streaming: '', streamingReasoning: '', busySince: 0, title: 'New session', stats: { usage: {}, contextWindow: 100000 }, permission: '', todos: [] };
   const modelActions = [];
   const props = {
     store: { subscribe: () => () => {}, getView: () => view },
@@ -124,7 +126,7 @@ try {
     subagents: { ...inert([]), getTotalSeen: () => 0 },
     model: 'deepseek-official/deepseek-flash', effort: 'high', mode: 'default', permission: 'ask',
     cwd: 'dsh-code', workspaceRoot: '/workspace/dsh-code', branch: 'main', sessionId: 'fixture', sessionKey: 'fixture',
-    history: [], statusline: undefined, animations: true, resumed: false,
+    history: [], recordHistory: () => {}, statusline: undefined, animations: true, resumed: false,
     loadModels: async () => { modelActions.push('load'); await tick(20); return { rows: [deepseek] }; }, selectModel: () => { modelActions.push('select'); return 'deepseek-official/deepseek-flash'; }, onBridgeReady: () => {},
   };
   const stdin = new PassThrough(), stdout = new PassThrough(), stderr = new PassThrough();

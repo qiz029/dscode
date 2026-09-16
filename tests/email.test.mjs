@@ -46,7 +46,7 @@ test('real TUI /email selection steers directly into the current session', async
   writeFileSync(entry, readFileSync(join(fixture.root, 'node_modules/dsh-code/lib/index.mjs'), 'utf8') + '\nexport { App, DscodeEmailPanel, DscodeImapSetup, render, import_react as react, visibleColumns };');
   const ui = await import(entry);
   const inert = snapshot => ({ subscribe: () => () => {}, getSnapshot: () => snapshot });
-  const view = { entries: [], busy: false, streaming: '', streamingReasoning: '', busySince: 0, title: 'Email test', stats: { usage: {}, contextWindow: 100000 }, permission: '', todos: [] };
+  const view = { entries: [], busy: false, streaming: '', streamingReasoning: '', busySince: 0, title: 'Email test', stats: { usage: {}, contextWindow: 100000 }, permission: '', todos: [], pending: { 'next-turn': [], 'next-step': [] } };
   const sent = [];
   const props = {
     store: { subscribe: () => () => {}, getView: () => view },

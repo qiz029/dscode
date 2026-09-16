@@ -1,3 +1,4 @@
+process.env.DSCODE_UPDATE_CHECK = 'off'; // rendering never performs the startup registry read
 import assert from 'node:assert/strict';
 process.env.DSCODE_LANGUAGE = 'en';
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
@@ -21,7 +22,8 @@ writeFileSync(entry, source + '\nexport { App, Box, render, import_react as reac
 try {
   const ui = await import(entry.href);
   const inert = snapshot => ({ subscribe: () => () => {}, getSnapshot: () => snapshot });
-  const view = { entries: [], busy: false, streaming: '', streamingReasoning: '', busySince: 0, title: 'New session', stats: { usage: {}, contextWindow: 100000 }, permission: '', todos: [] };
+  // 1.2.0's view carries the pending inbox rows the live tree still owns.
+  const view = { entries: [], pending: { 'next-turn': [], 'next-step': [] }, busy: false, streaming: '', streamingReasoning: '', busySince: 0, title: 'New session', stats: { usage: {}, contextWindow: 100000 }, permission: '', todos: [] };
   const props = {
     store: { subscribe: () => () => {}, getView: () => view },
     commands: { subscribe: () => () => {}, descriptors: [] },

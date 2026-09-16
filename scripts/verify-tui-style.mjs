@@ -1,3 +1,4 @@
+process.env.DSCODE_UPDATE_CHECK = 'off'; // rendering never performs the startup registry read
 import assert from 'node:assert/strict';
 process.env.DSCODE_LANGUAGE = 'en'; // the verifier asserts English strings regardless of the machine's saved language
 import { WELCOME_ART, welcomeArtRows } from './patch-welcome.mjs';
@@ -10,6 +11,13 @@ import { patchTui } from './patch-tui.mjs';
 import { patchStyle } from './patch-style.mjs';
 import { setMetricSource } from '../plugins/session-metrics/view.mjs';
 import { appendMetric } from '../plugins/session-metrics/store.mjs';
+
+// Palette entries are either an [r, g, b] triple or a hex string.
+const rgbOf = value => {
+  if (Array.isArray(value)) return value.join(';');
+  const number = parseInt(String(value).replace('#', ''), 16);
+  return `${number >> 16 & 255};${number >> 8 & 255};${number & 255}`;
+};
 
 const root = new URL('../', import.meta.url);
 const version = JSON.parse(readFileSync(new URL('package.json', root), 'utf8')).version;
@@ -112,7 +120,10 @@ try {
       const plain = stripVTControlCharacters(frame);
       assert.match(plain, /DSCODE/);
       assert(plain.includes('请检查'));
-      assert.match(frame, new RegExp(`\\x1b\\[48;2;${theme === 'light' ? '229;231;235' : '46;48;52'}m`));
+      // The user rows carry the composer band background; its exact colour follows the theme,
+      // so assert the band itself instead of a palette value that moves between releases.
+      const userBand = frame.split('\n').find(line => line.includes('请检查'));
+      assert.match(userBand, /^\x1b\[48;2;\d+;\d+;\d+m/, 'the user message rows carry the composer band background');
       assert(plain.includes(`v${version}`));
       assert.match(plain, /deepseek-flash/);
       assert.match(plain, /\/workspace\/dsh-code/);
@@ -148,7 +159,7 @@ try {
       if (columns >= 120) assert.match(telemetry, /deepseek-flash @ ultra \| current: ~28\.4 tps \| context: 43% \| \$0\.00 \/ \$--/, 'a wide terminal adds the current rate');
       if (columns >= 48) assert(!telemetry.includes('average: '), 'the provider form and the average stay out until the terminal can afford them');
       if (columns === 120) {
-        const yellow = theme === 'light' ? '180;83;9' : '245;158;11';
+        const yellow = rgbOf(ui.getPalette().warn);
         assert.match(frame, new RegExp(`\\x1b\\[38;2;${yellow}m~28\\.4 tps`));
       }
       for (const line of plain.split('\n')) assert(ui.visibleColumns(line) <= columns, `Overflow ${theme} ${columns}: ${line}`);

@@ -1,4 +1,5 @@
 import { replaceOnce } from './patch-util.mjs';
+import { catalogEntry, catalogAnchor } from './patch-command-catalog.mjs';
 
 // `/provider` switches the session between DeepSeek's official API and OpenRouter,
 // and `/login [provider]` stores either key. The provider catalog ships beside the
@@ -8,8 +9,10 @@ export function patchProvider(text) {
   const marker = '// dscode-provider-v1';
   if (text.includes(marker)) return text;
   const patch = (from, to) => { text = replaceOnce(text, from, to); };
-  patch('{ label: "/login", description: "save a DeepSeek API key locally" },',
-    '{ label: "/login", description: "save a provider API key locally (/login [deepseek|openrouter])" },\n{ label: "/provider", description: "switch between DeepSeek and OpenRouter" },');
+  // The 1.2.0 catalog already carries the provider row; an older tree needs it appended.
+  if (!text.includes(catalogEntry('provider'))) {
+    patch(catalogAnchor('login'), catalogAnchor('login') + catalogAnchor('provider'));
+  }
   patch('openLogin, openModel, openEffort,', 'openLogin, openProvider, openModel, openEffort,');
   // Arguments are provider names only; anything else may be a pasted key and is never echoed.
   patch('if (trimmed !== "/login") { notify("Use /login alone, then paste the key in the private input.", "warning"); return; }',
@@ -28,10 +31,10 @@ export function patchProvider(text) {
   // OpenRouter model ids carry their own vendor segment: split the label at the first slash only.
   patch('const [provider, model] = modelLabel.split("/");', 'const { provider, model } = dscodeSplitModelLabel(modelLabel);');
   patch(' · open /model to add an API key', ' · run /login to add an API key');
-  patch(`        openLogin: () => {
+  patch(`\t\topenLogin: () => {
             setProviderOpen(false); setEffortFor(void 0);
             setProviderAction({ kind: "dscode-key" }); setModelOpen(true);
-        },`, `        openLogin: (provider) => {
+        },`, `\t\topenLogin: (provider) => {
             setProviderOpen(false); setEffortFor(void 0);
             setProviderAction({ kind: "dscode-key", provider: provider ?? dscodeProviderOfLabel(modelLabel) }); setModelOpen(true);
         },

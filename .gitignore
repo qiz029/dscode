@@ -13,3 +13,6 @@ config/*.local.json
 
 # Generated release packages and machine-specific verification evidence
 artifacts/
+
+# Local npm cache configured in .npmrc for the test runtime and probe tooling
+.npm-cache/

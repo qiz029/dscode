@@ -13,7 +13,7 @@ export function patchFooter(text, root) {
   const module = JSON.stringify(pathToFileURL(join(root, 'plugins/session-metrics/view.mjs')).href);
   const statement = `import { footerFor as dscodeFooterFor } from ${module};`;
   if (text.includes('// dscode-footer-v1')) return text.replace(/import \{ footerFor as dscodeFooterFor \} from [^\n]+;/, statement);
-  text = replaceOnce(text, 'function StatusLine({ facts, stats, busy, columns, items }) {', `function StatusLine({ facts, stats, busy, columns, items }) {
+  text = replaceOnce(text, 'function StatusLine({ facts, stats, busy, columns, items, onRows, animated }) {', `function StatusLine({ facts, stats, busy, columns, items, onRows, animated }) {
     const [, refreshMetrics] = (0, import_react.useState)(0);
     (0, import_react.useEffect)(() => { const timer = setInterval(() => refreshMetrics(n => n + 1), 1000); return () => clearInterval(timer); }, []);
     facts = { ...facts, telemetry: dscodeFooterFor(facts.fullSessionId, stats, Math.max(1, columns - 6)) };`);

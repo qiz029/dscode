@@ -7,7 +7,7 @@ export function patchClipboardImage(text, root) {
   if (text.includes('// dscode-clipboard-image-v1')) return text;
   text = 'import { readClipboardImage as dscodeReadClipboardImage } from "./dscode-clipboard-image/index.mjs";\n// dscode-clipboard-image-v1\n' + text;
   text = replaceOnce(text,
-    'inspectImages, prepareImages, inspectFiles, prepareFiles, cyclePermission',
+    'inspectImages, prepareImages, inspectFiles, prepareFiles, cycleMode',
     'inspectImages, prepareImages, inspectFiles, prepareFiles, readClipboardImage, cyclePermission');
   text = replaceOnce(text,
     'const insertDroppedAttachments = (imagePaths, filePaths) => {\n\t\tconst originalValue = valueRef.current;\n\t\tconst originalCursor = cursorRef.current;',

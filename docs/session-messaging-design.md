@@ -190,7 +190,7 @@ TUI 显示来源 session、kind、mode 和正文，defer 显示“已留言，�
 
 以确定性本地模型验证协议和调度，再用真实模型观察协作质量。协议能保证消息数和自动激活次数有界；单个 session 内部的过度思考、工具循环和总 token 消耗仍由其执行预算治理。
 
-## 底层调查结果（当前安装的 0.1.5-rc.1）
+## 底层调查结果（当时安装的 0.1.5-rc.1，现已升到 0.1.5-rc.2）
 
 核对的是 dscode 实际使用的 `node_modules` 产物，不以旁边 Harness 源码 checkout 代替运行版本。可重现命令：`node scripts/verify-runtime-foundations.mjs`。脚本只使用临时状态目录、真实 Harness/JSONL 后端和确定性本地模型，不调用网络模型。
 

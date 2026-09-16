@@ -1,3 +1,4 @@
+process.env.DSCODE_UPDATE_CHECK = 'off'; // rendering never performs the startup registry read
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { PassThrough } from 'node:stream';

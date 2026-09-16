@@ -27,9 +27,9 @@ const FOOTER_ROW_ANCHORS = {
     '\t\t\ttext: effort === "" ? model : `${model} \uff5c ${effort}`,',
   ],
   titleRow: '\tconst label = truncateColumns(safe(facts.title !== void 0 && facts.title !== "" ? facts.title : facts.sessionId), TITLE_BUDGET);\n\tif (label !== "" && enabled.has("title")) row2.push({\n\t\tgroup: { spans: [{\n\t\t\ttext: label,\n\t\t\ttone: "meta"\n\t\t}] },\n\t\trank: RANK_TITLE,\n\t\tid: "title"\n\t});',
-  permission: '\tif (permission !== "" && enabled.has("permission")) {\n\t\tright.push({\n\t\t\tspan: {\n\t\t\t\ttext: permission,\n\t\t\t\ttone: permissionTone(permission)\n\t\t\t},\n\t\t\trank: RANK_BADGE,\n\t\t\tid: "permission"\n\t\t});\n\t\tbadge = right.length - 1;\n\t}',
+  permission: '	if (permission !== "" && enabled.has("permission")) {\n		right.push({\n			span: planStation ? {\n				text: "plan on",\n				tone: "plan"\n			} : {\n				text: permission,\n				tone: permissionTone(permission)\n			},\n			rank: RANK_BADGE,\n			id: "permission"\n		});\n		badge = right.length - 1;\n	}',
 };
-const PERMISSION_LEFT = '\tif (permission !== "" && enabled.has("permission")) {\n\t\t// dscode-footer-rows-v1: the permission rides row 1 next to the title.\n\t\tleft.push({\n\t\t\tgroup: { spans: [{\n\t\t\t\ttext: permission,\n\t\t\t\ttone: permissionTone(permission)\n\t\t\t}] },\n\t\t\trank: RANK_BADGE,\n\t\t\tid: "permission"\n\t\t});\n\t\tbadge = left.length - 1;\n\t}';
+const PERMISSION_LEFT = '	if (permission !== "" && enabled.has("permission")) {\n		// dscode-footer-rows-v1: the permission rides row 1 next to the title.\n		left.push({\n			group: { spans: planStation ? [{\n				text: "plan on",\n				tone: "plan"\n			}] : [{\n				text: permission,\n				tone: permissionTone(permission)\n			}] },\n			rank: RANK_BADGE,\n			id: "permission"\n		});\n		badge = left.length - 1;\n	}';
 /** Row 1 carries `title | permission`; the model moves into the footer telemetry header. */
 export function footerRows(text) {
   if (text.includes('// dscode-footer-rows-v1')) return text;
@@ -86,19 +86,23 @@ export function patchStyle(text) {
     if (start < 0 || end <= start) throw Error(`Missing TUI function: ${name}`);
     patch(text.slice(start, end), replacement);
   };
-  replaceFunction('Header', `function Header({ resumed, cwd = "", branch = "", title = "" }) {
-    const columns = useStdout().stdout?.columns ?? 80;
+  replaceFunction('Header', `function Header({ cwd = "", model = "", effort = "", animated = false }) {
+    const stdout = useStdout().stdout;
+    const columns = stdout?.columns ?? 80;
     const width = Math.max(1, columns - 4);
-    const project = singleLineText(cwd).split(/[\\\\/]/).filter(Boolean).at(-1) || "workspace";
-    const identity = "DSCODE · " + project + (branch ? " / " + singleLineText(branch) : "");
-    const subtitle = title ? singleLineText(title) : resumed ? "Session resumed · /help" : "New session · /help";
+    const modelName = singleLineText(model).split("/").at(-1);
+    const effortName = singleLineText(effort);
+    const project = singleLineText(cwd).split(/[\\/]/).filter(Boolean).at(-1) || "workspace";
+    const identity = "DSCODE · " + project + (modelName ? " · " + modelName : "") + (effortName ? " @ " + effortName : "");
+    const subtitle = animated ? "DSCODE" : "New session · /help";
     return (0, import_react.createElement)(Box, { flexDirection: "column", paddingX: 2, marginBottom: 1 },
       (0, import_react.createElement)(Text, { color: inkColor(getPalette().brandBright), bold: true, wrap: "truncate-end" }, truncateColumns(identity, width)),
       (0, import_react.createElement)(Text, { color: inkColor(getPalette().dim), wrap: "truncate-end" }, truncateColumns(subtitle, width)));
   }`);
   patch('columns = 80, rowCap = SETTLED_ROW_CAP) {', 'columns = 80, rowCap = SETTLED_ROW_CAP, headerFacts = {}) {');
+
   patch('key: "header",\n\t\t\tresumed', 'key: "header",\n            ...headerFacts,\n\t\t\tresumed');
-  patch('props.resumed, refreshEpoch, terminalSize.columns);', 'props.resumed, refreshEpoch, terminalSize.columns, SETTLED_ROW_CAP, { cwd: props.cwd, branch: props.branch, title: view.title });');
+  patch('props.resumed, refreshEpoch, terminalSize.columns);', 'props.resumed, refreshEpoch, terminalSize.columns, SETTLED_ROW_CAP, { cwd: props.workspaceRoot ?? props.cwd, model: modelLabel, effort: effortLabel, animated: animations });');
 
   // One stable status row, including while answer text is streaming. Keep
   // elapsed time explicitly turn-based so it cannot be mistaken for tool time.

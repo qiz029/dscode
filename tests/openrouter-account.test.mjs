@@ -9,6 +9,7 @@ import {
 import { PROVIDERS } from '../plugins/providers/catalog.mjs';
 import { balanceNow, refreshBalance } from '../plugins/session-metrics/balance.mjs';
 import { createTestRuntime } from '../scripts/test-runtime.mjs';
+import { catalogEntry } from '../scripts/patch-command-catalog.mjs';
 import { patchOpenRouterTui } from '../scripts/patch-openrouter.mjs';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -110,7 +111,7 @@ test('the TUI patch adds /openrouter, the management key step and the account pa
   t.after(fixture.close);
   const file = `${fixture.root}/node_modules/dsh-code/lib/index.mjs`;
   const text = readFileSync(file, 'utf8');
-  for (const needle of ['// dscode-openrouter-account-v1', 'from "./dscode-providers/openrouter-account.mjs";', '{ label: "/openrouter",', 'if (trimmed === "/openrouter") {',
+  for (const needle of ['// dscode-openrouter-account-v1', 'from "./dscode-providers/openrouter-account.mjs";', catalogEntry('openrouter'), 'if (trimmed === "/openrouter") {',
     'openOpenRouter: () => {', 'providerAction?.kind === "dscode-openrouter"', 'providerAction?.kind === "dscode-management-key"',
     'setProviderAction({ kind: "dscode-management-key", optional: true, then: finish });', 'dscodeLoadOpenRouterAccount: () => dscodeLoadOpenRouterAccountFor(ctx),',
     'function DscodeOpenRouterPanel({ load, setManagement, back }) {']) assert(text.includes(needle), needle);
