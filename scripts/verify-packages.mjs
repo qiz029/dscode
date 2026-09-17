@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { customPlugins } from './composition.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const home = mkdtempSync(join(tmpdir(), 'dscode-package-check-'));
@@ -30,6 +31,9 @@ try {
       assert.match(readFileSync(join(destination, 'vendor/terminal/index.js'), 'utf8'), /dscode-no-history-expansion-v1/);
       assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /dscode-bundle\/terminal/);
       assert.equal(pkg.exports['./code-review'], './plugins/code-review/index.mjs');
+      // Every DSCODE plugin the composition mounts needs its own bundle subpath: a missing
+      // export only surfaces when a real Hub install boots the profile, not in the tarball itself.
+      for (const plugin of customPlugins) assert.equal(pkg.exports['./' + plugin], `./plugins/${plugin}/index.mjs`, `the bundle must export the ${plugin} plugin`);
       assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/code-review'/);
       assert.match(readFileSync(join(destination, 'vendor/tui/lib/app.mjs'), 'utf8'), /dispatch\(text\)/, 'the terminal routes /review through the shared service');
       assert.match(readFileSync(join(destination, 'vendor/subagent/index.js'), 'utf8'), /dscode-child-worktree-v3/);
