@@ -2,9 +2,9 @@ import { composePlugins } from './composition.mjs';
 import { cpSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { patchTui } from './patch-tui.mjs';
 import { replaceOnce } from './patch-util.mjs';
 import { patchRuntime } from './patch-runtime.mjs';
+import { buildTui } from './build-tui.mjs';
 const root = resolve(import.meta.dirname, '..');
 const read = path => readFileSync(join(root, path), 'utf8');
 const original = JSON.parse(read('package.json'));
@@ -33,12 +33,12 @@ mkdirSync(join(bundle, 'vendor'));
 // Patch only our staging copies, never the developer or recipient install.
 const stage = join(out, '.vendor-stage');
 rmSync(stage, { recursive: true, force: true }); mkdirSync(join(stage, 'node_modules'), { recursive: true });
-for (const pkg of ['@deepseek-ai/dsh-tool-subagent', '@deepseek-ai/dsh-subagent', '@deepseek-ai/dsh-subagent-in-process-driver', '@deepseek-ai/dsh-subagent-spawn-in-process', '@deepseek-ai/dsh-subagent-fork-in-process', 'dsh-code', '@deepseek-ai/dsh-llm-deepseek', '@deepseek-ai/dsh-tool-bash', '@deepseek-ai/dsh-tool-bash-persistent', '@deepseek-ai/dsh-terminal-bash', '@deepseek-ai/dsh-compaction-basic']) {
+for (const pkg of ['@deepseek-ai/dsh-tool-subagent', '@deepseek-ai/dsh-subagent', '@deepseek-ai/dsh-subagent-in-process-driver', '@deepseek-ai/dsh-subagent-spawn-in-process', '@deepseek-ai/dsh-subagent-fork-in-process', '@deepseek-ai/dsh-llm-deepseek', '@deepseek-ai/dsh-tool-bash', '@deepseek-ai/dsh-tool-bash-persistent', '@deepseek-ai/dsh-terminal-bash', '@deepseek-ai/dsh-compaction-basic']) {
   copy('node_modules/' + pkg, join(stage, 'node_modules', pkg));
 }
-patchTui(stage); patchRuntime(stage, { requireMacStdin: false });
+patchRuntime(stage, { requireMacStdin: false });
 const notices = [];
-for (const [pkg, dest] of [['@deepseek-ai/dsh-tool-subagent','subagent'], ['@deepseek-ai/dsh-subagent','subagent-core'], ['@deepseek-ai/dsh-subagent-in-process-driver','subagent-driver'], ['@deepseek-ai/dsh-subagent-spawn-in-process','subagent-spawn'], ['@deepseek-ai/dsh-subagent-fork-in-process','subagent-fork'], ['dsh-code','tui'], ['@deepseek-ai/dsh-llm-deepseek','deepseek'], ['@deepseek-ai/dsh-tool-bash','bash'], ['@deepseek-ai/dsh-tool-bash-persistent','persistent'], ['@deepseek-ai/dsh-terminal-bash','terminal'], ['@deepseek-ai/dsh-compaction-basic','compaction-basic']]) {
+for (const [pkg, dest] of [['@deepseek-ai/dsh-tool-subagent','subagent'], ['@deepseek-ai/dsh-subagent','subagent-core'], ['@deepseek-ai/dsh-subagent-in-process-driver','subagent-driver'], ['@deepseek-ai/dsh-subagent-spawn-in-process','subagent-spawn'], ['@deepseek-ai/dsh-subagent-fork-in-process','subagent-fork'], ['@deepseek-ai/dsh-llm-deepseek','deepseek'], ['@deepseek-ai/dsh-tool-bash','bash'], ['@deepseek-ai/dsh-tool-bash-persistent','persistent'], ['@deepseek-ai/dsh-terminal-bash','terminal'], ['@deepseek-ai/dsh-compaction-basic','compaction-basic']]) {
   const src = join(stage, 'node_modules', pkg);
   cpSync(join(src, 'lib'), join(bundle, 'vendor', dest), { recursive: true });
   const meta = JSON.parse(readFileSync(join(src, 'package.json'), 'utf8'));
@@ -46,19 +46,16 @@ for (const [pkg, dest] of [['@deepseek-ai/dsh-tool-subagent','subagent'], ['@dee
   const license = readdirSync(src).find(f => /^licen[cs]e(?:\.|$)/i.test(f));
   if (license) cpSync(join(src, license), join(bundle, 'vendor', dest, 'LICENSE'));
 }
-const tui = join(bundle, 'vendor/tui/index.mjs');
-// The patched TUI carries absolute file: URLs that only exist on the machine that built it;
-// every one of them must be rewritten into the bundle or the published package imports a
-// path that does not exist. Assert the count instead of silently shipping a broken bundle.
-let tuiSource = replaceOnce(readFileSync(tui, 'utf8'), 'new URL("../package.json", import.meta.url)', 'new URL("../../package.json", import.meta.url)');
-const footerImports = tuiSource.match(/import \{ footerFor as dscodeFooterFor \} from [^\n]+;/g) ?? [];
-if (footerImports.length !== 1) throw new Error('TUI bundle footer import drift: ' + footerImports.length);
-tuiSource = tuiSource.replace(footerImports[0], 'import { footerFor as dscodeFooterFor } from "../../plugins/session-metrics/view.mjs";');
-const compactionImports = tuiSource.match(/from "file:[^"]*\/plugins\/compaction\/(?:tetris|threshold)\.mjs";/g) ?? [];
-if (compactionImports.length !== 2) throw new Error('TUI bundle compaction import drift: ' + compactionImports.length);
-tuiSource = tuiSource.replace(/from "file:[^"]*\/plugins\/compaction\/(tetris|threshold)\.mjs";/g, 'from "../../plugins/compaction/$1.mjs";');
-if (tuiSource.includes('from "file:')) throw new Error('TUI bundle keeps an absolute file: import');
-writeFileSync(tui, tuiSource);
+// The vendored terminal ships compiled: an installed package lives under node_modules,
+// where Node refuses to strip types, so packages/tui/lib is what gets loaded. The source
+// tree keeps relative "../../../plugins/..." imports, which resolve identically here
+// because vendor/tui mirrors packages/tui one level down.
+buildTui();
+// Keep the source tree's depth: lib/ sits one level under the package, so the compiled
+// '../../../plugins/...' imports resolve to the bundle root exactly as they do in the repo.
+cpSync(join(root, 'packages/tui/lib'), join(bundle, 'vendor/tui/lib'), { recursive: true });
+const tuiMeta = JSON.parse(readFileSync(join(root, 'packages/tui/package.json'), 'utf8'));
+notices.push(`dsh-code (DSCODE vendored terminal, forked from dsh-code@${tuiMeta.version.split('-')[0]}): ${tuiMeta.license}; https://github.com/unlinearity/dsh-code\nLocal changes: DSCODE UI (welcome header, activity line, footer telemetry, effort bar), commands, panels and paste handling.\n`);
 for (const [file, from, to] of [
   ['compaction-basic/index.js', '../../../../plugins/compaction/threshold.mjs', '../../plugins/compaction/threshold.mjs'],
   ['subagent/index.js', '../../../../plugins/worktree-subagent/worktree.mjs', '../../plugins/worktree-subagent/worktree.mjs'],
@@ -104,7 +101,7 @@ patch += `
 `;
 write(bundle, 'cordis.patch.yml', patch);
 const exports = { './email-tools':'./plugins/email-tools/index.mjs', './imap':'./plugins/email/imap.mjs', './gmail':'./plugins/email/gmail.mjs', './email':'./plugins/email/inbox.mjs', './package.json':'./package.json', './cordis.patch.yml':'./cordis.patch.yml', './credentials':'./plugins/credentials/index.mjs', './memory':'./plugins/memory/index.mjs', './session-bridge':'./plugins/session-bridge/index.mjs', './session-cards':'./plugins/session-cards/index.mjs' };
-for (const [key, file] of Object.entries({subagent:'vendor/subagent/index.js','subagent-core':'vendor/subagent-core/index.js','subagent-driver':'vendor/subagent-driver/index.js','subagent-spawn':'vendor/subagent-spawn/index.js','subagent-fork':'vendor/subagent-fork/index.js',bootstrap:'bootstrap.mjs',tui:'vendor/tui/index.mjs',startup:'vendor/tui/startup.mjs',deepseek:'vendor/deepseek/index.js',bash:'vendor/bash/index.js',persistent:'vendor/persistent/index.js',terminal:'vendor/terminal/index.js','compaction-basic':'vendor/compaction-basic/index.js',policy:'plugins/dscode/index.mjs','code-review':'plugins/code-review/index.mjs','auto-review':'plugins/auto-review/index.mjs','session-metrics':'plugins/session-metrics/index.mjs',openrouter:'plugins/openrouter/index.mjs','tui-tools':'plugins/tui-tools/index.mjs'})) exports['./'+key] = './'+file;
+for (const [key, file] of Object.entries({subagent:'vendor/subagent/index.js','subagent-core':'vendor/subagent-core/index.js','subagent-driver':'vendor/subagent-driver/index.js','subagent-spawn':'vendor/subagent-spawn/index.js','subagent-fork':'vendor/subagent-fork/index.js',bootstrap:'bootstrap.mjs',tui:'vendor/tui/lib/index.mjs',startup:'vendor/tui/lib/startup.mjs',deepseek:'vendor/deepseek/index.js',bash:'vendor/bash/index.js',persistent:'vendor/persistent/index.js',terminal:'vendor/terminal/index.js','compaction-basic':'vendor/compaction-basic/index.js',policy:'plugins/dscode/index.mjs','code-review':'plugins/code-review/index.mjs','auto-review':'plugins/auto-review/index.mjs','session-metrics':'plugins/session-metrics/index.mjs',openrouter:'plugins/openrouter/index.mjs','tui-tools':'plugins/tui-tools/index.mjs'})) exports['./'+key] = './'+file;
 const shared = { version, type:'module', license:'MIT', author:'Todd Zheng', engines:original.engines, publishConfig:{access:'public'}, repository: process.env.DSCODE_REPOSITORY ? {type:'git',url:process.env.DSCODE_REPOSITORY} : original.repository };
 write(bundle, 'package.json', { ...shared, name, description:'DSCODE coding harness: minimal persistent shell, Ultra subagents, auto review, Chrome, computer use and session telemetry.', files:['bootstrap.mjs','cordis.patch.yml','plugins','presets','bin','vendor','THIRD_PARTY_NOTICES.md'], exports, dependencies, dsh:{bundle:{patch:'./cordis.patch.yml'},hub:{schemaVersion:1,displayName:'DSCODE',summary:'A complete DeepSeek coding agent with persistent shell, Ultra collaboration and automatic permission review.',description:'macOS coding TUI with Chrome MCP, Computer Use, skills, compaction, goals, hooks and session telemetry. Requires the DSCODE profile and its pinned DSH runtime.',categories:['community'],keywords:['coding','tui','deepseek-harness'],compatibility:{dsh:dependencies['@deepseek-ai/dsh'],node:original.engines.node,platforms:['darwin'],surfaces:['headless'],hmr:'restart'},entryIds:['dscode-bootstrap'],before:[],after:[],channel:'stable'}} });
 write(bundle, 'THIRD_PARTY_NOTICES.md', notices.join('\n'));

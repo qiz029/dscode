@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { chmod, mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -8,7 +9,6 @@ import { promisify } from 'node:util';
 import { collectReviewDiff, parseReviewCommand, reviewSpec, untracked, gitWorkspace, isGitAvailableSync, isGitWorkspaceSync } from '../plugins/code-review/git.mjs';
 import { baselineStore } from '../plugins/code-review/baseline.mjs';
 import { apply, describeAttempt, independentReview, reviewRoute, REVIEW_LIMITS } from '../plugins/code-review/index.mjs';
-import { patchReview } from '../scripts/patch-review.mjs';
 
 const exec = promisify(execFile);
 async function git(cwd, ...args) { return (await exec('git', args, { cwd })).stdout; }
@@ -123,7 +123,7 @@ test('cancelling a stalled reviewer ends the request instead of reporting a clea
   await assert.rejects(pending, /cancelled/);
 });
 
-test('slash review and model tool share the review registration; TUI patch routes command', () => {
+test('slash review and model tool share the review registration; the terminal routes the command', () => {
   const commands = new Map(), tools = new Map(), sections = [];
   apply({ on() {}, commands: { register: value => commands.set(value.name, value) }, tools: { register: value => tools.set(value.name, value) }, systemPrompt: { section: value => sections.push(value) }, llm: {} });
   assert(commands.has('review'));
@@ -132,11 +132,10 @@ test('slash review and model tool share the review registration; TUI patch route
   assert.match(sections[0].text({ scope: { session: { header: { origin: 'user', agentPreset: 'dscode' } } } }), /After you finish code changes/);
   assert.equal(sections[0].text({ scope: { session: { header: { origin: 'subagent', agentPreset: 'dscode' } } } }), '');
   assert.equal(sections[0].text({}), '');
-  const before = 'if (text === "/review" || text.startsWith("/review ")) {\n\t\t\t\tconst argument = text.slice(7).trim();\n\t\t\t\tif (argument === "") {\n\t\t\t\t\topenReviewPicker();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\ttry {\n\t\t\t\t\treviewChanges(parseReviewArgument(argument));\n\t\t\t\t} catch (error) {\n\t\t\t\t\tnotify(error instanceof Error ? error.message : String(error), "warning");\n\t\t\t\t}\n\t\t\t\treturn;\n\t\t\t}';
-  const after = patchReview(before);
-  assert.match(after, /dispatch\(text\)/);
-  assert.equal(patchReview(after), after);
-  assert.throws(() => patchReview('unknown upstream'), /Unsupported/);
+  // The vendored terminal owns /review through the shared review service.
+  const terminal = readFileSync(new URL('../packages/tui/src/app.ts', import.meta.url), 'utf8');
+  assert.match(terminal, /text === '\/review'[\s\S]{0,600}dispatch\(text\)/, 'the terminal routes /review through the shared service');
+
 });
 
 test('outside a Git repository the guidance points at the snapshot review, and review without a baseline store reports no_repository', async () => {

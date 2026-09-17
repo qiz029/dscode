@@ -9,6 +9,19 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 ## [Unreleased]
 
 <!-- Add upcoming changes here. -->
+## [0.7.13] - 2026-09-16
+
+### Changed
+
+- The terminal is vendored as source: `packages/tui` carries the `dsh-code` 1.2.0 TypeScript sources with every DSCODE change written as code, and the text-patch pass over the published bundle is retired. The 27 patch scripts, the 6 UI verify scripts and the TUI probe go with it, so `scripts/patch-*.mjs` drops from 32 files to 6.
+- Publishing compiles the vendored terminal: `scripts/build-tui.mjs` transpiles `packages/tui/src` into `packages/tui/lib`, because Node refuses type stripping for files under `node_modules`. A checkout still runs the sources directly, so ordinary edits need no build.
+- The developer-runtime integrity guard now watches `packages/tui/src/index.ts`, and the full-inventory coverage baseline excludes the compiled terminal: it is build output, not first-party source.
+
+### Fixed
+
+- The composer hides the shell-mode bang. A `!cmd` draft is framed and carries its hint row, so the editor renders the draft without the routing prefix and moves the caret with it; routing, submission, paste markers and the row budget still read the real draft.
+- `displayWidth` no longer counts zero-width marks as columns: `❄️` is U+2744 plus the U+FE0F variation selector, and counting that selector made the footer provider budget swing a column with the DeepSeek peak and off-peak window.
+- Every DSH child the harness starts receives `--disable-warning=ExperimentalWarning`, so booting no longer prints the `node:sqlite` experimental notice. The flag is prepended to any caller-supplied node arguments, and the `exec` path no longer repeats it.
 
 ## [0.7.11] - 2026-09-16
 

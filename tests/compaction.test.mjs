@@ -8,7 +8,7 @@ import { DEFAULT_THRESHOLD_RATIO, compactionPreview, pricedCompactionPolicy, pri
 import { cacheReadRatio } from '../plugins/session-metrics/pricing.mjs';
 import { setOpenRouterModels as setOpenRouterPrices } from '../plugins/openrouter/models.mjs';
 import { createTestRuntime } from '../scripts/test-runtime.mjs';
-import { patchCompactionBasic, patchCompactionTui } from '../scripts/patch-compaction.mjs';
+import { patchCompactionBasic } from '../scripts/patch-compaction.mjs';
 
 const TODAY = Date.UTC(2026, 8, 14, 12);
 const OPENROUTER_FIXTURE = { 'cached/model': { input: 3, output: 15, cacheRead: 0.75 }, 'plain/model': { input: 1, output: 2 } };
@@ -90,20 +90,3 @@ test('compaction-basic compacts at the priced threshold', async t => {
   } finally { setOpenRouterPrices({}, 0); }
 });
 
-test('the TUI patch shows compaction and confirms compacting model switches', async t => {
-  const fixture = createTestRuntime({ tui: true });
-  t.after(fixture.close);
-  const file = `${fixture.root}/node_modules/dsh-code/lib/index.mjs`;
-  const text = readFileSync(file, 'utf8');
-  assert(text.includes('// dscode-compaction-v1'));
-  assert(text.includes(`from ${JSON.stringify(pathToFileURL(`${fixture.root}/plugins/compaction/tetris.mjs`).href)};`));
-  for (const needle of ['case "compaction/start":', 'dscodeCompactingSince: acc.dscodeCompactingSince', 'DscodeCompactionLine, { since: view.dscodeCompactingSince',
-    'providerAction?.kind === "dscode-compaction"', 'dscodeCompactionPreview: dscodeCompactionPreviewFor', 'select: (effortId) => dscodeRequestModel(effortFor, effortId)',
-    'dscodeRequestModel(pick.row, pick.effort);']) assert(text.includes(needle), needle);
-  assert.equal(patchCompactionTui(text, fixture.root), text);
-  assert(patchCompactionTui(text, '/elsewhere').includes('from "file:///elsewhere/plugins/compaction/threshold.mjs";'), 'imports follow the install root');
-  const anchor = 'function DscodeCompactionLine({ since, rows, animated = true }) {';
-  assert.equal(patchCompactionTui(text.replace(anchor, anchor + '\n  const stale = true;'), fixture.root), text, 'the injected components resync');
-  assert.throws(() => patchCompactionTui('unknown upstream', fixture.root), /drift/);
-  assert.equal(spawnSync(process.execPath, ['--check', file]).status, 0);
-});

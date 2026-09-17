@@ -1,6 +1,6 @@
 {
   "name": "todd-dsh-tui-harness",
-  "version": "0.7.12",
+  "version": "0.7.13",
   "private": true,
   "type": "module",
   "bin": {
@@ -25,11 +25,9 @@
     "publish:token": "node scripts/npm-token.mjs",
     "test:unit": "node scripts/checks.mjs unit",
     "test:integration": "node scripts/checks.mjs integration",
-    "test:ui": "node scripts/checks.mjs ui",
     "test:package": "node scripts/checks.mjs package",
     "test:coverage": "node scripts/checks.mjs coverage",
-    "check": "npm run lint && npm run test:coverage && npm run test:integration && npm run test:ui && npm run test:package && npm run test:eval",
-    "probe:tui": "node scripts/probe-tui-patches.mjs",
+    "check": "npm run lint && npm run test:coverage && npm run test:integration && npm run test:package && npm run test:eval",
     "test:eval": "node --test eval/compaction/tests/*.test.mjs eval/continuation/tests/*.test.mjs eval/deepswe/tests/*.test.mjs",
     "eval:compaction": "node eval/compaction/runner.mjs",
     "eval:continuation": "node eval/continuation/runner.mjs",
@@ -85,7 +83,7 @@
     "@deepseek-ai/node-addon-system": "0.1.2",
     "@deepseek-ai/schemastery": "3.18.2",
     "chrome-devtools-mcp": "1.9.0",
-    "dsh-code": "1.2.0",
+    "dsh-code": "file:packages/tui",
     "imapflow": "2.0.2",
     "mailparser": "3.9.26",
     "nodemailer": "10.0.9",
@@ -99,6 +97,7 @@
     "eslint": "^10.10.0",
     "fflate": "0.8.2",
     "globals": "^17.12.0",
+    "typescript": "^5.9.3",
     "yaml": "2.8.1"
   },
   "dsh": {

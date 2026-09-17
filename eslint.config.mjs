@@ -8,8 +8,8 @@ export default [
     // `*-panel.mjs` files are serialized into the pinned TUI; `import_react` and
     // friends are bound by the patcher, not by the module loader.
     ignores: ['**/node_modules/', '.runtime/', 'artifacts/', 'eval/', '.research/', '**/fixtures/',
-      // Serialized into the pinned TUI; `import_react` and friends are bound by the patcher.
-      'scripts/email-panel.mjs', 'scripts/imap-panel.mjs', 'scripts/patch-effort.mjs', 'scripts/patch-model-search.mjs', 'scripts/patch-welcome.mjs'],
+      // Compiled for distribution only; the repository runs packages/tui/src directly.
+      'packages/tui/lib/'],
   },
   {
     files: ['**/*.mjs'],

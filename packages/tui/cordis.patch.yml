@@ -1,0 +1,241 @@
+# The dsh-code bundle patch: an Ink client over the Harness host plane. Model-
+# facing rows move behind per-session agent presets, while process registries,
+# persistence, sandbox/approval, session query, permissions, goals, and
+# subagent providers stay shared. The runner owns one persistent terminal and
+# can create, resume, and switch between top-level Agent sessions.
+# (DeepSeek blue, whale wordmark), answers approval asks with a y/n bar,
+# dispatches slash commands through the shared registry, and folds submitted
+# prompts back into the same durable session until the user quits.
+
+# 0.1.5 split the deployment persona into a prefix and a suffix template
+# around the first-party guidance sections; this terminal keeps its identity
+# line as the prefix ({{variable}} interpolation stays strict upstream).
+- id: system-prompt
+  config:
+    personaPrefix: >-
+      You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
+
+# The shared module-reload HMR row stays off; the launcher's watch-only
+# fallback still keeps the user patch layers live until the app exits.
+- id: hmr
+  disabled: true
+
+- id: tools
+  config:
+    mode: !!js process.env.DSH_TOOLS_MODE
+
+# The base row keeps full-text search off entirely (openAt: never) so nothing
+# imports node:sqlite at boot; the terminal replaces it with the bundle's
+# skip-tolerant subclass below. An override row cannot retarget a row's
+# MODULE (name is only honored on inserts), so the base row is disabled and
+# an equivalent row mounts the subclass: the derived index opens lazily on
+# the first search (no startup cost, no Node 22 experimental warning), and
+# one unreadable source (a pre-release artifact the frozen codecs reject)
+# is skipped with a warning instead of failing every cross-session search.
+- id: session-query-sqlite
+  disabled: true
+
+# Agent-plane rows are mounted by the selected preset. Keep this list aligned
+# with the upstream Web bundle so two sessions can use different compositions
+# without leaking model-facing registrations through the host layer.
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-jobs
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+# skill-filesystem stays ENABLED on the host: it only feeds the skill
+# REGISTRY (local-root discovery), never the model-facing tool surface —
+# tool-skill below stays disabled and presets mount it per session. The
+# terminal offers skills in the slash menu before any session exists, and a
+# bare launch has no preset layer yet, so the registry's global layer needs
+# this provider; presets shadow it with the same discovery on their scope.
+- id: skill-filesystem
+  disabled: false
+- id: tool-skill
+  disabled: true
+- id: command-goal
+  disabled: true
+- id: tool-goal
+  disabled: true
+- id: plan-mode
+  disabled: true
+- id: compaction-basic
+  disabled: true
+- id: command-compact
+  disabled: true
+- id: tool-result-pruner
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: workflow-worker-thread
+  disabled: true
+- id: tool-workflow
+  disabled: true
+- id: tool-ralph
+  disabled: true
+- id: agent-instructions
+  disabled: true
+- id: tool-todo
+  disabled: true
+# tool-web keeps the 0.1.5-rc.1 base default (web_fetch enabled over the
+# bundled web-fetch-http provider): the host row exposes web_fetch while the
+# per-preset agent-plane rows keep their own fetch stance. The upstream base
+# bundle dropped tool-str-replace-editor entirely in 0.1.5 (the minimal
+# preset became a single-tool composition), so this patch no longer lists it.
+
+- insert:
+    # Code Mode is a core execution capability, not a Web component.
+    - id: code-runtime
+      name: '@deepseek-ai/dsh-code-runtime-worker-thread'
+
+    # Cross-session @mentions: bounded read-only snapshots of other sessions
+    # as sourced model context. Opt-in upstream; the TUI's completion menu
+    # lists candidates and submission expands them through prepare().
+    - id: session-reference
+      name: '@deepseek-ai/dsh-session-reference'
+
+    # Workspace @file mention discovery: a bounded per-agent fuzzy index over
+    # the session cwd (directory listing, symlink guards, tool/result
+    # invalidation). The TUI's @ completion consumes ctx.fileReferences
+    # instead of running its own workspace scan.
+    - id: file-reference-local
+      name: '@deepseek-ai/dsh-file-reference-local'
+
+    # The launcher supplies the shipped preset root beside its own config and
+    # the service also discovers the user's local preset root.
+    - id: agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      config:
+        default: standard
+
+    # Cordis self-inspection (the shipped `cordis` agent preset's toolset):
+    # the host runner publishes the `dynamicCordisRunner`/`cordisInspect`
+    # services `tool-cordis` injects. Without this host row the preset mount
+    # fails ("1 row(s) did not activate: tool-cordis"), because models write
+    # composition through the agent plane but the runner is a host singleton.
+    - id: cordis-host-runner
+      name: '@deepseek-ai/dsh-cordis-host-runner'
+
+    # Host-owned opt-in the preset delegation tools sample: standard/ptc's
+    # tool-subagent rows set `modelSelectionSettings: true`, whose start
+    # resolves this service and fails the whole preset mount when absent
+    # ("failed to apply loader entry delegation (cordis:group)"). The upstream
+    # web-app bundle carries this host row in 0.1.5-rc.1; dsh-base still does
+    # not ship it.
+    - id: subagent-model-selection-settings
+      name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
+
+    # Interactive provider authorization. The base bundle supplies the
+    # credential store; mounting the neutral authorization seam wakes the
+    # login flows already registered by llm-pi-ai without coupling the TUI to
+    # any provider's OAuth or device-code protocol.
+    - id: authorization
+      name: '@deepseek-ai/dsh-authorization'
+
+    # The bundle's skip-tolerant session-query engine replacing the disabled
+    # base row above: same SQLite FTS5 service, observation loop patched to
+    # skip unreadable sources instead of failing every search.
+    - id: session-query-skip
+      name: 'dsh-code/session-query'
+      config:
+        path: ':memory:'
+        openAt: first-search
+
+    # Model-facing session-log search/trace/read tools over the sessionQuery
+    # service (read-only, workspace-scoped by exact cwd). A host-plane mount
+    # is deployment-global: every preset session sees the five tools. Kept
+    # ENABLED deliberately — read-only search leaks no capability — but note
+    # it does reach minimal-preset sessions too. The host CLI does not bundle
+    # this package, so it ships as a real dependency and resolves from the
+    # profile's own node_modules.
+    - id: tool-session-query
+      name: '@deepseek-ai/dsh-tool-session-query'
+
+    # Durable reminders: the schedule service arms per-root timers, injects
+    # due prompts as plugin-source user messages, and writes schedule/change
+    # events the projection folds into the /schedule panel. time-context
+    # gives the model a clock reading so 'at' times are phrased against the
+    # actual time; the 30s throttle bounds durable snapshot growth.
+    - id: schedule
+      name: '@deepseek-ai/dsh-schedule'
+
+    - id: time-context
+      name: '@deepseek-ai/dsh-time-context'
+      config:
+        refreshIntervalMs: 30000
+
+    # Persistent PTY plumbing: the owner-scoped registry and the one backend
+    # package in both dialects (pwsh is the Windows/ConPTY path, bash covers
+    # POSIX) mount as host SERVICES — no model-facing surface, so they break
+    # no preset boundary. The six terminal_* TOOLS ship DISABLED like LSP:
+    # enabling them at the host plane would hand every preset (including the
+    # shell-restricted minimal one) raw shell capability, the exact leak the
+    # disables above exist to prevent. Flip tool-terminal to disabled: false
+    # in the PROFILE layer to opt the deployment into PTY tools — but install
+    # @deepseek-ai/dsh-tool-terminal into the profile first (the host CLI does
+    # not bundle it; an enabled row over a missing package fails the boot):
+    #   dsh plugin --profile cli add @deepseek-ai/dsh-tool-terminal
+    - id: pty
+      name: '@deepseek-ai/dsh-terminal'
+
+    - id: terminal-pwsh
+      name: '@deepseek-ai/dsh-terminal-bash'
+      disabled: !!js process.platform !== 'win32'
+      config:
+        shellDialect: pwsh
+
+    - id: terminal-bash
+      name: '@deepseek-ai/dsh-terminal-bash'
+      disabled: !!js process.platform === 'win32'
+
+    - id: tool-terminal
+      name: '@deepseek-ai/dsh-tool-terminal'
+      disabled: true
+
+    # LSP navigation ships DISABLED: lsp-stdio resolves every server command
+    # at mount and a missing binary would fail the whole composition boot.
+    # Enable in the PROFILE layer with real servers, e.g.:
+    #   lsp / lsp-stdio / tool-lsp rows with disabled: false and
+    #   lsp-stdio config.servers mapping extensions to server commands.
+    # The three packages are also not bundled by the host CLI: install them
+    # into the profile first or the enabled rows fail the boot.
+    - id: lsp
+      name: '@deepseek-ai/dsh-lsp'
+      disabled: true
+
+    - id: lsp-stdio
+      name: '@deepseek-ai/dsh-lsp-stdio'
+      disabled: true
+
+    - id: tool-lsp
+      name: '@deepseek-ai/dsh-tool-lsp'
+      disabled: true
+
+    # MCP servers (dsh-mcp-client) and hooks bridges (dsh-hooks-claude-code /
+    # -codex) take per-instance config (server transports, hooks.json paths),
+    # so they mount as rows in the USER profile layer, not here; the host CLI
+    # bundles these peers, so those rows resolve. README documents the row
+    # shapes, and rows over packages the host does not bundle need the package
+    # added to the profile first.
+
+    - id: tui-startup
+      name: 'dsh-code/startup'
+
+    # Reads its startup through lazy config, which waits for the tuiStartup
+    # provider the row above publishes from the parsed command line.
+    - id: tui-runner
+      name: 'dsh-code'
+      inject: [tuiStartup]
+      config:
+        startup: !!js ctx.tuiStartup.startup

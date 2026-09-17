@@ -33,7 +33,7 @@ export async function runExec(argv, { home = process.env.DSCODE_EXEC_HOME ?? run
       const path = join(root, 'config', file);
       if (existsSync(path)) overlays.push('--patch', path);
     }
-    const child = runDsh([...overlays, '--patch', overlay, ...options.patches.flatMap(path => ['--patch', resolve(path)])], { home, cwd, stdio: ['ignore', stdout, stderr], env: { DSCODE_EXEC_OPTIONS: optionsFile }, nodeArgs: ['--disable-warning=ExperimentalWarning'] });
+    const child = runDsh([...overlays, '--patch', overlay, ...options.patches.flatMap(path => ['--patch', resolve(path)])], { home, cwd, stdio: ['ignore', stdout, stderr], env: { DSCODE_EXEC_OPTIONS: optionsFile } });
     for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => child.kill(signal));
     return await new Promise((resolveExit, reject) => {
       child.on('error', reject);

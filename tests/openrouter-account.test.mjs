@@ -8,9 +8,6 @@ import {
 } from '../plugins/providers/openrouter-account.mjs';
 import { PROVIDERS } from '../plugins/providers/catalog.mjs';
 import { balanceNow, refreshBalance } from '../plugins/session-metrics/balance.mjs';
-import { createTestRuntime } from '../scripts/test-runtime.mjs';
-import { catalogEntry } from '../scripts/patch-command-catalog.mjs';
-import { patchOpenRouterTui } from '../scripts/patch-openrouter.mjs';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const ACTIVITY = [
@@ -106,18 +103,3 @@ test('the OpenRouter footer balance is the account credits, and a key refused th
   assert.equal(urls.length, 1, 'the same source stays cached');
 });
 
-test('the TUI patch adds /openrouter, the management key step and the account panel', t => {
-  const fixture = createTestRuntime({ tui: true });
-  t.after(fixture.close);
-  const file = `${fixture.root}/node_modules/dsh-code/lib/index.mjs`;
-  const text = readFileSync(file, 'utf8');
-  for (const needle of ['// dscode-openrouter-account-v1', 'from "./dscode-providers/openrouter-account.mjs";', catalogEntry('openrouter'), 'if (trimmed === "/openrouter") {',
-    'openOpenRouter: () => {', 'providerAction?.kind === "dscode-openrouter"', 'providerAction?.kind === "dscode-management-key"',
-    'setProviderAction({ kind: "dscode-management-key", optional: true, then: finish });', 'dscodeLoadOpenRouterAccount: () => dscodeLoadOpenRouterAccountFor(ctx),',
-    'function DscodeOpenRouterPanel({ load, setManagement, back }) {']) assert(text.includes(needle), needle);
-  assert.equal(patchOpenRouterTui(text), text);
-  const stale = text.replace('"r refresh · m management key · esc close"', '"old hint"');
-  assert.equal(patchOpenRouterTui(stale), text, 'the injected panels resync');
-  assert.throws(() => patchOpenRouterTui('unknown upstream'), /drift/);
-  assert.equal(spawnSync(process.execPath, ['--check', file]).status, 0);
-});

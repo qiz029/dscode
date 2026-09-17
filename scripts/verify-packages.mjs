@@ -31,7 +31,7 @@ try {
       assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /dscode-bundle\/terminal/);
       assert.equal(pkg.exports['./code-review'], './plugins/code-review/index.mjs');
       assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/code-review'/);
-      assert.match(readFileSync(join(destination, 'vendor/tui/index.mjs'), 'utf8'), /dscode-review-command-v1/);
+      assert.match(readFileSync(join(destination, 'vendor/tui/lib/app.mjs'), 'utf8'), /dispatch\(text\)/, 'the terminal routes /review through the shared service');
       assert.match(readFileSync(join(destination, 'vendor/subagent/index.js'), 'utf8'), /dscode-child-worktree-v3/);
       assert.match(readFileSync(join(destination, 'vendor/subagent-core/index.js'), 'utf8'), /workspaceCwd/);
       assert.match(readFileSync(join(destination, 'vendor/subagent-driver/index.js'), 'utf8'), /request\.workspaceCwd/);
@@ -39,12 +39,12 @@ try {
       assert(!existsSync(join(destination, 'vendor/pi-ai')), 'OpenRouter no longer runs through a vendored pi-ai adapter');
       assert.equal(pkg.exports['./openrouter'], './plugins/openrouter/index.mjs');
       assert.match(readFileSync(join(destination, 'vendor/compaction-basic/index.js'), 'utf8'), /from "\.\.\/\.\.\/plugins\/compaction\/threshold\.mjs"/);
-      assert.match(readFileSync(join(destination, 'vendor/tui/index.mjs'), 'utf8'), /from "\.\.\/\.\.\/plugins\/compaction\/tetris\.mjs"/);
+      assert.match(readFileSync(join(destination, 'vendor/tui/lib/app.mjs'), 'utf8'), /from ['"]\.\.\/\.\.\/\.\.\/plugins\/compaction\/tetris\.mjs['"]/);
       assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/compaction-basic'/);
-      assert.match(readFileSync(join(destination, 'vendor/tui/index.mjs'), 'utf8'), /dscode-provider-v1/);
-      assert(existsSync(join(destination, 'vendor/tui/dscode-providers/catalog.mjs')));
-      assert(existsSync(join(destination, 'vendor/tui/dscode-providers/openrouter-account.mjs')), 'the /openrouter panel reads its account module beside the TUI');
-      assert.match(readFileSync(join(destination, 'vendor/tui/index.mjs'), 'utf8'), /dscode-openrouter-account-v1/);
+      assert.match(readFileSync(join(destination, 'vendor/tui/lib/app.mjs'), 'utf8'), /DscodeProviderPanel/);
+      assert(existsSync(join(destination, 'plugins/providers/catalog.mjs')), 'the terminal imports the provider catalog from the bundle');
+      assert(existsSync(join(destination, 'plugins/providers/openrouter-account.mjs')), 'the /openrouter panel reads its account module from the bundle');
+      assert.match(readFileSync(join(destination, 'vendor/tui/lib/app.mjs'), 'utf8'), /DscodeOpenRouterPanel/);
       const bundlePatch = readFileSync(join(destination, 'cordis.patch.yml'), 'utf8');
       assert.match(bundlePatch, /- id: llm-pi-ai\n {2}disabled: true\n/);
       assert.match(bundlePatch, /searchProvider: dscode-web/);

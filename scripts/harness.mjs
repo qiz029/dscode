@@ -2,8 +2,8 @@ import { composePlugins } from './composition.mjs';
 import { spawn } from 'node:child_process';
 import { validateHooks } from '../plugins/tui-tools/hooks.mjs';
 import { patchRuntime } from './patch-runtime.mjs';
+import { patchInkFrame } from './patch-ink.mjs';
 import { provisionPreset } from './preset.mjs';
-import { patchTui } from './patch-tui.mjs';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, lstatSync, realpathSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,11 @@ export const chromeEntry = join(root, 'node_modules/chrome-devtools-mcp/build/sr
 
 export function provision(home = runtimeHome) {
   if (!existsSync(dshEntry)) throw new Error('Dependencies missing. Run npm ci first.');
-  patchTui(root);
+  // The terminal is vendored at packages/tui and edited as source: the text-patch
+  // pass over dsh-code's published bundle is retired. Host-plane patches below
+  // stay until @deepseek-ai/dsh-* carries the behaviour upstream.
+  // Ink owns the frame repaint; the vendored terminal cannot carry this one.
+  patchInkFrame(root);
   patchRuntime(root);
   const presets = provisionPreset(root, home);
   const hooksPath = join(root, 'config/hooks.local.json');
@@ -48,8 +52,14 @@ export function environment(home = runtimeHome) {
   return { ...process.env, PATH: join(root, 'bin') + ':' + process.env.PATH, DSH_HOME: home, DSH_AGENTS_HOME: join(home, 'agents'), DSH_TUI_CHROME_ENTRY: chromeEntry, DSH_TUI_REVIEW_ENTRY: join(root, 'plugins/auto-review/index.mjs') };
 }
 
+// node:sqlite still ships experimental in the supported Node range, and the memory
+// and mailbox stores import it as the profile boots. The flag is prepended to any
+// caller-supplied node arguments, so every DSH child is quiet without each call
+// site repeating it.
+const quietNodeArgs = ['--disable-warning=ExperimentalWarning'];
+
 export function runDsh(args, { home = runtimeHome, cwd = root, stdio = 'inherit', env = {}, nodeArgs = [] } = {}) {
-  return spawn(process.execPath, [...nodeArgs, dshEntry, '--profile', profileName, ...args], {
+  return spawn(process.execPath, [...quietNodeArgs, ...nodeArgs, dshEntry, '--profile', profileName, ...args], {
     cwd, env: { ...environment(home), ...env }, stdio,
   });
 }

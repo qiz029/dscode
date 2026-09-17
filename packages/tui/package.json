@@ -1,0 +1,56 @@
+{
+  "name": "dsh-code",
+  "version": "1.2.0-dscode.0",
+  "private": true,
+  "type": "module",
+  "description": "DSCODE's vendored DSH-Code TUI. Forked from dsh-code 1.2.0 (MIT, unlinearity) and loaded from TypeScript source through Node's type stripping, so the terminal is edited as source instead of patched as published output.",
+  "main": "src/index.ts",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./startup": {
+      "default": "./src/startup.ts"
+    },
+    "./session-query": {
+      "default": "./src/session-query.ts"
+    },
+    "./invariant": {
+      "default": "./src/invariant.ts"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "cordis.patch.yml"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "deepseek",
+    "dsh",
+    "deepseek-harness",
+    "tui",
+    "terminal",
+    "agent",
+    "ink",
+    "dscode"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-authorization": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-tool-session-query": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-util-values": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-web-fetch-http": "0.1.5-rc.2",
+    "@deepseek-ai/schemastery": "^3.18.2",
+    "chalk": "^5.6.2",
+    "commander": "^15.0.0",
+    "ink": "^5.2.1",
+    "react": "^18.3.1"
+  }
+}

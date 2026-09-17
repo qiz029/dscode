@@ -7,7 +7,6 @@ import vm from 'node:vm';
 import { SessionBridge } from '../plugins/session-bridge/server.mjs';
 import { request, exchange, discover, resolveSession, parseClientArgs } from '../plugins/session-bridge/client.mjs';
 import { socketDirectory } from '../plugins/session-bridge/paths.mjs';
-import { patchSessionBridge } from '../scripts/patch-session-bridge.mjs';
 import { normalizeSessionTitle } from '@deepseek-ai/dsh-session-title';
 
 async function fixture(t) {
@@ -86,27 +85,3 @@ test('explicit external title is visible, validated, and not replayed over newer
   assert.equal(agent.inbox.nextTurn.length, 2);
 });
 
-test('TUI renders relay body as a visible message while preserving plugin attribution', () => {
-  const original = 'if (message.source.kind === "user") {\n\t\t\t\tappendReplayEntry(acc, {';
-  const patched = patchSessionBridge(original);
-  assert.equal(patchSessionBridge(patched), patched);
-  const context = vm.createContext({});
-  vm.runInContext(patched.slice(0, patched.indexOf(original.slice(0, 3), patched.indexOf('}\n') + 2)), context);
-  assert(context.dscodeVisibleRelay({ source: { kind: 'plugin', plugin: 'dscode-session-bridge', form: 'relay' } }));
-  assert(!context.dscodeVisibleRelay({ source: { kind: 'plugin', plugin: 'other', form: 'relay' } }));
-  const tui = patchSessionBridge(readFileSync(new URL('../node_modules/dsh-code/lib/index.mjs', import.meta.url), 'utf8'));
-  // 1.2.0 also pends reminder-plugin messages, so the relay arm precedes that clause.
-  const start = tui.indexOf('if (message.source.kind === "user" || dscodeVisibleRelay(message)');
-  assert(start >= 0);
-  const branch = tui.slice(start, tui.indexOf('const notice = message.source.kind', start));
-  let visible;
-  context.appendReplayEntry = (_acc, entry) => { visible = entry; };
-  context.estimateTokens = () => 1;
-  // 1.2.0 reads the delivery origin from the claim map before the replay branch.
-  vm.runInContext(`function renderRelay(message) { const text = message.content[0].text, images = [], files = [], delivery = {}; const acc = { stats: { contextSegments: { prompt: 0 } } }; ${branch} }`, context);
-  const message = { source: { kind: 'plugin', plugin: 'dscode-session-bridge', form: 'relay' }, content: [{ type: 'text', text: '[External source: editor]\n完整的外部消息' }] };
-  context.renderRelay(message);
-  assert.equal(visible.text, message.content[0].text); assert.equal(visible.notice, false);
-  assert.equal(message.source.kind, 'plugin');
-  assert.throws(() => patchSessionBridge('unknown upstream'), /drift/);
-});

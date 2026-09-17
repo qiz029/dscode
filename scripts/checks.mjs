@@ -30,7 +30,10 @@ function coverage() {
   }));
   const walk = directory => readdirSync(directory, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? walk(join(directory, entry.name)) : [join(directory, entry.name)]);
   const files = ['plugins', 'packages', 'scripts', 'bin'].flatMap(dir => walk(join(root, dir))).filter(file => file.endsWith('.mjs'))
-    .filter(file => !/\/(?:verify-[^/]+|[^/]*probe[^/]*|hook-fixture|test-runtime|checks)\.mjs$/.test(file));
+    .filter(file => !/\/(?:verify-[^/]+|[^/]*probe[^/]*|hook-fixture|test-runtime|checks)\.mjs$/.test(file))
+    // packages/tui/lib is compiled, gitignored build output: the vendored terminal is
+    // measured through its sources or not at all, never as 24k uncovered copied lines.
+    .filter(file => !relative(root, file).startsWith('packages/tui/lib/'));
   let total = 0, covered = 0, lcov = '';
   const details = files.map(file => {
     const entry = loaded.get(file);
@@ -42,7 +45,7 @@ function coverage() {
     return { file: relative(root, file), lines, covered: hits, loaded: !!entry };
   });
   const percent = 100 * covered / total;
-  const report = { scope: 'All first-party runtime, launcher, build and patch .mjs files; probe/check fixtures excluded. Unloaded files count as zero.', lines: total, covered, percent, files: details };
+  const report = { scope: 'All first-party runtime, launcher, build and patch .mjs files; probe/check fixtures and the compiled vendored terminal (packages/tui/lib) excluded. Unloaded files count as zero.', lines: total, covered, percent, files: details };
   writeFileSync(join(output, 'lcov.info'), lcov);
   writeFileSync(join(output, 'summary.json'), JSON.stringify(report, null, 2) + '\n');
   console.log(`Complete source inventory: ${covered}/${total} lines (${percent.toFixed(2)}%); ${details.filter(f => !f.loaded).length} unloaded files counted as zero.`);
@@ -51,7 +54,11 @@ function coverage() {
 
 async function main() {
   if (['unit', 'coverage'].includes(suite)) {
-    const paths = upstreamPackages.map(name => join(root, 'node_modules', name, 'lib/index.' + (name === 'dsh-code' ? 'mjs' : 'js')));
+    // dsh-code is vendored at packages/tui now, so the developer-runtime guard
+    // watches the fork's source entry instead of a published bundle.
+    const paths = upstreamPackages.map(name => name === 'dsh-code'
+      ? join(root, 'packages/tui/src/index.ts')
+      : join(root, 'node_modules', name, 'lib/index.js'));
     const hashes = () => paths.map(path => createHash('sha256').update(readFileSync(path)).digest('hex'));
     const before = hashes();
     let failed;
@@ -71,7 +78,6 @@ async function main() {
   }
   const groups = {
     integration: ['verify-session-bridge', 'verify-session-messaging', 'verify-runtime-foundations', 'verify-session-cards', 'verify-memory', 'verify-login-runtime', 'verify-exec'],
-    ui: ['verify-login', 'verify-tui-style', 'verify-tui-viewport', 'verify-tui-scroll', 'verify-effort-bar', 'verify-model-search'],
     package: ['build-packages', 'verify-packages'],
   };
   if (!groups[suite]) throw Error('Unknown check suite: ' + suite);

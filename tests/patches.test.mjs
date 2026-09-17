@@ -1,85 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { PassThrough } from 'node:stream';
-import { pathToFileURL } from 'node:url';
-import { createTestRuntime, upstreamPackages } from '../scripts/test-runtime.mjs';
-import { patchTui } from '../scripts/patch-tui.mjs';
-import { patchRuntime } from '../scripts/patch-runtime.mjs';
-import { patchStyle } from '../scripts/patch-style.mjs';
-import { WELCOME_ART, WELCOME_ART_SMALL, welcomeArtRows } from '../scripts/patch-welcome.mjs';
-import { ctrlCAction } from '../scripts/patch-interrupt.mjs';
-import { turnDividedLines } from '../scripts/patch-turn-divider.mjs';
-import { userBackgroundRows } from '../scripts/patch-user-background.mjs';
-import { collapseLargePaste, expandLargePastes, pasteAtomicEdit, pasteCursorEdge } from '../scripts/patch-large-paste.mjs';
-import { patchMacStdin, parseProcessRows, socketFreePids, stdinWaitVerdict, withoutSockets, STDIN_FREEZE_MS } from '../scripts/patch-mac-stdin.mjs';
+import { readFileSync } from 'node:fs';
+import { WELCOME_ART, WELCOME_ART_SMALL, welcomeArtRows } from '../packages/tui/src/dscode/welcome.ts';
 
-test('two Ctrl+C presses exit while cancellation is still settling', () => {
-  let cancelled = 0;
-  const live = { interrupt: () => { cancelled++; return true; }, busy: true, preparingImages: false, active: true, hasDraft: true };
-  assert.equal(ctrlCAction(false, live), 'interrupt');
-  assert.equal(ctrlCAction(true, live), 'quit');
-  assert.equal(cancelled, 1, 'second press does not wait for busy to clear');
-  assert.equal(ctrlCAction(false, { ...live, busy: false }), 'interrupt', 'agent status wins over a stale idle view');
-  assert.equal(ctrlCAction(false, { ...live, interrupt: () => false, busy: false, hasDraft: true }), 'clear-draft');
-});
+// The terminal is vendored source now, so these assert the source itself instead of a
+// patched bundle: what used to be "the patch applied correctly" is "the source still
+// carries the DSCODE behaviour".
 
-test('real Ink input routes rapid Ctrl+C to cancel then quit', async t => {
-  const fixture = createTestRuntime({ tui: true });
-  t.after(fixture.close);
-  const path = `${fixture.root}/node_modules/dsh-code/lib/index.mjs`;
-  writeFileSync(path, readFileSync(path, 'utf8') + '\nexport { Input, render, import_react as react };\n');
-  const ui = await import(pathToFileURL(path).href);
-  for (const active of [true, false]) {
-    const stdin = new PassThrough(), stdout = new PassThrough(), stderr = new PassThrough();
-    Object.assign(stdin, { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
-    Object.assign(stdout, { columns: 80, rows: 24, isTTY: true });
-    const errors = [];
-    stderr.on('data', data => errors.push(data.toString()));
-    const actions = [];
-    const noop = () => {};
-    const props = {
-      active, frozen: false, busy: true, descriptors: [], skills: [],
-      dispatch: noop, steer: noop, interrupt: () => { actions.push('interrupt'); return true; },
-      quit: fast => actions.push(['quit', fast]), notify: noop, applyEditorKeys: noop,
-      hasNotice: false, dismissNotice: noop, toggleReasoning: noop, openVerbose: noop,
-      recallSpace: [], queued: [], animations: false, waveTier: null, waveStyle: null,
-      maxRows: 4, onEditorRows: noop, onMenuRows: noop, sessionKey: 'fixture',
-    };
-    const mounted = ui.render(ui.react.createElement(ui.Input, props), { stdin, stdout, stderr, debug: true, patchConsole: false, exitOnCtrlC: false });
-    try {
-      await new Promise(resolve => setTimeout(resolve, 30));
-      stdin.write('\x03');
-      await new Promise(resolve => setTimeout(resolve, 10));
-      stdin.write('\x03');
-      await new Promise(resolve => setTimeout(resolve, 30));
-      assert.deepEqual(actions, ['interrupt', ['quit', true]], `active=${active}: ${errors.join('')}`);
-    } finally { mounted.unmount(); mounted.cleanup(); stdin.destroy(); stdout.destroy(); stderr.destroy(); }
-  }
-});
-
-test('the TUI keeps the terminal in charge of scrolling and selection', async t => {
-  const fixture = createTestRuntime({ tui: true });
-  t.after(fixture.close);
-  const path = `${fixture.root}/node_modules/dsh-code/lib/index.mjs`;
-  const text = readFileSync(path, 'utf8');
-  assert(text.includes('MemoStaticTranscript'), 'settled history must ride Ink Static into the terminal scrollback');
-  for (const marker of ['dscode-viewport-v1', 'DSCODE_MOUSE_ENABLE', 'height: Math.max(1, terminalRows - 1)', 'dscodeMouseEnabled', 'scrollTranscript', 'dscodeQueueWheel'])
-    assert(!text.includes(marker), `the in-place viewport generation must be gone: ${marker}`);
-});
-
-test('upstream drift fails before replacing any TUI file, including missing login anchors', t => {
-  const fixture = createTestRuntime({ tui: true, patched: false });
-  t.after(fixture.close);
-  const path = `${fixture.root}/node_modules/dsh-code/lib/index.mjs`;
-  const original = readFileSync(path, 'utf8');
-  for (const anchor of ['const LOCAL_COMMANDS = [', 'const text = submissionPayload(liveValue);', 'function ProviderSetupPanel(']) {
-    const drifted = original.replace(anchor, '/* changed upstream */');
-    assert.notEqual(drifted, original);
-    writeFileSync(path, drifted);
-    assert.throws(() => patchTui(fixture.root), /Unsupported|drift/);
-    assert.equal(readFileSync(path, 'utf8'), drifted);
+test('the vendored terminal keeps the real terminal in charge of scrolling and selection', () => {
+  const source = readFileSync(new URL('../packages/tui/src/app.ts', import.meta.url), 'utf8');
+  assert(source.includes('MemoStaticTranscript'), 'settled history must ride Ink Static into the terminal scrollback');
+  for (const marker of [
+    'dscode-viewport-v1',
+    'DSCODE_MOUSE_ENABLE',
+    'height: Math.max(1, terminalRows - 1)',
+    'dscodeMouseEnabled',
+    'scrollTranscript',
+    'dscodeQueueWheel',
+  ]) {
+    assert(!source.includes(marker), `the in-place viewport generation must be gone: ${marker}`);
   }
 });
 
@@ -103,15 +42,25 @@ test('welcome art packs pixel pairs into half blocks with merged runs', () => {
   }
 });
 
-
-test('every TUI patch stage is idempotent, so npm start cannot corrupt an already-patched tree', async t => {
-  const fixture = createTestRuntime({ tui: true, patched: false });
-  t.after(fixture.close);
-  const path = `${fixture.root}/node_modules/dsh-code/lib/index.mjs`;
-  patchTui(fixture.root);
-  const once = readFileSync(path, 'utf8');
-  patchTui(fixture.root);
-  assert.equal(readFileSync(path, 'utf8'), once, 'a second patchTui must be a no-op');
-  assert(once.includes('// dscode-openrouter-account-v1'));
-  assert(once.includes('dscodeLoadOpenRouterAccount'), 'the resync path must keep the OpenRouter import');
+test('the vendored terminal keeps the DSCODE shell mode on a !draft', () => {
+  const source = readFileSync(new URL('../packages/tui/src/app.ts', import.meta.url), 'utf8');
+  assert(source.includes('dscodeShellDraft'), 'a !draft must switch the composer into shell mode');
+  assert(source.includes("dscodeT('composer.shellMode')"), 'shell mode must carry its hint row');
+  assert.match(
+    source,
+    /borderStyle: 'round', borderColor: inkColor\(getPalette\(\)\.brandBright\)/,
+    'the shell composer is framed in the brand colour, never filled',
+  );
+  // A shell draft is framed, not marked: the glyph stays a blank spacer while
+  // the editor hides the routing bang and the caret follows one column left.
+  assert.match(source, /promptGlyph = dscodeShellDraft \? ' '/, 'the prompt glyph must stay a blank spacer');
+  assert.match(source, /const editorValue = dscodeShellDraft \? value\.slice\(1\) : value/, 'the editor must hide the shell bang');
+  assert.match(
+    source,
+    /clampCursor\(editorValue, dscodeShellDraft \? Math\.max\(0, cursor - 1\) : cursor\)/,
+    'the caret must follow the hidden bang',
+  );
+  assert.match(source, /verboseLine\(editorValue, /, 'the frozen line must hide the shell bang too');
+  // Esc leaves the mode by dropping the bang, before the notice/interrupt ladder.
+  assert.match(source, /liveValue\.startsWith\('!'\)[\s\S]{0,200}value: liveValue\.slice\(1\)/, 'Esc must leave shell mode');
 });

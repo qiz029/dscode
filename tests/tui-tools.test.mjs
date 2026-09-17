@@ -5,16 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { apply, findConflicts } from '../plugins/tui-tools/index.mjs';
 import { validateHooks } from '../plugins/tui-tools/hooks.mjs';
-import { patchText } from '../scripts/patch-tui.mjs';
 
-test('clear patch fails closed on drift and is idempotent', () => {
-  assert.throws(() => patchText('unknown upstream'), /Unsupported/);
-  const before = '\t\t\tif (text === "/clear") {\n\t\t\t\trefresh();\n\t\t\t\tclearView();\n\t\t\t\tdismissNotice();\n\t\t\t\treturn;\n\t\t\t}';
-  const patched = patchText(before);
-  assert.match(patched, /createSession\(\)/);
-  assert.match(patched, /if \(busy\)/);
-  assert.equal(patchText(patched), patched);
-});
 test('unsupported hooks, bad regexes and async gates cannot silently load', () => {
   assert.deepEqual(validateHooks({ hooks: {} }), {});
   for (const value of [null, [], { PreCompact: [] }, { PreToolUse: [{ matcher: '[', hooks: [] }] }, { Stop: [{ hooks: [{ type: 'command', command: 'echo ok', async: true }] }] }]) assert.throws(() => validateHooks(value));

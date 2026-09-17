@@ -16,3 +16,6 @@ artifacts/
 
 # Local npm cache configured in .npmrc for the test runtime and probe tooling
 .npm-cache/
+
+# Compiled output of the vendored terminal (built by scripts/build-tui.mjs for release)
+packages/tui/lib/

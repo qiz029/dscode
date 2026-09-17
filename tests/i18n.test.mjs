@@ -4,8 +4,6 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LANGUAGES, MESSAGES, ALIASES, normalizeLanguage, languageName, t, readLanguage, saveLanguage, languageFile } from '../plugins/i18n/messages.mjs';
-import { patchLanguage, LANGUAGE_SOURCE } from '../scripts/patch-language.mjs';
-import { catalogEntry, catalogAnchor } from '../scripts/patch-command-catalog.mjs';
 
 test('every language carries every key and English is the fallback', () => {
   const keys = Object.keys(MESSAGES.en);
@@ -42,34 +40,6 @@ test('the language is stored per machine and DSCODE_LANGUAGE overrides it', () =
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
-test('the TUI patch embeds the tables, adds /language, and refreshes an already-patched bundle', () => {
-  const upstream = [catalogAnchor('verbose'),
-    'function Input({ openStatusline, openTheme, openLanguage, saveLanguage, openHistory, notify, refresh }) {\n\t\t\tif (text === "/language" || text.startsWith("/language ")) {\n\t\t\t\topenLanguage();\n\t\t\t\treturn;\n\t\t\t}\n',
-    '\tconst [themeOpen, setThemeOpen] = (0, import_react.useState)(false);\n',
-    'const inputActive = !themeOpen && x;\nconst transcriptVisible = !themeOpen && y;\nconst modalVisible = themeOpen || z;\n',
-    '\t\tsetThemeOpen(false);\n\t\tsetHistoryOpen(false);\n\t\topenTheme: () => setThemeOpen(true),\n',
-    '}) : void 0, historyOpen && !approvalPending && !questionPending ? (0, import_react.createElement)(HistoryPanel, {\n',
-    'function ThemePanel({ current, select, close }) {\n',
-    'facts = { ...facts, telemetry: columns >= 48 ? dscodeFooterFor(facts.fullSessionId, stats, Math.max(1, Math.min(columns - 8, 40))) : "" };\n'].join('');
-  const once = patchLanguage(upstream);
-  assert(once.startsWith('// dscode-language-v2\n// dscode-language-v1\n'));
-  assert(once.includes(catalogEntry('language')) && once.includes('if (text === "/language" || text.startsWith("/language "))'));
-  assert(once.includes('if (!wanted) { openLanguage(); return; }'), 'bare /language opens the picker');
-  assert(once.includes('function DscodeLanguagePanel({ current, select, close })') && once.includes('createElement)(DscodeLanguagePanel, {'));
-  assert(once.includes('Math.max(1, Math.min(columns - 8, 40)), dscodeLocale) : ""'), 'footer call carries the locale after the width expression');
-  assert(once.includes('const inputActive = !themeOpen && !languageOpen && x;') && once.includes('const modalVisible = themeOpen || languageOpen || z;'));
-  assert(once.includes('openStatusline, openTheme, openLanguage,') && once.includes('openLanguage: () => setLanguageOpen(true),') && once.includes('\t\tsetLanguageOpen(false);\n'));
-  assert(once.includes(LANGUAGE_SOURCE));
-  assert.equal(patchLanguage(once), once);
-  const stale = once.replace('"activity.running":"Running"', '"activity.running":"Old"');
-  assert.notEqual(stale, once);
-  assert.equal(patchLanguage(stale), once, 'embedded translations resync to the current tables');
-  const v1 = once.replace('// dscode-language-v2\n', '').replace('if (!wanted) { openLanguage(); return; }', 'if (!wanted) { notify(dscodeT("language.current", { name: dscodeLanguageName(dscodeLocale) })); return; }');
-  assert(!v1.includes('DscodeLanguagePanel') || v1.includes('createElement)(DscodeLanguagePanel'), 'fixture sanity');
-  const upgraded = patchLanguage(v1.replace(/function DscodeLanguagePanel[\s\S]*?\n}\n/, '').replace(/}\) : void 0, languageOpen[\s\S]*?HistoryPanel, \{/, '}) : void 0, historyOpen && !approvalPending && !questionPending ? (0, import_react.createElement)(HistoryPanel, {').replace(' && !languageOpen', '').replace(' && !languageOpen', '').replace('themeOpen || languageOpen ||', 'themeOpen ||').replace('\t\tsetLanguageOpen(false);\n', '').replace('\t\topenLanguage: () => setLanguageOpen(true),\n', '').replace('openTheme, openLanguage, openHistory,', 'openTheme, openHistory,').replace('\tconst [languageOpen, setLanguageOpen] = (0, import_react.useState)(false);\n', ''));
-  assert.equal(upgraded, once, 'a v1-patched bundle upgrades to the picker');
-  assert.throws(() => patchLanguage('unknown upstream'), /drift/);
-});
 
 test('the update messages interpolate in every language', () => {
   for (const { code } of LANGUAGES) {

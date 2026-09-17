@@ -44,10 +44,18 @@ export function summarize(rows, events = [], corrupt = false) {
   }
   return { cost, unknown, calls, pending, cache: input > 0 && !cacheUnknown ? Math.min(100, hit / input * 100) : null };
 }
-/** Terminal columns of a string: East Asian wide characters (such as the cache label's CJK glyphs) take two. */
+/**
+ * Terminal columns of a string: East Asian wide characters (such as the cache label's
+ * CJK glyphs) take two, and zero-width marks take none. The variation selectors matter
+ * here: `❄️` is U+2744 plus U+FE0F, and counting that selector as a column made the
+ * footer's provider budget swing with the DeepSeek pricing window.
+ */
+const WIDE = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u2600-\u27bf\u{1f300}-\u{1faff}]/u;
+// eslint-disable-next-line no-misleading-character-class -- these are zero width by design
+const ZERO_WIDTH = /[\u0300-\u036f\u200d\ufe00-\ufe0f]/;
 export function displayWidth(text) {
   let width = 0;
-  for (const char of text) width += /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u2600-\u27bf\u{1f300}-\u{1faff}]/u.test(char) ? 2 : 1;
+  for (const char of text) width += ZERO_WIDTH.test(char) ? 0 : WIDE.test(char) ? 2 : 1;
   return width;
 }
 export function formatFooter(metrics, context, columns = 80, rates, locale = 'en', header = '', provider = providerOfHeader(header) ?? 'deepseek-official') {

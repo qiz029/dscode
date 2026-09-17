@@ -5,10 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { newerVersion, fetchLatestVersion, planUpdate, scheduleUpdate, runUpdateAfterExit, stateHome } from '../plugins/tui-tools/update.mjs';
-import { patchErrors } from '../scripts/patch-errors.mjs';
-import { catalogEntry } from '../scripts/patch-command-catalog.mjs';
-import { LANGUAGE_SOURCE } from '../scripts/patch-language.mjs';
-import { patchUpdateCheck, UPDATE_CHECK_MARKER } from '../scripts/patch-update-tui.mjs';
 
 const root = join(import.meta.dirname, '..');
 
@@ -82,26 +78,7 @@ test('stateHome follows DSH_HOME and falls back to the launcher default', () => 
   assert.equal(stateHome({}, '/home/u'), '/home/u/.local/share/dscode-hub');
 });
 
-// These read the installed bundle and apply the patches themselves, so they hold on a
-// freshly installed (unpatched) tree as well as on a provisioned one.
-test('the TUI patches render unexpected stops as errors and keep user cancels dim', () => {
-  const text = readFileSync(join(root, 'node_modules/dsh-code/lib/index.mjs'), 'utf8');
-  const patched = patchErrors(text);
-  assert.match(patched, /kind: userCancelled \|\| reason\.kind === "max-tokens" \? "turn-marker" : "error"/);
-  assert.equal(patchErrors(patched), patched, 'the patch is idempotent once applied');
-});
+// These applied the retired text patches to the installed bundle. The terminal is
+// vendored at packages/tui now, so the assertions return as source checks with the
+// port instead of running against a published bundle that no longer exists.
 
-test('the TUI checks the registry once at startup and offers /update', () => {
-  const text = readFileSync(join(root, 'node_modules/dsh-code/lib/index.mjs'), 'utf8');
-  // The notice resolves through the injected language runtime; assert the source it embeds.
-  assert.match(LANGUAGE_SOURCE, /function dscodeT\(/, 'the language runtime carries the notice');
-  const patched = patchUpdateCheck(text, '0.7.11');
-  assert.match(patched, /function dscodeNewerVersion\(/);
-  assert.match(patched, /DSCODE_UPDATE_CHECK === "off"/);
-  assert.match(patched, /dscodeT\("update\.available", \{ version: latest \}\)/);
-  assert.match(patched, /dscodeNewerVersion\(latest, "0\.7\.11"\)/);
-  assert.equal(patchUpdateCheck(patched, '0.7.11'), patched, 'the update check is idempotent');
-  // The catalog message arm rides the catalog injection inside patchTui, which a test must
-  // not run against the installed tree; assert the entry shape it feeds instead.
-  assert.match(catalogEntry('update'), /"cmd\.dscode\.update"/);
-});

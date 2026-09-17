@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dscodeFilterModels, patchModelSearch } from '../scripts/patch-model-search.mjs';
+import { dscodeFilterModels } from '../packages/tui/src/dscode/model-search.ts';
 
 const row = (provider, providerName, model, modelName) => ({ provider, providerName, model, modelName });
 const ROWS = [
@@ -47,18 +47,4 @@ test('the picker lists one provider, alphabetically, with natural digit order', 
   assert.deepEqual(dscodeFilterModels(ROWS, 'deepseek', 'openrouter').map(entry => entry.model), ['deepseek/deepseek-v4-flash'],
     'a same-name model of another provider never leaks into the scoped list');
   assert.deepEqual(dscodeFilterModels(ROWS, '', undefined).length, ROWS.length, 'no provider means the whole directory');
-});
-
-test('an install on an earlier search patch upgrades to type-to-search in place', () => {
-  const panel = 'function ModelPanel({ directory }) {\n\tconst [dscodeSearching] = useState(false);\n\treturn null;\n}\n';
-  const v1 = '// dscode-model-search-v1\nimport x from "y";\nfunction dscodeFilterModels(rows, query) {\n  return rows;\n}\n' + panel + 'function After() {}\n';
-  const upgraded = patchModelSearch(v1);
-  assert(upgraded.startsWith('// dscode-model-search-v3\n'));
-  assert(upgraded.includes('idf'), 'the injected search is the BM25 source');
-  assert(upgraded.includes('setDscodeFocused') && !upgraded.includes('dscodeSearching'), 'the whole panel is replaced');
-  assert(upgraded.endsWith('\nfunction After() {}\n'), 'the code after the panel is kept');
-  assert.equal(patchModelSearch(upgraded), upgraded);
-  const v2 = v1.replace('dscode-model-search-v1', 'dscode-model-search-v2');
-  assert.equal(patchModelSearch(v2), upgraded, 'v1 and v2 end identical');
-  assert.throws(() => patchModelSearch('// dscode-model-search-v3\nno panel here'), /drift/);
 });
