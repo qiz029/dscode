@@ -74,6 +74,7 @@ import {
   ensureProviderRoute as dscodeEnsureProviderRoute,
   waitForModels as dscodeWaitForModels,
 } from '../../../plugins/providers/catalog.mjs'
+import { grokStatusText } from '../../../plugins/grok/status.mjs';
 import { ENV_ASSIGNMENT, hasWrappingQuotes } from './provider-settings.ts'
 import { collapseLargePaste, expandLargePastes, pasteAtomicEdit, pasteCursorEdge } from './dscode/paste.ts'
 import { loadFlag, saveFlag } from './dscode/flags.ts'
@@ -478,6 +479,8 @@ export interface AppProps {
   saveModelProviderCredential?: (target: ProviderTargetView, key: string) => Promise<void>
   /** dscode: prepare a provider route (settings migration) before switching. */
   dscodeEnsureProviderRoute?: (provider: string) => Promise<boolean>
+  /** dscode: the local grok login and its cached weekly credit window, for the grok panels. */
+  dscodeGrokStatus?: () => DscodeGrokSnapshot
   /** dscode: status of the optional OpenRouter management key. */
   dscodeManagementKeyStatus?: () => Promise<{ state: string }>
   /** dscode: verify and store the OpenRouter management key. */
@@ -2856,7 +2859,46 @@ export function DscodeLoginPanel({ provider, load, save, done, back }) {
     createElement(Text, { dimColor: true }, "Enter save · Esc cancel · Ctrl+U clear"));
 }
 
-export function DscodeProviderPanel({ current, load, choose, back }) {
+/**
+ * dscode: the Grok rail has no key to paste — its token is the local `grok login`. This panel
+ * reports that login and the weekly credit window, and names the command that fixes a missing
+ * or expired one. `r` re-reads both, so a login finished in another terminal shows up here.
+ */
+export function DscodeGrokPanel({ snapshot, refresh, back }: {
+  snapshot: DscodeGrokSnapshot
+  refresh: () => void
+  back: () => void
+}) {
+  useStableInput((input, key) => {
+    if (key.escape || key.ctrl && input === "c" || input === "q") { back(); return }
+    if (input === "r") refresh();
+  });
+  const { status, subscription } = snapshot;
+  const used = subscription?.usedPercent;
+  const detail = status.kind === "ready"
+    ? "Local grok login detected" + (status.expiresIn === undefined ? "" : " · token expires in about " + status.expiresIn + " min")
+    : status.kind === "expired" ? "The local grok login expired."
+      : status.kind === "missing" ? "No local grok login found."
+        : "The local grok login file is not readable.";
+  return createElement(Box, { flexDirection: "column", paddingX: 2 },
+    createElement(Text, { bold: true }, "Grok subscription"),
+    createElement(Text, null, detail),
+    ...status.kind === "ready" ? [] : [createElement(Text, { key: "fix" }, "Run grok login in a terminal, then press r to re-check.")],
+    createElement(Text, { key: "tier" }, "Plan: " + (subscription?.tier ?? "not reported")),
+    createElement(Text, { key: "usage" }, used === undefined
+      ? "Weekly usage: the server reports none for this period"
+      : "Weekly usage: " + (Number.isInteger(used) ? String(used) : used.toFixed(1)) + "% used"),
+    ...subscription?.periodEnd === undefined ? [] : [createElement(Text, { key: "reset" }, "Resets: " + new Date(subscription.periodEnd).toLocaleString())],
+    createElement(Text, { dimColor: true }, "r re-check · Esc close"));
+}
+
+/** One snapshot of the Grok rail: the local login and the cached weekly window. */
+export interface DscodeGrokSnapshot {
+  status: { kind: string; expiresIn?: number }
+  subscription?: { tier?: string; usedPercent?: number; periodEnd?: string }
+}
+
+export function DscodeProviderPanel({ current, load, choose, back, grokStatus }) {
   const [directory, setDirectory] = useState(void 0);
   const [failed, setFailed] = useState(false);
   const [cursor, setCursor] = useState(() => Math.max(0, DSCODE_PROVIDERS.findIndex(provider => provider.id === current)));
@@ -2873,6 +2915,7 @@ export function DscodeProviderPanel({ current, load, choose, back }) {
     if (key.return) { back(); choose(DSCODE_PROVIDERS[cursor].id); }
   });
   const status = provider => {
+    if (provider.id === "grok") return grokStatus?.() ?? "grok login not detected";
     if (failed) return "status unavailable";
     if (directory === void 0) return "…";
     const row = directory.rows.find(row => row.provider === provider.id);
@@ -6841,7 +6884,7 @@ export function App(props: AppProps): ReactElement {
       if (state === 'missing') {
         setProviderOpen(false)
         setEffortFor(undefined)
-        setProviderAction({ kind: 'dscode-key', provider, then: () => dscodeSwitchProvider(provider) })
+        setProviderAction(provider === 'grok' ? { kind: 'dscode-grok' } : { kind: 'dscode-key', provider, then: () => dscodeSwitchProvider(provider) })
         setModelOpen(true)
         return
       }
@@ -6930,6 +6973,13 @@ export function App(props: AppProps): ReactElement {
         current: dscodeProviderOfLabel(modelLabel),
         load: props.loadModelProviders!,
         choose: dscodeSwitchProvider,
+        grokStatus: () => grokStatusText(props.dscodeGrokStatus?.() ?? { status: { kind: "missing" } }),
+        back: closeModelSurface,
+      })
+    } else if (providerAction?.kind === 'dscode-grok') {
+      modelSurface = createElement(DscodeGrokPanel, {
+        snapshot: props.dscodeGrokStatus?.() ?? { status: { kind: "missing" } },
+        refresh: reloadModelSurfaces,
         back: closeModelSurface,
       })
     } else if (providerAction?.kind === 'dscode-key') {
@@ -7468,7 +7518,8 @@ export function App(props: AppProps): ReactElement {
         openLogin: (provider?: string) => {
           setProviderOpen(false)
           setEffortFor(undefined)
-          setProviderAction({ kind: 'dscode-key', provider: provider ?? dscodeProviderOfLabel(modelLabel) })
+          const target = provider ?? dscodeProviderOfLabel(modelLabel)
+          setProviderAction(target === 'grok' ? { kind: 'dscode-grok' } : { kind: 'dscode-key', provider: target })
           setModelOpen(true)
         },
         openOpenRouter: () => {

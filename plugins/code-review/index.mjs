@@ -79,8 +79,11 @@ export function describeAttempt(tokens, assembler, finish) {
 }
 
 export function reviewRoute(fallback, env = process.env) {
-  // A verdict needs little deliberation: start at the lightest level the model offers.
-  const effort = typeof env.DSCODE_REVIEW_EFFORT === 'string' && env.DSCODE_REVIEW_EFFORT.trim() ? env.DSCODE_REVIEW_EFFORT.trim() : 'minimal';
+  // A verdict needs no deliberation, and a thinking reviewer spends the whole deadline
+  // reasoning before it writes one line: ask for thinking off, the only level that turns
+  // it off. A model without that level keeps its own default, because `chooseEffort`
+  // returns no effort at all when the wanted level is outside its standard levels.
+  const effort = typeof env.DSCODE_REVIEW_EFFORT === 'string' && env.DSCODE_REVIEW_EFFORT.trim() ? env.DSCODE_REVIEW_EFFORT.trim() : 'off';
   const wanted = typeof env.DSCODE_REVIEW_MODEL === 'string' ? env.DSCODE_REVIEW_MODEL.trim() : '';
   if (!wanted) return { route: fallback, effort };
   const at = wanted.indexOf('/');

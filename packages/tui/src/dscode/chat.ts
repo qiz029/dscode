@@ -34,6 +34,20 @@ export function userBackgroundRows(
   })
 }
 
+/** Local wall-clock HH:MM:SS for a row, or undefined when it carries no time. */
+function timeStamp(time: number | undefined): string | undefined {
+  if (time === undefined) return undefined
+  const at = new Date(time)
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return pad(at.getHours()) + ':' + pad(at.getMinutes()) + ':' + pad(at.getSeconds())
+}
+
+/** Put a dim timestamp in front of a block first row. */
+function stamped(lines: readonly StyledLine[], label: string | undefined): readonly StyledLine[] {
+  if (label === undefined || lines.length === 0) return lines
+  return [{ ...lines[0], segments: [lineSegment(label + ' ', 'dim'), ...lines[0].segments] }, ...lines.slice(1)]
+}
+
 /** The folded thinking tail: one dim paragraph, capped, with the Ctrl+O hint. */
 function thinkingLines(reasoning: string, width: number): readonly StyledLine[] {
   const lines = hangingTextLines('Thinking: ' + reasoning.replace(/\s+/g, ' ').trim(), width, '· ', 'dimItalic', '  ')
@@ -50,21 +64,27 @@ function thinkingLines(reasoning: string, width: number): readonly StyledLine[] 
  */
 export function dscodeChatLines(entry: TranscriptEntry, columns: number, verbose = false): readonly StyledLine[] {
   const width = Math.max(1, Math.floor(columns))
+  const label = entry.kind === 'assistant' || entry.kind === 'tool' ? timeStamp(entry.time) : undefined
+  // The stamp leads the block, so the rows wrap to what is left of the width: a row that
+  // overflowed here would cost an extra screen row per block and move the composer.
+  const stampWidth = label === undefined ? 0 : visibleColumns(label + ' ')
+  const blockWidth = Math.max(1, width - stampWidth)
+  const blockColumns = Math.max(1, columns - stampWidth)
   if (entry.kind === 'tool') {
     if (!verbose) return []
     const state = entry.state === 'running' ? ' · running' : entry.state === 'error' ? ' · error' : ''
-    const lines = hangingStyledLines(
+    const lines = [...stamped(hangingStyledLines(
       [
         lineSegment('Tool Call: ' + entry.name, 'dim'),
         lineSegment(entry.preview ? ' ' + entry.preview : '', 'dim'),
         lineSegment(state, entry.state === 'error' ? 'error' : 'dim'),
       ],
-      width,
+      blockWidth,
       '· ',
       'dim',
       '  ',
       'dim',
-    )
+    ), label)]
     if (entry.summary) {
       lines.push(...hangingTextLines('Output: ' + entry.summary, width, '  ', entry.state === 'error' ? 'error' : 'dim', '    '))
     }
@@ -72,9 +92,9 @@ export function dscodeChatLines(entry: TranscriptEntry, columns: number, verbose
     return lines
   }
   if (entry.kind === 'assistant') {
-    const thinking = verbose && entry.reasoning ? [...thinkingLines(entry.reasoning, width), { segments: [] }] : []
+    const thinking = verbose && entry.reasoning ? [...stamped(thinkingLines(entry.reasoning, blockWidth), label), { segments: [] }] : []
     if (!entry.text && !entry.interrupted) return thinking
-    const body = [...thinking, ...transcriptEntryLines({ ...entry, reasoning: '' }, columns, false, false, false)]
+    const body = [...thinking, ...stamped(transcriptEntryLines({ ...entry, reasoning: '' }, blockColumns, false, false, false), label)]
     // The turn's last reply closes the turn with its own rule and breathing rows.
     return entry.turnEnded === true
       ? [...body, { segments: [] }, { segments: [{ text: '─'.repeat(width), style: 'dim' as const }] }, { segments: [] }]

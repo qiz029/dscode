@@ -18,7 +18,10 @@ test('source and package compositions share plugins and settings after path reso
   assert.deepEqual(normalize(bundled), normalize(source));
   const entries = source.flatMap(e => e.insert ?? [e]);
   assert.equal(new Set(entries.map(e => e.id)).size, entries.length);
-  assert(entries.some(e => e.id === 'credentials'));
+  // The upstream credentials row is disabled and DSCODE's own provider inserted: a patch
+  // cannot swap a row module, so targeting it by name silently mounted nothing.
+  assert.equal(entries.find(e => e.id === 'credentials').disabled, true);
+  assert(entries.some(e => e.id === 'dscode-credentials'));
   assert.deepEqual(entries.find(e => e.id === 'dscode-auto-review').config, { timeoutMs: 30000, maxOutputTokens: 4096, maxReviewsPerTurn: 20 });
 });
 

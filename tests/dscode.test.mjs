@@ -114,6 +114,19 @@ test('pinned runtime patches are idempotent and reject unknown upstream code', (
   assert.equal(patchMacStdin(macText), macText);
   assert.throws(() => patchMacStdin('unknown upstream'));
 });
+test('the persistent shell captures one command window instead of re-reading the shared scrollback', () => {
+  const read = file => readFileSync(`${root}/node_modules/@deepseek-ai/${file}`, 'utf8');
+  const session = read('dsh-terminal-bash/lib/index.js');
+  const tool = read('dsh-tool-bash-persistent/lib/index.js');
+  assert(session.includes('this.capture?.append(text);'), 'every sanitized chunk must feed the command window');
+  assert(session.includes('if (request.capture === true) this.capture = new BoundedTextBuffer(CAPTURE_MAX_BYTES);'), 'the window opens with the first send of a command');
+  assert(session.includes('if (request.capture === true) return this.capture?.snapshot()'), 'the window answers a capture read');
+  assert(tool.includes('capture: first,'), 'the first send opens the window');
+  assert(tool.includes('ctx.terminals.read(owner, id, { capture: true })'), 'the poll loop reads the window');
+  assert(!tool.includes('retainedScrollback(ctx, owner, id, latest)'), 'the poll loop must not re-read the shared ring');
+  assert(tool.includes('partialOutput(captured, marker, fallback, fallbackTruncated)'), 'partial output comes from the window');
+  assert(tool.includes('commandOutput(captured, marker)'), 'a finished command is read from the window');
+});
 test('ultra reserves concurrent admissions and frees slots after failed launches', async () => {
   let execute;
   const owner = { session: { id: 'root', header: {}, requestHeader: () => ({ config: { reasoningEffort: 'ultra' } }) }, options: {} };

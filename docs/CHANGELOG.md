@@ -9,6 +9,22 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 ## [Unreleased]
 
 <!-- Add upcoming changes here. -->
+
+## [0.7.14] - 2026-09-17
+
+### Added
+
+- Automatic compaction prefetches. One lead below the priced threshold (70% for the default 80%) the engine summarizes the oldest compactable span in the background without appending anything, and reaching the threshold commits that summary instead of summarizing again, so the threshold wait is a wait for work already under way. Everything appended past the prefetched span stays verbatim behind the checkpoint; a prefetch invalidated by a manual compaction or a rewritten surface is dropped silently and the step summarizes afresh.
+- Grok joins as a subscription provider. The adapter reads the `grok` CLI login (`~/.grok/auth.json`, never written back), streams from `api.x.ai/v1` with structured tool calls and reasoning, and takes its model list — context window, completion budget and the `low/medium/high/xhigh` effort detents — from the CLI proxy's `/v1/models`. The footer shows the quota the subscription reports instead of a cost: the weekly window from `/v1/billing?format=credits` as used percentage plus local reset time, falling back to "no usage reported" rather than inventing a number.
+- Agent rows carry a local `HH:MM:SS` stamp: the tool card, the folded thinking block and the reply each lead with the row own event time, dimmed, and every block wraps to the width the stamp leaves over.
+
+### Fixed
+
+- Code review asks for thinking off instead of the lightest reasoning level. A DeepSeek reviewer spent its whole 90-second deadline reasoning at `low` (24k-56k reasoning tokens per call) and never wrote a verdict, so reviews of a real diff came back incomplete; with thinking off the reviewer so the deadline is spent on the report instead of tokens that never reach it; a model without an `off` level keeps its own default. `DSCODE_REVIEW_EFFORT` still overrides the level.
+- DSCODE's credentials provider mounts again in a source checkout. A patch can only override a row's config keys and is skipped when its `name` differs from the row it targets, so the overlay that pointed the upstream `credentials` row at DSCODE's provider had mounted nothing outside the npm bundle (which rewrites that name at build time). The upstream row is disabled and DSCODE's provider inserted in its place: the shared `~/.dscode/credentials.yaml` store, the read-only Grok CLI login and the per-provider credential facts now agree on both surfaces, and a key saved before this change still resolves through the profile store.
+- The composer no longer rides up on a static flush. Ink clears its repaint ledger every time `<Static>` history is written, so the rows a shrinking frame freed are now kept reserved across that clear (ink.js reports how many rows the static write consumed). The only-ever-pushed-down guarantee covered frames between flushes before this.
+- A running shell command keeps its own output window: every sanitized chunk feeds a per-command buffer, the tool reads that buffer instead of re-reading the shared scrollback on every poll, and a poll without new output no longer replaces the accumulated text with the current viewport. A chatty neighbour on the same terminal — a background job, a release publisher, another session — can no longer make the shell report a dropped beginning for output that was never the command.
+
 ## [0.7.13] - 2026-09-16
 
 ### Changed

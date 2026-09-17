@@ -7,6 +7,8 @@ export const PROVIDERS = Object.freeze([
   { id: 'deepseek-official', name: 'DeepSeek', aliases: ['deepseek', 'deepseek-official', 'official'], credentialRef: 'DEEPSEEK_API_KEY', defaultModel: 'deepseek-flash' },
   // The optional management key reads account data only; it cannot call models.
   { id: 'openrouter', name: 'OpenRouter', aliases: ['openrouter', 'open-router'], credentialRef: 'OPENROUTER_API_KEY', managementRef: 'OPENROUTER_MANAGEMENT_KEY', defaultModel: 'deepseek/deepseek-v4-flash' },
+  // The Grok subscription rail: the token is the local 'grok login', read-only (plugins/grok).
+  { id: 'grok', name: 'Grok', aliases: ['grok', 'xai', 'x-ai'], credentialRef: 'GROK_CLI_TOKEN', defaultModel: 'grok-4.6' },
 ]);
 
 // The pi-ai adapter served OpenRouter until 0.7.6, from this settings section.

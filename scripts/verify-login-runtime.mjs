@@ -43,6 +43,13 @@ export function apply(ctx) {
     assert.deepEqual(glm, ['low', 'high', 'max', 'ultra'], 'other models keep their own levels: ' + glm.join(','));
     assert.equal(pickModel(directory.rows, 'openrouter', 'deepseek-official/deepseek-flash', 'ultra').row.model, 'deepseek/deepseek-v4-flash');
     const openrouter = await row(ctx, 'openrouter');
+    // /provider grok: the CLI-login rail. It must name its own credential reference,
+    // because the terminal reads apiKeyEnv off the resolved provider profile and a
+    // missing one silently degrades the row to a writable GROK_API_KEY key field.
+    const grok = await row(ctx, 'grok');
+    assert(grok, 'missing grok provider');
+    assert.equal(grok.active, true);
+    assert.equal(grok.credentialRef, 'GROK_CLI_TOKEN');
     assert.equal(openrouter.credentialRef, 'OPENROUTER_API_KEY');
     assert.equal(openrouter.credential.writable, true);
     if (save) await saveProviderCredential(ctx, openrouter, 'synthetic-openrouter-key');
@@ -87,7 +94,7 @@ export function apply(ctx) {
 `);
   const patch = join(home, 'login.patch.yml');
   writeFileSync(patch, `
-- id: credentials
+- id: dscode-credentials
   config:
     path: ${JSON.stringify(join(home, 'shared', 'credentials.yaml'))}
 - id: tui-startup
@@ -122,5 +129,5 @@ export function apply(ctx) {
     assert(output.includes('LOGIN_RUNTIME_PASSED'), output);
     if (code !== 0) assert(code === 13 && output.includes('unsettled top-level await'), output);
   }
-  console.log('Login runtime passed: real provider directory and native TUI save callback for DeepSeek and OpenRouter; the OpenRouter route, its Ultra-capable models and both keys survive a fresh Host; the OpenRouter wire request is captured before network I/O.');
+  console.log('Login runtime passed: real provider directory and native TUI save callback for DeepSeek, OpenRouter and the read-only Grok CLI login; the OpenRouter route, its Ultra-capable models and both keys survive a fresh Host; the OpenRouter wire request is captured before network I/O.');
 } finally { rmSync(home, { recursive: true, force: true }); rmSync(uiEntry, { force: true }); }

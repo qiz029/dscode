@@ -2,6 +2,7 @@ import { readMetrics } from './store.mjs';
 import { t } from '../i18n/messages.mjs';
 import { estimateCost, peakEmoji } from './pricing.mjs';
 import { balanceNow, trustedNow } from './balance.mjs';
+import { grokSubscriptionNow } from '../grok/billing.mjs';
 import { sessionAverageTps } from './rate.mjs';
 import { providerOfHeader } from '../providers/catalog.mjs';
 let source;
@@ -58,6 +59,28 @@ export function displayWidth(text) {
   for (const char of text) width += ZERO_WIDTH.test(char) ? 0 : WIDE.test(char) ? 2 : 1;
   return width;
 }
+/**
+ * The money slot for the Grok subscription rail: a plan has credits and a reset time, not a
+ * bill. The percentage is optional (the server omits it for a period without usage), and an
+ * unread window shows the tier alone instead of a wrong number.
+ */
+export function grokFooterFact(subscription, locale = 'en', now = Date.now()) {
+  const parts = [subscription?.tier ?? 'Grok'];
+  const used = subscription?.usedPercent;
+  if (Number.isFinite(used)) parts.push((Number.isInteger(used) ? String(used) : used.toFixed(1)) + '% ' + t(locale, 'footer.grokUsed'));
+  const reset = resetStamp(subscription?.periodEnd, now);
+  if (reset !== undefined) parts.push(t(locale, 'footer.grokResets') + ' ' + reset);
+  return parts.join(' · ');
+}
+
+/** Local `MM-DD HH:MM` for a reset time, or undefined when the window is unknown or past. */
+function resetStamp(iso, now) {
+  const at = Date.parse(typeof iso === 'string' ? iso : '');
+  if (!Number.isFinite(at) || at <= now) return undefined;
+  const pad = value => String(value).padStart(2, '0');
+  const date = new Date(at);
+  return pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes());
+}
 export function formatFooter(metrics, context, columns = 80, rates, locale = 'en', header = '', provider = providerOfHeader(header) ?? 'deepseek-official') {
   const label = key => t(locale, key);
   const ctx = Number.isFinite(context) ? `${Math.round(context)}%` : '--';
@@ -65,7 +88,7 @@ export function formatFooter(metrics, context, columns = 80, rates, locale = 'en
   // The balance belongs to the provider the header names; only DeepSeek's official route bills by a peak window.
   const balance = balanceNow(provider);
   const spend = metrics.unknown && metrics.cost === 0 ? '--' : `$${metrics.cost.toFixed(2)}${metrics.unknown ? '+' : ''}${metrics.pending ? '…' : ''}`;
-  const dollars = `${spend} / ${balance === null ? '$--' : '$' + balance.toFixed(2)}${provider === 'deepseek-official' ? ' ' + peakEmoji(trustedNow()) : ''}`;
+  const dollars = provider === 'grok' ? grokFooterFact(grokSubscriptionNow(), locale) : `${spend} / ${balance === null ? '$--' : '$' + balance.toFixed(2)}${provider === 'deepseek-official' ? ' ' + peakEmoji(trustedNow()) : ''}`;
   const base = rates ? [
     `${label('footer.current')}: ${Number.isFinite(rates.current) ? '~' + rates.current.toFixed(1) : '--'} tps`,
     `${label('footer.average')}: ${Number.isFinite(rates.average) ? rates.average.toFixed(1) : '--'} tps`,

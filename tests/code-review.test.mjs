@@ -67,7 +67,7 @@ test('independent review uses a separate tool-free model request and caches unch
   const first = await independentReview(ctx, agent, {}, undefined, collect);
   assert.equal(first.status, 'reviewed');
   assert.equal(first.usage.inputTokens, 40);
-  assert.equal(calls[0].reasoningEffort, 'minimal', 'the reviewer starts at the lightest level');
+  assert.equal(calls[0].reasoningEffort, 'off', 'the reviewer asks for thinking off');
   assert.equal(calls[0].purpose, 'review');
   assert.equal(calls[0].maxTokens, 32768, 'review budget leaves room for reasoning plus the report');
   assert.equal(calls[0].tools, undefined);
@@ -420,8 +420,8 @@ test('untracked files that turn unreadable during collection are omitted, not fa
 
 test('reviewRoute pins the reviewer model and effort like codex review_model', () => {
   const fallback = { provider: 'session', model: 'small' };
-  assert.deepEqual(reviewRoute(fallback, {}), { route: fallback, effort: 'minimal' });
-  assert.deepEqual(reviewRoute(fallback, { DSCODE_REVIEW_MODEL: 'deepseek-official/deepseek-flash' }), { route: { provider: 'deepseek-official', model: 'deepseek-flash' }, effort: 'minimal' });
+  assert.deepEqual(reviewRoute(fallback, {}), { route: fallback, effort: 'off' });
+  assert.deepEqual(reviewRoute(fallback, { DSCODE_REVIEW_MODEL: 'deepseek-official/deepseek-flash' }), { route: { provider: 'deepseek-official', model: 'deepseek-flash' }, effort: 'off' });
   assert.deepEqual(reviewRoute(fallback, { DSCODE_REVIEW_MODEL: 'big-model' }).route, { provider: 'session', model: 'big-model' });
   assert.equal(reviewRoute(fallback, { DSCODE_REVIEW_MODEL: 'p/m', DSCODE_REVIEW_EFFORT: ' high ' }).effort, 'high');
   assert.equal(reviewRoute(undefined, { DSCODE_REVIEW_MODEL: 'p/m' }).route.model, 'm');

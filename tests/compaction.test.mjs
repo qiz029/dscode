@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { TETRIS_HEIGHT, TETRIS_WIDTH, tetrisFrame, tetrisFrames } from '../plugins/compaction/tetris.mjs';
-import { DEFAULT_THRESHOLD_RATIO, compactionPreview, pricedCompactionPolicy, pricedThresholdRatio, thresholdForCacheRatio } from '../plugins/compaction/threshold.mjs';
+import { DEFAULT_THRESHOLD_RATIO, PREFETCH_LEAD_RATIO, compactionPreview, prefetchThresholdTokens, pricedCompactionPolicy, pricedThresholdRatio, thresholdForCacheRatio } from '../plugins/compaction/threshold.mjs';
 import { cacheReadRatio } from '../plugins/session-metrics/pricing.mjs';
 import { setOpenRouterModels as setOpenRouterPrices } from '../plugins/openrouter/models.mjs';
 import { createTestRuntime } from '../scripts/test-runtime.mjs';
@@ -28,6 +28,18 @@ test('the compaction threshold follows the cache discount tiers', () => {
     assert.equal(thresholdForCacheRatio(ratio), threshold, String(ratio));
   }
   assert.equal(DEFAULT_THRESHOLD_RATIO, 0.8);
+});
+
+test('the prefetch mark leads the priced threshold by a tenth of the window', () => {
+  assert.equal(PREFETCH_LEAD_RATIO, 0.1);
+  assert.equal(prefetchThresholdTokens(800, 1000), 700, 'the default 80% threshold prefetches at 70%');
+  assert.equal(prefetchThresholdTokens(600, 1000), 500);
+  assert.equal(prefetchThresholdTokens(900, 1000), 800);
+  assert.equal(prefetchThresholdTokens(800, 1000, 0), 800, 'a zero lead prefetches at the threshold');
+  assert.equal(prefetchThresholdTokens(50, 1000), 0, 'a tiny threshold never goes negative');
+  assert.equal(prefetchThresholdTokens(800, undefined), 800, 'an unknown window keeps the threshold');
+  assert.equal(prefetchThresholdTokens(800, 0), 800);
+  assert.ok(Number.isNaN(prefetchThresholdTokens(Number.NaN, 1000)));
 });
 
 test('route prices give the cache-read ratio', async () => {
@@ -72,15 +84,36 @@ test('compaction-basic compacts at the priced threshold', async t => {
   t.after(fixture.close);
   const file = `${fixture.root}/node_modules/@deepseek-ai/dsh-compaction-basic/lib/index.js`;
   const text = readFileSync(file, 'utf8');
-  assert(text.startsWith('// dscode-compaction-threshold-v1\n'));
+  assert(text.startsWith('// dscode-compaction-prefetch-v1\n'));
+  assert(text.includes('// dscode-compaction-threshold-v1'));
   assert.equal(patchCompactionBasic(text), text);
   assert.throws(() => patchCompactionBasic('unknown upstream'), /drift/);
+  assert.match(text, /dscodePlanPrefetch\(agent, measurement, spec, context\.contextWindow, signal\)/);
+  assert.match(text, /const dscodePrefetched = await this\.dscodeCommitPrefetch\(agent\);/);
   const { BasicCompactionEngine } = await import(pathToFileURL(file).href);
+  // Below the prefetch mark, and again once the threshold itself is due, the plan
+  // step leaves the engine without a background summary to commit.
+  const spec = { thresholdTokens: 800, retainTokens: 160 };
+  const session = { seq: 0, eventAt: () => undefined, surface: { nodes: [] } };
+  const signal = new AbortController().signal;
+  let summarized = false;
+  const engine = { config: {}, dscodePrefetch: new WeakMap(), ctx: { get: () => undefined }, regionDependencies: () => ({ meter: { measure: () => ({ totalTokens: 0, nodes: [] }) }, summarize: () => { summarized = true; } }) };
+  const plan = totalTokens => BasicCompactionEngine.prototype.dscodePlanPrefetch.call(engine, { session }, { totalTokens, nodes: [] }, spec, 1000, signal);
+  plan(699);
+  assert.equal(summarized, false, 'below the mark nothing is summarized');
+  assert.equal(engine.dscodePrefetch.get(session), undefined);
+  plan(800);
+  assert.equal(engine.dscodePrefetch.get(session), undefined, 'the pressure path owns the threshold itself');
+  assert.equal(await BasicCompactionEngine.prototype.dscodeCommitPrefetch.call(engine, { session }), null, 'a missing prefetch commits nothing');
   // 850 of 1000 tokens: past 80% and 60%, below 90%. A pass past the threshold reaches range selection,
-  // which rejects this fake surface; a pass below it returns null first.
+  // which rejects this fake surface; a pass below it returns null first. The prefetch plan is stubbed
+  // out here because this surface cannot support it; its own behaviour is covered separately.
   const attempt = (provider, model, dscodePricedThreshold = true) => BasicCompactionEngine.prototype.compactIfNeeded.call({
     config: { thresholdRatio: 0.8, retainRatio: 0.16, modelPolicies: [], dscodePricedThreshold, compactionRetries: 1, maxOverflowRetries: 1 },
     ctx: { get: () => undefined, tokenMeter: { measure: () => ({ totalTokens: 850, nodes: [{ seq: 1, tokens: 850 }] }) }, llm: { resolveModelInfo: async () => ({ context: { contextWindow: 1000 } }) } },
+    dscodePrefetch: new WeakMap(),
+    dscodePlanPrefetch: () => {},
+    dscodeCommitPrefetch: BasicCompactionEngine.prototype.dscodeCommitPrefetch,
   }, { session: { seq: 0, surface: { nodes: [] }, requestHeader: () => ({ config: { provider, model } }) } }, 'pressure', new AbortController().signal);
   assert.equal(await attempt('deepseek-official', 'deepseek-v4-flash'), null, 'a deep cache discount waits until 90%');
   await assert.rejects(attempt('deepseek-official', 'deepseek-v4-flash', false), /surface does not match/, 'a configured threshold keeps 80%');

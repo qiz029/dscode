@@ -41,7 +41,7 @@ export function createRuntime({ policy, adapter, provider, model, contextWindow,
   const agent = { session, options: { provider, model } };
   let turn = 0;
   return {
-    session, calls,
+    session, agent, engine, calls,
     initialize(system) {
       session.append('system/message', { turn: 0, step: 0, message: createSystemMessage(system, 'dscode-eval') }, { surfaceOp: 'append' });
     },

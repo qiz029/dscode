@@ -4,6 +4,7 @@ import { LocalCredentialProvider } from '@deepseek-ai/dsh-credentials-local';
 import { Context, Service } from '@deepseek-ai/cordis';
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment';
 import { PROVIDERS } from '../providers/catalog.mjs';
+import { GROK_TOKEN_REF, grokAuthState } from '../grok/auth.mjs';
 
 // The `/provider` keys (DeepSeek, OpenRouter and its management key) live in the shared store.
 const SHARED = new Set(PROVIDERS.flatMap(provider => [provider.credentialRef, provider.managementRef].filter(Boolean)));
@@ -28,6 +29,12 @@ export default class DscodeCredentials extends LocalCredentialProvider {
     yield* super[Service.init]();
   }
   async resolve(ref) {
+    // dscode: the Grok subscription rail is the official CLI login, read-only. DSCODE never
+    // writes that file: the CLI owns refresh-token rotation, and two writers log the other out.
+    if (ref === GROK_TOKEN_REF) {
+      const state = grokAuthState();
+      return state.kind === 'ready' ? { value: state.credential.token, source: 'file' } : undefined;
+    }
     if (SHARED.has(ref)) {
       const stored = await this.shared.resolve(ref);
       if (stored?.source === 'env' || stored?.source === 'file') return stored;
@@ -35,6 +42,10 @@ export default class DscodeCredentials extends LocalCredentialProvider {
     return super.resolve(ref);
   }
   async describe(ref) {
+    if (ref === GROK_TOKEN_REF) {
+      const state = grokAuthState();
+      return state.kind === 'ready' ? { configured: true, source: 'file', writable: false } : { configured: false, writable: false };
+    }
     if (SHARED.has(ref)) {
       const facts = await this.shared.describe(ref);
       if (facts.source === 'env' || facts.source === 'file') return facts;
@@ -42,6 +53,8 @@ export default class DscodeCredentials extends LocalCredentialProvider {
     return super.describe(ref);
   }
   set(ref, value) {
+    // The CLI file is not a DSCODE store: saving here would go somewhere nothing reads.
+    if (ref === GROK_TOKEN_REF) throw new Error('GROK_CLI_TOKEN comes from ~/.grok/auth.json; run grok login instead');
     return SHARED.has(ref) ? this.shared.set(ref, value) : super.set(ref, value);
   }
   async unset(ref) {

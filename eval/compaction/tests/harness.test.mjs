@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { validateDataset, validatePolicies, gradeResponse, probePrompt, hash } from '../fixture.mjs';
 import { OfflineAdapter, BudgetAdapter, deepseekAdapter } from '../adapters.mjs';
-import { createRuntime, visibleMessages } from '../runtime.mjs';
+import { createRuntime, visibleMessages, user } from '../runtime.mjs';
 import { runEvaluation } from '../runner.mjs';
 import { summarize } from '../report.mjs';
 
@@ -216,4 +216,78 @@ test('CLI help is offline and rejects unknown flags', () => {
   assert.equal(help.status, 0); assert.match(help.stdout, /--backend offline\|deepseek/);
   const invalid = spawnSync(process.execPath, [entry, '--surprise'], { encoding: 'utf8' });
   assert.equal(invalid.status, 1);
+});
+
+test('a prefetch summarizes early and commits at the threshold without a second summary', async t => {
+  const contextWindow = 1000;
+  const runtime = createRuntime({ policy: { compact: true, thresholdRatio: 0.8, retainRatio: 0.16 }, adapter: new OfflineAdapter(contextWindow), provider: 'offline', model: 'offline-1', contextWindow });
+  t.after(() => runtime.close());
+  runtime.initialize('Preserve the running checklist.');
+  const events = type => [...Array(runtime.session.seq).keys()].filter(seq => runtime.session.eventAt(seq)?.type === type).length;
+  const summaries = () => runtime.calls.filter(call => call.purpose === 'compaction').length;
+  let turn = 0;
+  const appendTurn = text => {
+    turn += 1;
+    runtime.session.append('turn/start', { turn });
+    runtime.session.append('user/message', user(text), { surfaceOp: 'append' });
+    runtime.session.append('turn/end', { turn, reason: { kind: 'completed' } });
+  };
+  for (let n = 0; n < 200 && runtime.measure().totalTokens < 720; n += 1) appendTurn(`stage ${n} ` + 'x'.repeat(160));
+  assert(runtime.measure().totalTokens >= 700 && runtime.measure().totalTokens < 800, 'the prefetch mark (70%) is due below the threshold (80%)');
+  runtime.engine.dscodePlanPrefetch(runtime.agent, runtime.measure(), { thresholdTokens: 800, retainTokens: 160 }, contextWindow, signal());
+  const prefetch = runtime.engine.dscodePrefetch.get(runtime.session);
+  assert(prefetch !== undefined, 'crossing the mark starts a background prefetch');
+  assert.equal(events('compaction/start'), 0, 'the prefetch appends nothing before the threshold');
+  await prefetch.wait;
+  assert.equal(summaries(), 1, 'the prefetch summarizes in the background');
+  assert.equal(events('compaction/start'), 0, 'the finished prefetch still appends nothing');
+  for (let n = 0; n < 200 && runtime.measure().totalTokens < 810; n += 1) appendTurn(`later ${n} ` + 'y'.repeat(160));
+  appendTurn('the freshest fact survives verbatim');
+  assert(runtime.measure().totalTokens >= 800, 'the threshold is due');
+  const result = await runtime.engine.compactIfNeeded(runtime.agent, 'pressure', signal());
+  assert(result !== null, 'the pressure path commits the prefetch');
+  assert.equal(summaries(), 1, 'the commit reuses the prefetched summary instead of summarizing again');
+  assert.equal(events('compaction/start'), 1);
+  assert.equal(events('compaction/end'), 1);
+  const visible = visibleMessages(runtime.session).map(message => JSON.stringify(message)).join('\n');
+  assert(visible.includes('the freshest fact survives verbatim'), 'content appended past the prefetched span stays verbatim behind the checkpoint');
+  assert(!visible.includes('stage 0 '), 'the prefetched prefix is replaced by its summary');
+});
+
+test('a threshold that arrives mid-prefetch waits under the compaction indicator', async t => {
+  const contextWindow = 1000;
+  class Gated extends OfflineAdapter {
+    constructor(window) { super(window); this.gate = Promise.withResolvers(); this.compactions = 0; }
+    async *stream(options) {
+      if (options.purpose === 'compaction') { this.compactions += 1; await this.gate.promise; }
+      yield* super.stream(options);
+    }
+  }
+  const adapter = new Gated(contextWindow);
+  const runtime = createRuntime({ policy: { compact: true, thresholdRatio: 0.8, retainRatio: 0.16 }, adapter, provider: 'offline', model: 'offline-1', contextWindow });
+  t.after(() => runtime.close());
+  runtime.initialize('Preserve the running checklist.');
+  const events = type => [...Array(runtime.session.seq).keys()].filter(seq => runtime.session.eventAt(seq)?.type === type).length;
+  let turn = 0;
+  const appendTurn = text => {
+    turn += 1;
+    runtime.session.append('turn/start', { turn });
+    runtime.session.append('user/message', user(text), { surfaceOp: 'append' });
+    runtime.session.append('turn/end', { turn, reason: { kind: 'completed' } });
+  };
+  for (let n = 0; n < 200 && runtime.measure().totalTokens < 720; n += 1) appendTurn(`stage ${n} ` + 'x'.repeat(160));
+  runtime.engine.dscodePlanPrefetch(runtime.agent, runtime.measure(), { thresholdTokens: 800, retainTokens: 160 }, contextWindow, signal());
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(adapter.compactions, 1, 'the prefetch summarizes in the background');
+  for (let n = 0; n < 200 && runtime.measure().totalTokens < 810; n += 1) appendTurn(`later ${n} ` + 'y'.repeat(160));
+  const compaction = runtime.engine.compactIfNeeded(runtime.agent, 'pressure', signal());
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(events('compaction/start'), 1, 'the wait opens the ordinary compaction indicator');
+  assert.equal(events('compaction/end'), 0, 'the wait is still pending');
+  assert.equal(adapter.compactions, 1, 'the wait does not summarize a second time');
+  adapter.gate.resolve();
+  const result = await compaction;
+  assert(result !== null, 'the commit resolves once the prefetch finishes');
+  assert.equal(events('compaction/end'), 1);
+  assert.equal(adapter.compactions, 1);
 });

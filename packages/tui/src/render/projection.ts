@@ -89,6 +89,8 @@ export interface PendingEntry {
 /** One authoritative assembled assistant reply. */
 export interface AssistantEntry {
   kind: 'assistant'
+  /** dscode: `event.time` of this row, rendered as a local HH:MM:SS stamp. */
+  time?: number
   /** Joined text blocks of the assistant message. */
   text: string
   /** Joined reasoning blocks from the same assembled message. */
@@ -103,6 +105,8 @@ export interface AssistantEntry {
 /** One model-requested tool invocation and its settled state. */
 export interface ToolEntry {
   kind: 'tool'
+  /** dscode: `event.time` of this row, rendered as a local HH:MM:SS stamp. */
+  time?: number
   /** Correlation id shared with the matching `tool/result`. */
   callId: string
   /**
@@ -1050,7 +1054,7 @@ export function projectEvent(view: TranscriptView, event: SessionEvent): Transcr
         ...view,
         streaming: '',
         streamingReasoning: '',
-        ...(renderable ? { entries: [...view.entries, { kind: 'assistant', text, reasoning, interrupted: event.data.interrupted === true ? true : undefined }] } : {}),
+        ...(renderable ? { entries: [...view.entries, { kind: 'assistant', text, reasoning, time: event.time, interrupted: event.data.interrupted === true ? true : undefined }] } : {}),
         stats: {
           ...stats,
           llmMs: stats.llmMs + (started === undefined ? 0 : Math.max(0, event.time - started)),
@@ -1090,6 +1094,7 @@ export function projectEvent(view: TranscriptView, event: SessionEvent): Transcr
           ...view.entries,
           {
             kind: 'tool',
+          time: event.time,
           callId: data.callId,
           ordinal,
           name: data.name,
@@ -1879,7 +1884,7 @@ export function replayProjectEvent(acc: ReplayAccumulator, event: SessionEvent):
       // Same zero-line guard as the live fold: tool-only settlements carry
       // timing/usage but no renderable transcript entry.
       if (text !== '' || reasoning !== '' || event.data.interrupted === true) {
-        appendReplayEntry(acc, { kind: 'assistant', text, reasoning, interrupted: event.data.interrupted === true ? true : undefined })
+        appendReplayEntry(acc, { kind: 'assistant', text, reasoning, time: event.time, interrupted: event.data.interrupted === true ? true : undefined })
       }
       acc.stats = {
         ...acc.stats,
@@ -1911,6 +1916,7 @@ export function replayProjectEvent(acc: ReplayAccumulator, event: SessionEvent):
       acc.toolCallOrdinal += 1
       appendReplayEntry(acc, {
         kind: 'tool',
+        time: event.time,
         callId: data.callId,
         ordinal: acc.toolCallOrdinal,
         name: data.name,

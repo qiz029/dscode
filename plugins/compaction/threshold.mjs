@@ -16,6 +16,18 @@ export function thresholdForCacheRatio(ratio) {
   return rounded < 0.1 ? 0.9 : rounded < 0.5 ? 0.8 : 0.6;
 }
 
+/**
+ * How far below the priced threshold a background prefetch starts, as a share of
+ * the context window: at the default 80% threshold the prefetch mark is 70%.
+ */
+export const PREFETCH_LEAD_RATIO = 0.1;
+
+/** Token mark where a background prefetch starts; an unknown window leaves the threshold itself. */
+export function prefetchThresholdTokens(thresholdTokens, contextWindow, leadRatio = PREFETCH_LEAD_RATIO) {
+  if (!Number.isFinite(thresholdTokens) || !Number.isInteger(contextWindow) || contextWindow <= 0) return thresholdTokens;
+  return Math.max(0, thresholdTokens - Math.floor(contextWindow * leadRatio));
+}
+
 /** The route's threshold ratio, waiting for the OpenRouter listing when it has not loaded yet. */
 export async function pricedThresholdRatio(provider, model, now = Date.now()) {
   if (provider === 'openrouter') await ensureOpenRouterModels({ home: process.env.DSH_HOME, now });

@@ -38,6 +38,7 @@ import { isSlashLine, submissionPayload, watchCommands, type CommandsView } from
 import { internals, type TuiMount } from './internals.ts'
 import { syncModelCapabilities } from './model-capabilities.ts'
 import { ensureProviderRoute as dscodeEnsureProviderRoute, migrateOpenRouterProfile as dscodeMigrateOpenRouter } from '../../../plugins/providers/catalog.mjs'
+import { grokStatusSnapshot } from '../../../plugins/grok/status.mjs'
 import { compactionPreview as dscodeCompactionPreview, pricedThresholdRatio as dscodePricedThresholdRatio } from '../../../plugins/compaction/threshold.mjs'
 import { dscodeLoadOpenRouterAccountFor, dscodeManagementKeyStatus, dscodeSaveManagementKey, type DscodeCompactionPreview } from './app.ts'
 import { buildModelSelection, applyModelSelectionToConfig, loadModelDirectory, modelSelectionLabel, pendingModelSelection, resolveEffectiveSelection, type ModelRow } from './models.ts'
@@ -2173,6 +2174,7 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
       quit,
       loadModels: () => dscodeMigrateOpenRouter(ctx.get('settings')).then(() => loadModelDirectory(ctx)),
       dscodeEnsureProviderRoute: (provider: string) => dscodeEnsureProviderRoute(ctx.get('settings'), provider),
+      dscodeGrokStatus: () => grokStatusSnapshot(),
       dscodeManagementKeyStatus: () => dscodeManagementKeyStatus(ctx),
       dscodeSaveManagementKey: (key: string) => dscodeSaveManagementKey(ctx, key),
       dscodeLoadOpenRouterAccount: () => dscodeLoadOpenRouterAccountFor(ctx),
