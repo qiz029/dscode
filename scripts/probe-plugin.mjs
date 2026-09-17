@@ -118,7 +118,8 @@ async function probe(ctx) {
   const events = agent.session.snapshotEvents();
   const outcomes = events.filter(event => event.type === 'tool/result');
   assert.equal(outcomes.length, 9, 'Expected nine real tool calls through the Agent loop');
-  assert(outcomes.slice(0, 6).every(event => event.data.message.content.every(block => block.isError !== true)), 'A baseline fixture tool failed');
+  const failedTools = outcomes.slice(0, 6).filter(event => event.data.message.content.some(block => block.isError === true));
+  assert(failedTools.length === 0, 'A baseline fixture tool failed: ' + JSON.stringify(failedTools.map(event => event.data.message.content)).slice(0, 2000));
   assert.deepEqual(executed, ['allow', 'invalid'], 'Denied action must never execute');
   assert.equal(humanFallbacks, 1, 'Only malformed reviewer output should reach the human answerer');
   const reviews = auditStore(join(process.env.DSH_HOME, 'auto-review')).read(sessionId);
