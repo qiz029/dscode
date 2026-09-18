@@ -38,6 +38,9 @@ jobs:
         run: |
           version=$(node -p "require('./package.json').version")
           test "$GITHUB_REF_NAME" = "v$version" || { echo "::error::tag $GITHUB_REF_NAME does not match version $version"; exit 1; }
+      # Same reason checks.yml provisions: the unit suite asserts the patched runtime that
+      # `npm run setup` writes into node_modules, and nothing else applies it.
+      - run: npm run setup
       - run: npm run check
       - name: Build the release candidates
         env:
@@ -108,8 +111,8 @@ jobs:
         env:
           NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
         run: npm run publish:hub -- launcher
-      # The README points users at the tar package on GitHub Releases, so the
-      # release is only complete once that asset is there beside the npm and Hub ones.
+      # The curl installer and the README both fetch this tarball from the release,
+      # so it is only complete once that asset is there beside the npm and Hub ones.
       - name: Attach the source tarball to the GitHub release
         if: github.ref_type == 'tag' || inputs.publish
         env:
