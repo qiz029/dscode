@@ -134,7 +134,8 @@ export function apply(ctx, config) {
       if (verdict !== undefined) {
         return applyVerdict({ decision: verdict.decision, reason: verdict.reason }, {
           actionHash, provider: 'openrouter', model: verdict.model, source: 'jev',
-          confidence: verdict.confidence, destructive: verdict.destructive, credentialRisk: verdict.credentialRisk,
+          choice: verdict.choice, confidence: verdict.confidence, denyProbability: verdict.denyProbability,
+          authorized: verdict.authorized, destructive: verdict.destructive, credentialRisk: verdict.credentialRisk,
           durationMs: verdict.durationMs ?? (Date.now() - started),
           usage: verdict.usage ?? null, usageComplete: verdict.usage != null,
         });

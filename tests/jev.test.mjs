@@ -8,6 +8,7 @@ const noul = { q: { type: 'noul', instructions: 'Is it urgent?' } };
 const answers = overrides => ({
   verdict: { type: 'choice', choice: 'allow', confidence: 0.94, probabilities: { allow: 0.94 }, ...overrides.verdict },
   destructive: { type: 'score', score: 0.4, ...overrides.destructive },
+  authorized: { type: 'noul', noul: 0.1, ...overrides.authorized },
   credential_risk: { type: 'noul', noul: 0.02, ...overrides.credential_risk },
 });
 
@@ -60,17 +61,36 @@ test('transport failures surface as errors so the caller can fall back', async (
   await assert.rejects(requestDecisions({ apiKey: 'sk-test', state: 'x', questions: noul, timeoutMs: 20, fetchImpl: hanging }), /timed out/);
 });
 
-test('the confidence gate only allows what it is sure about', () => {
+test('allowing stays gated behind confidence and a low risk profile', () => {
   const confidentAllow = approvalVerdict(answers({}));
   assert.equal(confidentAllow.decision, 'allow');
   assert.equal(confidentAllow.confidence, 0.94);
-  assert.equal(approvalVerdict(answers({ verdict: { choice: 'deny', confidence: 0.9 } })).decision, 'deny');
   assert.equal(approvalVerdict(answers({ verdict: { choice: 'allow', confidence: DEFAULT_THRESHOLDS.autoAllow - 0.01 } })).decision, 'human');
   assert.equal(approvalVerdict(answers({ verdict: { choice: 'ask', confidence: 0.99 } })).decision, 'human');
   assert.equal(approvalVerdict(answers({ credential_risk: { noul: 0.9 } })).decision, 'human', 'credential handling always asks');
   assert.equal(approvalVerdict(answers({ destructive: { score: 2.4 } })).decision, 'human', 'hard-to-undo work always asks');
   assert.equal(approvalVerdict({ destructive: { score: 0 } }), undefined, 'a missing verdict is not a decision');
-  assert.deepEqual(Object.keys(approvalQuestions()).sort(), ['credential_risk', 'destructive', 'verdict']);
+  assert.deepEqual(Object.keys(approvalQuestions()).sort(), ['authorized', 'credential_risk', 'destructive', 'verdict']);
+});
+
+test('a decisive deny is honoured, and a risk score can corroborate a slightly lower one', () => {
+  const decisive = approvalVerdict(answers({ verdict: { choice: 'deny', confidence: 0.98, probabilities: { deny: 0.97 } } }));
+  assert.equal(decisive.decision, 'deny');
+  assert.equal(decisive.denyProbability, 0.97);
+  const corroborated = approvalVerdict(answers({ verdict: { choice: 'deny', confidence: 0.92, probabilities: { deny: 0.55 } }, credential_risk: { noul: 0.94 } }));
+  assert.equal(corroborated.decision, 'deny', 'a confident deny plus a crossed risk ceiling rejects without asking');
+  const corroboratedDestructive = approvalVerdict(answers({ verdict: { choice: 'deny', confidence: 0.91, probabilities: { deny: 0.5 } }, destructive: { score: 2.99 } }));
+  assert.equal(corroboratedDestructive.decision, 'deny');
+});
+
+test('a silent rejection needs corroboration, and an authorizing instruction vetoes it', () => {
+  const borderline = approvalVerdict(answers({ verdict: { choice: 'deny', confidence: 0.9, probabilities: { deny: 0.88 } }, destructive: { score: 1.97 } }));
+  assert.equal(borderline.decision, 'human', 'a borderline deny asks instead of blocking silently');
+  const vetoed = approvalVerdict(answers({ verdict: { choice: 'deny', confidence: 0.99, probabilities: { deny: 0.98 } }, authorized: { noul: 0.8 } }));
+  assert.equal(vetoed.decision, 'human');
+  assert.match(vetoed.reason, /appears to authorize it/);
+  const vetoBoundary = approvalVerdict(answers({ verdict: { choice: 'deny', confidence: 0.99, probabilities: { deny: 0.98 } }, authorized: { noul: DEFAULT_THRESHOLDS.authorizedVeto - 0.01 } }));
+  assert.equal(vetoBoundary.decision, 'deny', 'below the veto the deny stands');
 });
 
 test('the approval state carries the pending call and the retained instruction, bounded', () => {

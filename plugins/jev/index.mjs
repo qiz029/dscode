@@ -17,6 +17,10 @@ export const Config = z.object({
   apiKeyEnv: z.string().role('credential-ref').default('OPENROUTER_API_KEY'),
   timeoutMs: z.number().step(1).min(1).default(8000),
   autoAllow: z.number().min(0).max(1).default(DEFAULT_THRESHOLDS.autoAllow),
+  autoDeny: z.number().min(0).max(1).default(DEFAULT_THRESHOLDS.autoDeny),
+  autoDenyProbability: z.number().min(0).max(1).default(DEFAULT_THRESHOLDS.autoDenyProbability),
+  autoDenyCorroborated: z.number().min(0).max(1).default(DEFAULT_THRESHOLDS.autoDenyCorroborated),
+  authorizedVeto: z.number().min(0).max(1).default(DEFAULT_THRESHOLDS.authorizedVeto),
   credentialRisk: z.number().min(0).max(1).default(DEFAULT_THRESHOLDS.credentialRisk),
   destructiveCeiling: z.number().min(0).default(DEFAULT_THRESHOLDS.destructiveCeiling),
 });
@@ -29,11 +33,7 @@ export function resolveOptions(config = {}) {
     model: config.model || DEFAULT_MODEL,
     apiKeyEnv: credentialRef(config.apiKeyEnv || 'OPENROUTER_API_KEY'),
     timeoutMs: config.timeoutMs ?? 8000,
-    thresholds: {
-      autoAllow: config.autoAllow ?? DEFAULT_THRESHOLDS.autoAllow,
-      credentialRisk: config.credentialRisk ?? DEFAULT_THRESHOLDS.credentialRisk,
-      destructiveCeiling: config.destructiveCeiling ?? DEFAULT_THRESHOLDS.destructiveCeiling,
-    },
+    thresholds: Object.fromEntries(Object.keys(DEFAULT_THRESHOLDS).map(key => [key, config[key] ?? DEFAULT_THRESHOLDS[key]])),
   };
 }
 
