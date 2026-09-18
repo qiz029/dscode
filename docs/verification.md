@@ -16,6 +16,14 @@ Coverage artifacts are `artifacts/local/coverage/summary.json` and `lcov.info`. 
 
 The GitHub Actions workflow runs the gate on macOS with Node 22.19 and 24. Adding the workflow is not evidence of a remote CI pass. Local Unix socket and native flock access are required. No remote inference is performed. Package checks do not replace the separately requested clean npm/Hub install, upgrade/rollback and public-release verification below.
 
+## What cannot run inside a dscode session — 2026-09-17
+
+`verify:hub` (and therefore `make verify`, `make release` and `make publish`), `npm run doctor`, and any other check that boots a real dsh profile and lets it confine a command cannot complete **inside** a running dscode session on macOS. The nested harness applies its own Seatbelt profile, and `sandbox-exec: sandbox_apply` is refused to a process that is already confined, so the probe fails with `sandbox mode "workspace-write" is requested but no sandbox backend is usable on this host`. A companion symptom is that a command allocating a new PTY fails with `posix_openpt: Operation not permitted`: the workspace-write profile grants file writes only to `/dev/null`, the workspace and the platform temp areas, and `/dev/ptmx` is not among them.
+
+Asking for a wider sandbox does not lift this. `danger-full-access` widens the DSH *file policy*, while the OS-level profile that refuses the nested `sandbox_apply` remains in force, and a backgrounded command does not inherit the wider mode at all. Run these from a normal terminal instead: `make verify`, `make release`, `make publish` and `npm run doctor` all complete there, and the release workflow covers the same ground on CI.
+
+Everything that does not spawn a nested confined harness still runs inside a session: `npm run check` (lint, coverage, integration probes, package checks and eval), `npm run test:unit`, `npm run test:coverage`, `npm run test:integration`, `npm run test:package` and `npm run test:eval`. To publish from here, push the `v<version>` tag — the release workflow carries the npm and Hub credentials (for 0.7.15 it built, verified and published from `v0.7.15`).
+
 ## Historical verification records
 
 # Verification — 2026-09-11
