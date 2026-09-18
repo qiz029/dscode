@@ -8,7 +8,7 @@ const home = mkdtempSync(join(tmpdir(), 'dscode-bridge-runtime-'));
 try {
   provision(home);
   const patch = join(home, 'probe.patch.yml');
-  writeFileSync(patch, `- id: dscode-session-cards\n  config:\n    enabled: false\n- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- id: mcp-chrome\n  disabled: true\n- id: dscode-memory\n  config:\n    generate: false\n- insert:\n    - id: session-bridge-probe\n      name: ${JSON.stringify(join(root, 'scripts/session-bridge-probe.mjs'))}\n`);
+  writeFileSync(patch, `- id: dscode-session-cards\n  config:\n    enabled: false\n- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- id: dscode-memory\n  config:\n    generate: false\n- insert:\n    - id: session-bridge-probe\n      name: ${JSON.stringify(join(root, 'scripts/session-bridge-probe.mjs'))}\n`);
   const child = spawn(process.execPath, [dshEntry, '--profile', 'tui', '--patch', patch], {
     cwd: root, env: { ...environment(home), DSCODE_MEMORY_HOME: join(home, 'memories') }, stdio: ['ignore', 'pipe', 'pipe'],
   });

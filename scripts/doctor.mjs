@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { root, manifest, provision, environment, dshEntry } from './harness.mjs';
 
@@ -12,7 +12,6 @@ for (const [path, entry] of Object.entries(lock.packages)) {
   if (name.startsWith('@deepseek-ai/dsh')) assert.equal(entry.version, manifest.dependencies['@deepseek-ai/dsh'], `Mixed Harness runtime: ${path}`);
 }
 console.log('PASS: all Harness dependencies use the pinned runtime version');
-assert(existsSync('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'), 'Install Google Chrome to use the browser MCP');
 const home = join(root, '.runtime/doctor');
 provision(home);
 const overlay = join(home, 'probe.patch.yml');

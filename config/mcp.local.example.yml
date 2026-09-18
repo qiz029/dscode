@@ -12,3 +12,17 @@
         # headers:
         #   Authorization: !!js "'Bearer ' + process.env.EXAMPLE_MCP_TOKEN"
         failOnStartupError: true
+
+# Chrome DevTools MCP is no longer mounted by the preset. To use it, add an entry
+# like this: `--isolated` starts a throwaway profile, while passing
+# `--browserUrl http://127.0.0.1:9222` (and dropping --isolated) drives a Chrome you
+# started yourself with --remote-debugging-port — the only way to reach your own
+# logins and extensions.
+#    - id: mcp-chrome
+#      name: '@deepseek-ai/dsh-mcp-client'
+#      config:
+#        serverName: chrome
+#        transport: stdio
+#        command: npx
+#        args: ['--yes', 'chrome-devtools-mcp@1.9.0', '--isolated', '--no-usage-statistics', '--no-performance-crux']
+#        failOnStartupError: true

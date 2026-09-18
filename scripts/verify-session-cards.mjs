@@ -12,7 +12,7 @@ try {
   const project = spawnSync('git', ['init', '--quiet', home], { encoding: 'utf8' });
   if (project.status !== 0) throw Error(project.stderr);
   const patch = join(home, 'probe.patch.yml');
-  writeFileSync(patch, `- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- id: mcp-chrome\n  disabled: true\n- id: dscode-memory\n  config:\n    generate: false\n- id: dscode-session-cards\n  config:\n    minMessages: 1\n    debounceMs: 0\n    cooldownMs: 0\n- insert:\n    - id: session-cards-probe\n      name: ${JSON.stringify(join(root, 'scripts/session-cards-probe.mjs'))}\n`);
+  writeFileSync(patch, `- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- id: dscode-memory\n  config:\n    generate: false\n- id: dscode-session-cards\n  config:\n    minMessages: 1\n    debounceMs: 0\n    cooldownMs: 0\n- insert:\n    - id: session-cards-probe\n      name: ${JSON.stringify(join(root, 'scripts/session-cards-probe.mjs'))}\n`);
   const child = spawn(process.execPath, [dshEntry, '--profile', 'tui', '--patch', patch], { cwd: home,
     env: { ...environment(home), DSCODE_MEMORY_HOME: join(home, 'memories') }, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';

@@ -77,7 +77,7 @@ dscode doctor                     # 分析近期运行日志和 session trace
 dscode --version                  # 输出 DSCODE 版本
 ```
 
-npm 启动器会核对已安装 bundle 与 Harness 依赖的推荐版本组合；版本不一致时集中显示一次 warning 并继续运行，不会修改依赖，也不会自动降级。浏览器与桌面工具按需授权：Chrome 使用独立临时 profile，不接管日常浏览器登录态；桌面工具通过 skill 渐进加载，截图理解需要支持图片的模型；当前 MCP bridge 提供 tools，不提供 resources/prompts；Computer Use 的辅助功能和录屏权限需在 macOS 中单独授予。
+npm 启动器会核对已安装 bundle 与 Harness 依赖的推荐版本组合；版本不一致时集中显示一次 warning 并继续运行，不会修改依赖，也不会自动降级。默认不挂载任何 MCP server。桌面工具通过 skill 渐进加载，截图理解需要支持图片的模型；MCP bridge 提供 tools，不提供 resources/prompts；Computer Use 的辅助功能和录屏权限需在 macOS 中单独授予。自带的 MCP server（含 Chrome DevTools MCP）在 `config/mcp.local.yml` 中按需添加。
 
 <details>
 <summary><b>其他安装方式、升级与回退</b></summary>
@@ -166,7 +166,7 @@ dscode update 0.7.11           # 指定版本
 | 源码 | 仓库 `.runtime/` | 仓库 `.env` 和 `config/` |
 | tar | 安装目录 `.runtime/` | 安装目录 `.env` 和 `config/` |
 
-支持 `config/hooks.local.json`、`config/mcp.local.yml` 和 `config/harness.local.yml`；这些本地配置、密钥与会话不会打入发布包。Skills 会发现目标项目的 `.agents/skills`、`.dsh/skills`，以及隔离的用户 skill 目录；用 `/skills conflicts` 排查同名覆盖。
+支持 `config/hooks.local.json`、`config/mcp.local.yml` 和 `config/harness.local.yml`；这些本地配置、密钥与会话不会打入发布包。Skills 会发现目标项目的 `.agents/skills`、`.dsh/skills`，以及隔离的用户 skill 目录；用 `/skills conflicts` 排查同名覆盖。默认会把项目的 `.codex/hooks.json`、`.dsh/hooks.json`、`.claude/settings.json` 叠加到 `config/hooks.local.json` 之上；设置 `DSCODE_PROJECT_HOOKS=0` 可只加载安装级配置。Skills 来自项目的 `.dsh/skills`、`.agents/skills` 与用户根；设置 `DSCODE_SKILL_ANCESTORS=1` 后，项目根到 home 之间每一层的 `.dsh/skills`、`.agents/skills`、`.claude/skills` 也会被发现，这些祖先目录里的 `AGENTS.md`/`CLAUDE.md` 会并入工作区指令。
 
 ## 🧩 开发与发布
 
@@ -188,7 +188,7 @@ npm run dist                # 构建备用 tar 安装包
 | `@toddzheng024/dscode-bundle` | 基础层、Computer Use、自定义插件与修改后的 TUI/runtime |
 | Hub profile `dscode` | 固定 bundle/runtime 版本与完整性哈希 |
 
-Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第三方源码。DSH 依赖统一固定到 `0.1.5-rc.1`；TUI 基于 `dsh-code@1.0.6`，Chrome MCP 为 `1.9.0`，Computer Use 为 `0.3.2`。完整流程——先发布 bundle，再上线 Hub release，最后发布 launcher——见 [分发指南](docs/hub-distribution.md)。上下文压缩评测位于 [`eval/`](eval/README.md)，用 `npm run eval:compaction` 运行。
+Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第三方源码。DSH 依赖统一固定到 `0.1.5-rc.2`；TUI 基于 `dsh-code@1.0.6`，Computer Use 为 `0.3.2`。完整流程——先发布 bundle，再上线 Hub release，最后发布 launcher——见 [分发指南](docs/hub-distribution.md)。上下文压缩评测位于 [`eval/`](eval/README.md)，用 `npm run eval:compaction` 运行。
 
 ## 📚 文档
 
@@ -203,6 +203,7 @@ Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第�
 | [持久 Shell 与 Ultra](docs/dscode-ultra.md) | preset、推理强度、子 agent effort 与 worktree 隔离 |
 | [Auto 审核](docs/auto-review.md) | 独立权限审核的范围、成本与限制 |
 | [邮件](docs/email.md) | IMAP 配置、收件箱面板、`send_email` 与联系人别名 |
+| [Skills 与工作区指令](docs/skills.md) | 发现范围、祖先模式与指令文件 |
 | [TUI 命令](docs/tui-commands.md) | 命令参考与 hooks |
 | [Session 指标](docs/session-metrics.md) | 底栏 TPS、context、费用与缓存的统计口径 |
 | [npm + Hub 分发](docs/hub-distribution.md) | bundle、Hub release 与 launcher 流程 |
@@ -219,4 +220,4 @@ Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第�
 
 ---
 
-基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)、[DSH-Code](https://github.com/unlinearity/dsh-code)、[Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) 与 [DSH Plugin Hub](https://dshpluginhub.ai)。独立社区项目，非 DeepSeek 官方产品。
+基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)、[DSH-Code](https://github.com/unlinearity/dsh-code) 与 [DSH Plugin Hub](https://dshpluginhub.ai)。独立社区项目，非 DeepSeek 官方产品。

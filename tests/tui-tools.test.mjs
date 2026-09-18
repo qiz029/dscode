@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { apply, findConflicts } from '../plugins/tui-tools/index.mjs';
+import { hookReportFile } from '../plugins/tui-tools/hook-sources.mjs';
 import { validateHooks } from '../plugins/tui-tools/hooks.mjs';
 
 test('unsupported hooks, bad regexes and async gates cannot silently load', () => {
@@ -24,6 +25,14 @@ test('MCP mutation protects running agents, uses exact entry and reconnects by d
   assert.equal((await run('reconnect mcp-chrome')).kind, 'success');
   assert.deepEqual(updates, [{ disabled: true }, { disabled: false }]);
   assert.equal((await run('disable missing')).kind, 'error');
+});
+test('the /mcp listing reports no server when nothing is mounted', async () => {
+  const commands = new Map();
+  apply({ commands: { register: d => commands.set(d.name, d) }, get: () => ({ entries: () => [] }), agents: { list: () => [] }, tools: { schemas: () => [] } });
+  const listed = await commands.get('mcp').handler({ rawInput: '', agent: {} });
+  assert.equal(listed.kind, 'success', JSON.stringify(listed));
+  assert(!listed.text.includes('server='), listed.text);
+  assert.match(listed.text, /\/mcp tools\|enable\|disable\|reconnect/);
 });
 test('filesystem conflicts retain source and both paths without loading bodies into conversation', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dscode-skills-'));
@@ -63,4 +72,28 @@ test('a user shell command reaches the agent with its secrets redacted', async (
   assert.match(text, /\[REDACTED\]/, 'a secret in the output never reaches the agent verbatim');
   assert.doesNotMatch(text, /sk-abcdefghijklmnop/);
   assert.deepEqual(flushes, [session], 'the handover is flushed before the notice claims it');
+});
+
+test('the /hooks listing warns when a layer changed after the merge', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dscode-hooks-stale-'));
+  try {
+    const resolved = join(root, 'hooks.resolved.json');
+    const source = join(root, 'hooks.local.json');
+    await writeFile(resolved, JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo ok' }] }] } }));
+    await writeFile(source, JSON.stringify({ hooks: {} }));
+    await writeFile(join(root, hookReportFile), JSON.stringify({ sources: [source], skipped: [] }));
+    const past = new Date(Date.now() - 60000);
+    await utimes(resolved, past, past);
+    const commands = new Map();
+    const entry = { options: { id: 'dscode-hooks', name: '@deepseek-ai/dsh-hooks-codex', config: { configPath: resolved } }, disabled: false, fiber: { state: 2 } };
+    apply({ commands: { register: d => commands.set(d.name, d) }, get: () => ({ entries: () => [entry] }), agents: { list: () => [] }, tools: { schemas: () => [] } });
+    const listed = await commands.get('hooks').handler({ rawInput: '', agent: {} });
+    assert.equal(listed.kind, 'success', JSON.stringify(listed));
+    assert.match(listed.text, /Needs restart: .*hooks\.local\.json \(newer than the merge\)/);
+    await rm(source);
+    const missing = await commands.get('hooks').handler({ rawInput: '', agent: {} });
+    assert.match(missing.text, /Needs restart: .*hooks\.local\.json \(missing\)/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

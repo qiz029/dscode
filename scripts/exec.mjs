@@ -18,8 +18,8 @@ export async function runExec(argv, { home = process.env.DSCODE_EXEC_HOME ?? run
   if (!prompt.trim()) throw new Error('Prompt is empty. Pass it as an argument or on stdin.');
   const envFile = join(root, '.env');
   if (existsSync(envFile)) process.loadEnvFile(envFile);
-  provision(home);
   const cwd = realpathSync(resolve(options.cwd ?? process.cwd()));
+  provision(home, { cwd });
   const scratch = mkdtempSync(join(tmpdir(), 'dscode-exec-'));
   try {
     const promptFile = join(scratch, 'prompt.txt');

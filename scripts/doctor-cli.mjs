@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { dshEntry, environment, provision, root, runtimeHome } from './harness.mjs';
 import { spawn } from 'node:child_process';
@@ -10,7 +10,7 @@ export function doctorOverlay(runner, mode = 'analyze') {
 
 export async function runDoctorCli(home = runtimeHome, mode = 'analyze') {
   if (existsSync(join(root, '.env'))) process.loadEnvFile(join(root, '.env'));
-  provision(home);
+  provision(home, { cwd: realpathSync(process.cwd()) });
   mkdirSync(home, { recursive: true });
   const overlay = join(home, 'doctor-cli.patch.yml');
   writeFileSync(overlay, doctorOverlay(join(root, 'plugins/tui-tools/doctor-cli.mjs'), mode), { mode: 0o600 });

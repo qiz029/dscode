@@ -101,8 +101,6 @@ export function apply(ctx) {
   disabled: true
 - id: tui-runner
   disabled: true
-- id: mcp-chrome
-  disabled: true
 - id: dscode-memory
   config:
     enabled: false

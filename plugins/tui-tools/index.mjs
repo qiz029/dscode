@@ -1,7 +1,8 @@
 import { runShell } from './shell.mjs';
 import { VERSION_PATTERN, scheduleUpdate } from './update.mjs';
 import { readLanguage, t } from '../i18n/messages.mjs';
-import { readFile, readdir, access } from 'node:fs/promises';
+import { hookReportFile } from './hook-sources.mjs';
+import { readFile, readdir, access, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
@@ -61,6 +62,22 @@ export async function findConflicts(cwd, configs, winners, env = process.env) {
     lines.push(`${name}: effective source=${winner?.source ?? 'not in catalog'} provider=${winner?.provider ?? '?'}\n${paths.map(p => `  ${p}`).join('\n')}`);
   }
   return [...lines, ...errors, 'Scope: filesystem roots only; runtime/remote provider shadowed candidates are not exposed by DSH.'].join('\n');
+}
+
+// The pinned bridge reads one merged file for the whole process, and /hooks reload
+// remounts the plugin with the same path, so an edited layer is not picked up until
+// dscode restarts. Report that instead of letting the user believe the edit is live.
+export async function staleLayers(resolvedPath, sources = []) {
+  const mergedAt = await stat(resolvedPath).then(value => value.mtimeMs).catch(() => undefined);
+  if (mergedAt === undefined) return [];
+  const stale = [];
+  for (const source of sources) {
+    if (source === resolvedPath) continue;
+    const at = await stat(source).then(value => value.mtimeMs).catch(() => undefined);
+    if (at === undefined) stale.push(`${source} (missing)`);
+    else if (at > mergedAt) stale.push(`${source} (newer than the merge)`);
+  }
+  return stale;
 }
 
 export function apply(ctx) {
@@ -196,6 +213,8 @@ export function apply(ctx) {
     const path = hookPath(entry);
     const raw = JSON.parse(await readFile(path, 'utf8'));
     const hooks = raw.hooks ?? raw;
-    return ok(`Hooks: ${state(entry)}\nConfig: ${path}\n${Object.entries(hooks).map(([event, groups]) => `${event}: ${hookEvents.includes(event) ? 'supported' : 'UNSUPPORTED'}; ${Array.isArray(groups) ? groups.length : 0} groups`).join('\n')}\nSupported: ${hookEvents.join(', ')}\nOnly synchronous command hooks. Runs as your OS user, outside tool approval. Edit only trusted installation-owned config; /hooks reload applies it. No project hook auto-loading.\nPreCompact/PostCompact, PermissionRequest and subagent events are not supported by this bridge.`);
+    const report = await readFile(join(dirname(path), hookReportFile), 'utf8').then(JSON.parse).catch(() => undefined);
+    const stale = report ? await staleLayers(path, report.sources) : [];
+    return ok(`Hooks: ${state(entry)}\nConfig: ${path}\n${Object.entries(hooks).map(([event, groups]) => `${event}: ${hookEvents.includes(event) ? 'supported' : 'UNSUPPORTED'}; ${Array.isArray(groups) ? groups.length : 0} groups`).join('\n')}\nSupported: ${hookEvents.join(', ')}\nOnly synchronous command hooks. Runs as your OS user, outside tool approval. Edit only trusted installation-owned config; /hooks reload applies it. Project files (.codex/hooks.json, .dsh/hooks.json, .claude/settings.json) layer on top unless DSCODE_PROJECT_HOOKS=0; events this bridge does not support are skipped rather than fatal, and any edit to a layer needs a restart.${report ? `\nLayers: ${report.sources.join(', ')}${report.skipped.length ? `\nSkipped by this bridge: ${report.skipped.map(entry => `${entry.path}: ${entry.events.join(', ')}`).join('; ')}` : ''}` : ''}${stale.length ? `\nNeeds restart: ${stale.join('; ')} — /hooks reload re-reads the merged file, not its sources.` : ''}\nPreCompact/PostCompact, PermissionRequest and subagent events are not supported by this bridge.`);
   });
 }

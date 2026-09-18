@@ -25,12 +25,9 @@ test('source and package compositions share plugins and settings after path reso
   assert.deepEqual(entries.find(e => e.id === 'dscode-auto-review').config, { timeoutMs: 30000, maxOutputTokens: 4096, maxReviewsPerTurn: 20 });
 });
 
-test('Chrome MCP mounts with the first DSCODE agent, not the prompt-free host', () => {
+test('no MCP server mounts by default, on the host plane or in the preset', () => {
   const host = decode(readFileSync(new URL('../config/cordis.patch.yml', import.meta.url), 'utf8'));
   const preset = decode(readFileSync(new URL('../presets/dscode/agent.cordis.yml', import.meta.url), 'utf8'));
-  assert(!host.flatMap(row => row.insert ?? [row]).some(row => row.id === 'mcp-chrome'));
-  const chrome = preset.find(row => row.id === 'mcp-chrome');
-  assert.equal(chrome?.name, '@deepseek-ai/dsh-mcp-client');
-  assert.equal(chrome.config.serverName, 'chrome');
-  assert.equal(chrome.config.failOnStartupError, true);
+  const mounted = [...host, ...preset].flatMap(row => row.insert ?? [row]).filter(row => row.name === '@deepseek-ai/dsh-mcp-client');
+  assert.deepEqual(mounted, []);
 });

@@ -1,7 +1,9 @@
 import { mkdirSync, existsSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
+import { writeHookConfig } from '../../plugins/tui-tools/hook-sources.mjs';
+import { ancestorSkillDirs, writeWorkspaceInstructions } from '../../plugins/tui-tools/workspace-discovery.mjs';
+import { homedir } from 'node:os';
 export const name = 'dscode-bootstrap';
 export function apply(ctx) {
   const root = dirname(fileURLToPath(import.meta.url));
@@ -11,9 +13,12 @@ export function apply(ctx) {
   mkdirSync(config, { recursive: true });
   const hooks = join(config, 'hooks.local.json');
   if (!existsSync(hooks)) writeFileSync(hooks, '{"hooks":{}}\n', { mode: 0o600, flag: 'wx' });
-  const require = createRequire(import.meta.url);
-  const chrome = join(dirname(require.resolve('chrome-devtools-mcp/package.json')), 'build/src/bin/chrome-devtools-mcp.js');
-  ctx.provide('dscodePaths', { presets: join(root, 'presets'), hooks, chrome });
+  const hookConfig = writeHookConfig({ root: home, cwd: process.cwd(), home });
+  // The bundle knows the session directory only at runtime, so the same ancestor
+  // resolution the launcher runs happens here before the agent preset mounts.
+  process.env.DSCODE_SKILL_ANCESTOR_DIRS = JSON.stringify(ancestorSkillDirs({ cwd: process.cwd(), home: homedir() }));
+  process.env.DSCODE_INSTRUCTION_HOME = writeWorkspaceInstructions({ cwd: process.cwd(), home: homedir(), stateDir: home }) ?? home;
+  ctx.provide('dscodePaths', { presets: join(root, 'presets'), hooks: hookConfig.path });
   const oldPath = process.env.PATH;
   const added = join(root, 'bin');
   process.env.PATH = added + ':' + (oldPath ?? '');

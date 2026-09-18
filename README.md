@@ -77,7 +77,7 @@ dscode doctor                     # analyse recent logs and session traces
 dscode --version                  # print the DSCODE version
 ```
 
-The launcher checks installed bundles and Harness dependencies against the recommended combination; on a mismatch it prints one consolidated warning and keeps running, without editing dependencies or downgrading. Access to the browser and desktop tools is granted on demand: Chrome starts with a separate temporary profile and does not take over your everyday browser logins, desktop tools load progressively through a skill, screenshot understanding needs a model that accepts images, the MCP bridge provides tools rather than resources or prompts, and Computer Use permissions are granted separately in macOS.
+The launcher checks installed bundles and Harness dependencies against the recommended combination; on a mismatch it prints one consolidated warning and keeps running, without editing dependencies or downgrading. No MCP server is mounted by default. Desktop tools load progressively through a skill, screenshot understanding needs a model that accepts images, the MCP bridge provides tools rather than resources or prompts, and Computer Use permissions are granted separately in macOS. Add your own MCP servers — Chrome DevTools MCP among them — in `config/mcp.local.yml`.
 
 <details>
 <summary><b>Other install paths, upgrades and rollback</b></summary>
@@ -164,7 +164,7 @@ The default is a `workspace-write` sandbox with **Auto** permission review, wher
 | Source | repository `.runtime/` | repository `.env` and `config/` |
 | tar | `.runtime/` inside the install directory | `.env` and `config/` in the install directory |
 
-`config/hooks.local.json`, `config/mcp.local.yml` and `config/harness.local.yml` are supported. Local configs, secrets and sessions never enter a release package. Skills are discovered in the target project's `.agents/skills` and `.dsh/skills`, plus an isolated user skill directory; `/skills conflicts` diagnoses same-name overrides.
+`config/hooks.local.json`, `config/mcp.local.yml` and `config/harness.local.yml` are supported. Local configs, secrets and sessions never enter a release package. Skills are discovered in the target project's `.agents/skills` and `.dsh/skills`, plus an isolated user skill directory; `/skills conflicts` diagnoses same-name overrides. A project's `.codex/hooks.json`, `.dsh/hooks.json` and `.claude/settings.json` are layered on top of `config/hooks.local.json` by default; set `DSCODE_PROJECT_HOOKS=0` to load the installation file alone. Skills come from the project's `.dsh/skills` and `.agents/skills` plus the user roots, and `DSCODE_SKILL_ANCESTORS=1` also reads `.dsh/skills`, `.agents/skills` and `.claude/skills` from every directory between the project root and home; `AGENTS.md`/`CLAUDE.md` in those ancestor directories is folded into the workspace instructions.
 
 ## 🧩 Development
 
@@ -186,7 +186,7 @@ npm run dist                # build the fallback tar installer
 | `@toddzheng024/dscode-bundle` | Base layer, Computer Use, custom plugins and the modified TUI/runtime |
 | Hub profile `dscode` | Pinned bundle and runtime versions with integrity hashes |
 
-The bundle generates its modified modules at build time and never rewrites third-party sources on a user's machine. DSH dependencies are pinned to `0.1.5-rc.2`; the TUI is based on `dsh-code@1.0.6`, Chrome MCP on `1.9.0` and Computer Use on `0.3.2`. The full pipeline—bundle, then Hub release, then launcher—is in the [distribution guide](docs/hub-distribution.md). Context-compaction evaluation lives under [`eval/`](eval/README.md) and runs with `npm run eval:compaction`.
+The bundle generates its modified modules at build time and never rewrites third-party sources on a user's machine. DSH dependencies are pinned to `0.1.5-rc.2`; the TUI is based on `dsh-code@1.0.6` and Computer Use on `0.3.2`. The full pipeline—bundle, then Hub release, then launcher—is in the [distribution guide](docs/hub-distribution.md). Context-compaction evaluation lives under [`eval/`](eval/README.md) and runs with `npm run eval:compaction`.
 
 ## 📚 Documentation
 
@@ -201,6 +201,7 @@ The bundle generates its modified modules at build time and never rewrites third
 | [Persistent shell and Ultra](docs/dscode-ultra.md) | Presets, reasoning effort, per-child effort and worktree isolation |
 | [Auto review](docs/auto-review.md) | Scope, cost and limits of independent permission review |
 | [Email](docs/email.md) | IMAP setup, the inbox panel, `send_email` and aliases |
+| [Skills and workspace instructions](docs/skills.md) | Discovery scopes, the ancestor mode and instruction files |
 | [TUI commands](docs/tui-commands.md) | Command reference and hooks |
 | [Session metrics](docs/session-metrics.md) | Definition of the footer TPS, context, cost and cache figures |
 | [npm + Hub distribution](docs/hub-distribution.md) | Bundle, Hub release and launcher pipeline |
@@ -217,4 +218,4 @@ Issues and pull requests are welcome. Run `npm run check` before sending a chang
 
 ---
 
-Built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), [DSH-Code](https://github.com/unlinearity/dsh-code), [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) and [DSH Plugin Hub](https://dshpluginhub.ai). An independent community project, not an official DeepSeek product.
+Built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), [DSH-Code](https://github.com/unlinearity/dsh-code) and [DSH Plugin Hub](https://dshpluginhub.ai). An independent community project, not an official DeepSeek product.

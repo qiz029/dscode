@@ -29,9 +29,8 @@
       You are a coding agent powered by the {{model}} model, working through a persistent shell.
       Reply in the language the user writes in.
       Keep the user informed during tool-driven work with ordinary assistant text, visible even when verbose mode is off. Reasoning blocks and tool descriptions do not count as progress updates.
-      Before the first tool call, briefly state what you will check or change. For a simple answer without tools, answer directly.
-      During sustained work, give a concise progress update roughly every minute when you have control, and when a significant finding, blocker or change of direction occurs. If a long tool call prevents an update, summarize its result when control returns; do not claim to speak while a tool is blocking.
-      Use one or two sentences explaining what you learned and what the next step will resolve. Report observable facts and decisions, not private reasoning, raw tool payloads or a narration of every command. Avoid repetitive filler and invented progress.
+      Before the first tool call, briefly state what you will check or change; for a simple answer without tools, answer directly.
+      During sustained work, send an update when you have something to report: a significant finding, a blocker, a change of direction, or the result of a long blocking call once control returns. Do not announce routine reads, do not claim to speak while a tool is blocking, and never pad: an update says what changed and what the next step resolves, in one or two sentences, using observable facts and decisions rather than private reasoning, raw tool payloads or a narration of every command.
       Continue working after each update without asking permission for already-authorized steps. Progress text is not the final answer; finish with a self-contained result and any remaining gaps.
       Before changing code, read the relevant code and any project instructions; reuse existing functions and patterns instead of adding new machinery.
       Make routine judgment calls yourself and ask only when different answers would lead to materially different work.
@@ -48,6 +47,10 @@
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'
   config:
+    # The launcher folds AGENTS.md/CLAUDE.md from directories above the project
+    # root, up to home, in front of the user-global file; without those files it
+    # points at $DSH_HOME, exactly as before.
+    dshHome: !!js 'process.env.DSCODE_INSTRUCTION_HOME'
     maxBytes: 65536
 
 - id: persistent-shell
@@ -131,6 +134,10 @@
 # carries whatever the deployment registered globally (repository plugins).
 - id: skill-filesystem
   name: '@deepseek-ai/dsh-skill-filesystem'
+  config:
+    # DSCODE_SKILL_ANCESTORS=1 adds the skill roots of directories between the
+    # project root and home at rank 300: headers enter the catalog, bodies stay lazy.
+    customSkillDirs: !!js 'JSON.parse(process.env.DSCODE_SKILL_ANCESTOR_DIRS ?? "[]")'
 
 - id: tool-skill
   name: '@deepseek-ai/dsh-tool-skill'
@@ -311,17 +318,3 @@
 - id: present
   name: '@deepseek-ai/dsh-tool-present'
 
-# The TUI composes this standing preset on the first message. Connecting Chrome
-# here keeps the prompt-free welcome screen off the MCP startup path; the first
-# agent request still waits for the tool catalog before reaching the model.
-- id: mcp-chrome
-  name: '@deepseek-ai/dsh-mcp-client'
-  config:
-    serverName: chrome
-    transport: stdio
-    command: !!js "process.env.DSH_TUI_CHROME_ENTRY ? process.execPath : 'npx'"
-    args: !!js "[...(process.env.DSH_TUI_CHROME_ENTRY ? [process.env.DSH_TUI_CHROME_ENTRY] : ['--yes', 'chrome-devtools-mcp@1.9.0']), '--isolated', '--no-usage-statistics', '--no-performance-crux']"
-    env:
-      CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS: '1'
-    failOnStartupError: true
-    toolCallTimeoutMs: 60000

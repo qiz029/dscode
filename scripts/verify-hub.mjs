@@ -88,7 +88,7 @@ try {
   // probes below use the install home for their separate project identity.
   const project=spawnSync('git',['init','--quiet',home],{encoding:'utf8'});
   if(project.status!==0) throw Error(project.stderr);
-  const basePatch = '- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- id: mcp-chrome\n  disabled: true\n';
+  const basePatch = '- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n';
   for (const [name, settings, marker] of [
     ['session-messaging', '- id: dscode-session-cards\n  config:\n    enabled: false\n- id: dscode-memory\n  config:\n    generate: false\n', 'SESSION_MESSAGING_PROBE_PASSED'],
     ['session-cards', '- id: dscode-memory\n  config:\n    generate: false\n- id: dscode-session-cards\n  config:\n    minMessages: 1\n    debounceMs: 0\n    cooldownMs: 0\n', 'SESSION_CARDS_PROBE_PASSED'],

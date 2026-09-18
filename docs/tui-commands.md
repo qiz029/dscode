@@ -19,11 +19,11 @@ Restart `dscode` to load these commands. Most commands run locally; `/doctor` ma
 | `/doctor [local\|preview]` | Read-only runtime health plus self-diagnosis from recent warning/error logs and session event traces for this workspace. By default, sends bounded, redacted event metadata to the selected model. `local` skips the model; `preview` shows the exact evidence payload. Does not read conversation text, tool arguments, or tool output. Falls back to local findings if model analysis fails. |
 | `/mcp` | List MCP entry IDs, loader state and transport; credentials, headers and environment values are not printed. |
 | `/mcp tools <id>` | List registered tools for a server. |
-| `/mcp enable|disable|reconnect <id>` | Change a server for this process. All agents must be idle. Reconnect disposes and remounts the server. Host servers are configured in `config/mcp.local.yml`; preset servers, including DSCODE's Chrome, are configured in that preset's composition. IDs may be full loader IDs or an unambiguous short ID such as `mcp-chrome`. |
+| `/mcp enable|disable|reconnect <id>` | Change a server for this process. All agents must be idle. Reconnect disposes and remounts the server. Host servers are configured in `config/mcp.local.yml`; the dscode preset mounts none. IDs may be full loader IDs or an unambiguous short ID. |
 | `/skills` | Effective skill catalog, source, provider and invocation permissions. |
 | `/skills <name>` | Description and effective file path, without injecting its instructions into the model. |
 | `/skills conflicts` | Duplicate names in the configured filesystem roots, with the runtime's effective source. Hidden candidates from runtime/remote providers are not enumerable. |
-| `/hooks` | Hook configuration location and supported events. |
+| `/hooks` | Hook configuration location, the merged layer list and supported events. It also reports a layer whose file changed — or disappeared — after the merge, because only a restart re-reads the layers. |
 | `/hooks reload|enable|disable` | Reload installation-owned hook configuration, or switch hooks for this process while all agents are idle. |
 | `/review [--staged\|--base REF\|--commit REF] [--path RELATIVE_PATH]` | Independently review the selected Git diff in a read-only, tool-free model request. Default includes tracked and untracked uncommitted changes, and when there are none it reviews the commits made since the latest user task started (read from the HEAD reflog), so work that was committed or merged is still reviewed; `--commit` reviews a merge commit against its first parent; empty scopes do not call the model. Narrow large or unrelated diffs with `--path`. |
 | `/verbose` | Toggle verbose chat: thinking and tool calls appear dimmed as `· Thinking: …`, `· Tool Call: name args` and `  Output: …` (thinking capped at eight lines), with a blank line between blocks. The setting is saved per machine in `~/.dsh/dsh-code/verbose.json`. Ctrl/Alt+R toggles the same setting; Ctrl+O still opens the full history inspector. |
@@ -47,7 +47,9 @@ Task completion guidance keeps scope and acceptance checks stable. Once requeste
 
 ## Hooks
 
-`npm run setup` creates `config/hooks.local.json` containing `{"hooks":{}}`. No hook commands run by default. This file is local to the installation, ignored by git, and excluded from distributable archives. Project `.codex/hooks.json` and `.claude` configurations are **not automatically loaded**.
+`npm run setup` creates `config/hooks.local.json` containing `{"hooks":{}}`. No hook commands run by default. This file is local to the installation, ignored by git, and excluded from distributable archives. Project `.codex/hooks.json`, `.dsh/hooks.json` and `.claude/settings.json` are layered on top by default; set `DSCODE_PROJECT_HOOKS=0` to load `config/hooks.local.json` alone.
+
+The pinned bridge reads one file for the whole process, so the layers are merged — installation, then `.codex/hooks.json`, `.dsh/hooks.json` and `.claude/settings.json` (its top-level `hooks`) — into `$DSH_HOME/hooks.resolved.json` (mode 0600), and a sibling `hooks.resolved.report.json` report records the layers and any event this bridge cannot run; `/hooks` prints both. A project file is report-only: an event this bridge cannot run, or a gate it cannot load, is skipped and listed with its reason, while `config/hooks.local.json` still fails startup on anything it cannot run. The merged file is rewritten at startup, so an edit to any layer needs a restart rather than `/hooks reload`. Matchers stay regular expressions, so a Claude Code matcher such as `Bash` does not match dscode's `bash` tool — write `^bash$`. These layers run as your OS user outside tool approval, so set `DSCODE_PROJECT_HOOKS=0` on a repository you do not trust.
 
 Edit this file with trusted commands, then `/hooks reload` (or restart). Example:
 
@@ -77,6 +79,10 @@ The pinned official `@deepseek-ai/dsh-hooks-codex` bridge supports:
 - `Stop`: request continuation. The hook must self-limit to avoid a continuation loop.
 
 `PermissionRequest`, `PreCompact`, `PostCompact`, `SubagentStart`, `SubagentStop`, async hooks and non-command hooks are not supported. dscode validates these at startup/reload so unsupported gates do not silently load. The default timeout is 10 seconds; explicit hook timeouts may be up to 600 seconds. Hook execution failures otherwise follow the upstream bridge's fail-open behavior. Non-shell tool inputs are reduced to `{command: ""}` by this bridge. Model and permission-mode fields are upstream static placeholders, not authoritative runtime status. Native `hook/invoked` and `hook/result` events remain resumable.
+
+## Skills and workspace instructions
+
+Skills come from the runtime's filesystem provider: the project's `.dsh/skills` and `.agents/skills` (project root is the nearest ancestor containing `.git`), then custom roots, then the user roots under `$DSH_HOME` and `$DSH_AGENTS_HOME`. `DSCODE_SKILL_ANCESTORS=1` widens that upward, registering `.dsh/skills`, `.agents/skills` and `.claude/skills` from every directory between the project root and home at rank 300; the same `0`/`off`/`false` values turn it off, and it belongs in the environment (the installation's `.env`) rather than `config/harness.local.yml`. `AGENTS.md` and `CLAUDE.md` from directories above the project root are folded into the workspace instructions without a switch. [Skills](skills.md) covers the scopes and ranks, the ordering rules, how to verify the mode, and the instruction-file chain.
 
 ## Distribution and verification
 

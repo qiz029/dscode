@@ -26,7 +26,7 @@ for (const [pkg] of Object.entries(original.dependencies)) dependencies[pkg] = l
 for (const pkg of ['commander', 'eventsource-parser']) dependencies[pkg] = lock.packages['node_modules/' + pkg].version;
 const bundle = join(out, 'bundle');
 rmSync(bundle, { recursive: true, force: true }); mkdirSync(bundle);
-copy('packages/bundle/bootstrap.mjs', join(bundle, 'bootstrap.mjs'));
+write(bundle, 'bootstrap.mjs', read('packages/bundle/bootstrap.mjs').replaceAll("from '../../plugins/tui-tools/", "from './plugins/tui-tools/"));
 for (const dir of ['plugins', 'presets', 'bin']) copy(dir, join(bundle, dir));
 rmSync(join(bundle, 'bin/dscode.mjs')); // only launcher owns the global dscode bin
 mkdirSync(join(bundle, 'vendor'));
@@ -69,15 +69,6 @@ for (const [file, from, to] of [
 }
 rmSync(stage, { recursive: true, force: true });
 let preset = read('presets/dscode/agent.cordis.yml').replaceAll("'@deepseek-ai/dsh-tool-subagent'", `'${name}/subagent'`).replace('DSCODE_POLICY_PLUGIN', `'${name}/policy'`).replace('DSCODE_REVIEW_PLUGIN', `'${name}/code-review'`).replaceAll("'@deepseek-ai/dsh-tool-bash'", `'${name}/bash'`).replaceAll("'@deepseek-ai/dsh-tool-bash-persistent'", `'${name}/persistent'`).replaceAll("'@deepseek-ai/dsh-terminal-bash'", `'${name}/terminal'`).replaceAll("'@deepseek-ai/dsh-compaction-basic'", `'${name}/compaction-basic'`);
-preset = replaceOnce(preset,
-  "  name: '@deepseek-ai/dsh-mcp-client'\n  config:\n    serverName: chrome",
-  "  name: '@deepseek-ai/dsh-mcp-client'\n  inject: [dscodePaths]\n  config:\n    serverName: chrome");
-preset = replaceOnce(preset,
-  `command: !!js "process.env.DSH_TUI_CHROME_ENTRY ? process.execPath : 'npx'"`,
-  'command: !!js process.execPath');
-preset = replaceOnce(preset,
-  `args: !!js "[...(process.env.DSH_TUI_CHROME_ENTRY ? [process.env.DSH_TUI_CHROME_ENTRY] : ['--yes', 'chrome-devtools-mcp@1.9.0']), '--isolated', '--no-usage-statistics', '--no-performance-crux']"`,
-  `args: !!js "[ctx.dscodePaths.chrome, '--isolated', '--no-usage-statistics', '--no-performance-crux']"`);
 write(bundle, 'presets/dscode/agent.cordis.yml', preset);
 let patch = read('node_modules/@deepseek-ai/dsh-base/cordis.patch.yml') + '\n' + read('node_modules/@anionex/dsh-computer-use/cordis.patch.yml') + '\n' + read('node_modules/dsh-code/cordis.patch.yml').replaceAll("'dsh-code/startup'", `'${name}/startup'`).replaceAll("'dsh-code/session-query'", `'${name}/session-query'`).replaceAll("'dsh-code'", `'${name}/tui'`);
 for (const [upstream, replacement] of [
