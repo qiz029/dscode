@@ -42,6 +42,8 @@ npm test
 npm run verify:hub
 ```
 
+同一条序列也封装为 Make target：`make release` 依次执行 version-check、`npm run check`、`build:packages`、`release:hub`、`dist`、`verify:hub` 并打包 `release-candidates.tar.gz`（对应 CI 的 build job）；`make publish` 依次执行只读凭据检查、bundle、profile、launcher 与 release 资产挂载（对应 CI 的 publish job，需要 `NPM_PUBLISH_TOKEN`、`DSH_HUB_TOKEN` 以及挂资产用的 `GH_TOKEN`）。单个阶段可用 `make publish-bundle|publish-profile|publish-launcher` 重跑，`make help` 列出全部 target；workflow 本身不调用 make。
+
 产物位于 `artifacts/npm/`：两个 npm tgz、Hub draft/release JSON 和 `.dshprofile`。构建只复制白名单文件，不复制用户配置、凭据或会话；发布携带原始 MIT 许可和修改说明。
 
 `verify:hub` 在临时目录安装真实 launcher，以 loopback npm registry 供应尚未发布的 bundle，使用真实 dsh-cli 与 Hub lifecycle 验证组合、agent loop、替换及回退。它不等同于公开 Hub 发现或 npm 正式发布。测试不请求远程模型。
@@ -56,6 +58,8 @@ npm run verify:hub
 6. 在另一干净目录用公开 npm 的 launcher 完成首次启动验证。
 
 不能在 bundle/Hub release 可用之前发布 launcher，否则用户的首次启动会失败。新的版本必须重新生成包和 release，不能复用旧完整性哈希。`build:packages` 与 `release:hub` 生成候选产物；只有发布并确认公开 registry 后才算完成发布。v0.1.0 已通过 npm + Hub 公开分发。
+
+Hub 调用经过有限重试（`scripts/hub-retry.mjs`）：5xx 或传输失败默认重试 5 次、间隔 3 秒，可用 `DSCODE_HUB_RETRY_ATTEMPTS` / `DSCODE_HUB_RETRY_MS` 覆盖；4xx（token 无效、包不存在、版本不可变）立即失败。重试耗尽会抛出最后一个错误，所以 Hub 长时间不可用会让这次发布失败，而不是在没核对的情况下继续。
 
 发布脚本按阶段执行：`npm run publish:hub -- bundle`、`npm run publish:hub -- profile`、`npm run publish:hub -- launcher`。每阶段核对测试产物哈希；launcher 发布前检查公开 Hub release 的确切版本及完整性。 profile 阶段先调用 Hub 的 `sync` 接口（dsh-hub CLI 0.3.0 起提供）让 Hub 立即从 npm 拉取 bundle，不再等整点同步；同步后仍要求 Hub 已列出该精确版本。Hub 认领仍需发布者控制台操作，登录使用 `dsh-hub login`。
 

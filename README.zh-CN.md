@@ -54,7 +54,20 @@ cd /path/to/project
 dscode
 ```
 
+其余安装方式安装的是同一套固定版本：
+
+| 方式 | 做法 |
+|---|---|
+| npm / Hub | 上面的命令；launcher 会从 [DSH Plugin Hub](https://dshpluginhub.ai) 安装固定版本的 profile |
+| GitHub release，一行命令 | `curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh \| sh` |
+| release tar 包 | 从 [Releases](https://github.com/qiz029/dscode/releases) 下载 `dscode-<version>.tar.gz`，解包后执行 `sh dscode-install/install.sh` |
+| 源码 checkout | `git clone https://github.com/qiz029/dscode.git && cd dscode && npm ci --ignore-scripts && npm run setup` |
+
+一行安装器会解析最新 release、校验 GitHub 为其 tarball 公布的 sha256 摘要，然后执行该 tar 包自带的安装流程；`sh -s -- <版本号>` 可固定精确版本而不跟随最新版。所有方式都需要 Node、npm 和 Git——tar 包用 `npm ci` 安装自己的 lockfile，npm 方式则从 Hub 安装固定版本的 profile。
+
 首次启动会从 [DSH Plugin Hub](https://dshpluginhub.ai) 安装固定版本的完整 preset——无需手动拼装插件，也不需要全局安装 pnpm。之后输入 `/login`，在隐藏输入框中粘贴 DeepSeek API key：密钥以 `0600` 权限保存在本机 `~/.dscode/credentials.yaml`，不同项目和安装版本共用，不会发送给 agent。已设置的 `DEEPSEEK_API_KEY` 环境变量优先。想使用 OpenRouter，输入 `/provider openrouter`：DSCODE 会提示输入 OpenRouter key（同样保存在本机，或读取 `OPENROUTER_API_KEY`），并把当前会话切到对应的 DeepSeek 模型；OpenRouter 实时模型列表里支持工具调用的模型随后都会出现在 `/model` 中，直接输入即可搜索。DeepSeek、GLM、Kimi 和 Qwen 经过适配和测试，其他模型尽力可用。`/provider deepseek` 切回，`/login openrouter` 可更换 key。用 `/model` 选择模型或配置其他提供方，用 `/effort` 调整推理强度；默认路由是 `deepseek-official/deepseek-flash`。 TUI 启动时会检查 npm 上的新版本，`/update` 可在退出后自动完成整个安装的升级。
+
+**默认英文，界面支持 6 种语言。** `/language` 打开选择器，`/language ja` 可直接切换；也可以直接写「中文」「日本語」「한국어」。支持 English、简体中文、繁體中文、日本語、한국어、Español。选择按机器保存在 `~/.dsh/dsh-code/language.json`，`DSCODE_LANGUAGE=es` 可覆盖单次运行。
 
 ```sh
 dscode --continue                 # 继续上次会话
@@ -84,6 +97,13 @@ npm start -- --cwd /path/to/project
 
 也可复制 `.env.example` 为 `.env`，仅在本机填写密钥；此方式会优先于 `/login` 保存的凭据。
 
+**一行安装** —— 安装器直接来自仓库并自行获取 release；在 `--` 之后给出精确版本号即可固定版本，而不是跟随最新版：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.14
+```
+
 **tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.11.tar.gz`，然后执行：
 
 ```sh
@@ -92,7 +112,7 @@ tar -xzf dscode-0.7.11.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
-默认命令位于 `~/.local/bin/dscode`，请确保该目录在 PATH 中。tar 安装器不会覆盖已有命令或安装。
+默认命令位于 `~/.local/bin/dscode`，请确保该目录在 PATH 中。安装器不会覆盖已有命令或安装。
 
 **若 npm 包名查询暂时返回 404**，可直接安装同一版本的官方 registry tarball：
 
@@ -159,6 +179,8 @@ npm run release:hub         # 构建 Hub release 和 .dshprofile
 npm run verify:hub          # 临时安装、agent 检查、失败升级与回退
 npm run dist                # 构建备用 tar 安装包
 ```
+
+`make release` 按同样顺序执行整个 build job——版本校验、`npm run check`、三个构建步骤、`verify:hub`，最后打包 `release-candidates.tar.gz`；`make publish` 按顺序执行 publish job 的各阶段。`make help` 列出全部 target；workflow 本身不调用 make。
 
 | 分发组件 | 内容 |
 |---|---|

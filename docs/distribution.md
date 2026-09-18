@@ -16,6 +16,16 @@ npm run dist
 
 需要 macOS 14+、Node 22.19+（22.x）或 24+、npm、Git（供 `apply_patch` 使用）、Google Chrome。
 
+同一个脚本也能自己取包：从管道执行时它进入远程模式，解析最新 release、校验发布方 sha256 摘要、解包，然后把工作交给包内自带的 `install.sh`，所以下载到的版本和安装脚本对布局的理解不会分叉。
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh
+# 固定版本
+curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.8
+```
+
+或者手动解包同一个 tar 包：
+
 ```sh
 mkdir dscode-install
 tar -xzf dscode-0.7.8.tar.gz -C dscode-install
@@ -36,6 +46,6 @@ dscode
 
 依赖里的 npm `overrides` 在作为第三方依赖安装时不会成为根项目的解析规则。本组合需要统一固定 DSH 的 rc 版本线，因此使用安装包内的根 manifest 和 `npm ci` 保留已经验证的锁定依赖图。`package.json` 已声明 `dscode` bin，但不能把单纯的 bin 声明当作 npm 全局安装兼容性验证。
 
-后续可以提供下载站一行安装或 Homebrew formula，继续调用这套锁定安装流程；需要先确定正式下载地址和版本发布渠道。
+一行 `curl | sh` 安装已提供，复用 GitHub Releases 的 tarball 与发布方 sha256 摘要；缺少摘要的 release 会被拒绝，而不是未经校验地安装。Homebrew formula 仍是后续可能项，需要先确定正式下载地址和版本发布渠道。
 
 完整 tar 包包含 `presets/dscode`、`bin/apply_patch` 和版本锁定的 runtime patch 脚本。setup 默认启用 dscode 并安装 Ultra effort 支持；不会将本机 node_modules 打入包中。旧会话继续按原 preset 恢复，使用 `dscode --mode dscode` 显式创建新会话。

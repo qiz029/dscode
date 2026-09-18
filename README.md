@@ -54,7 +54,20 @@ cd /path/to/project
 dscode
 ```
 
+Every other install path reaches the same pinned harness:
+
+| Method | How |
+|---|---|
+| npm / Hub | the command above; the launcher installs the pinned profile from [DSH Plugin Hub](https://dshpluginhub.ai) |
+| GitHub release, one line | `curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh \| sh` |
+| Release tarball | download `dscode-<version>.tar.gz` from [Releases](https://github.com/qiz029/dscode/releases), unpack it and run `sh dscode-install/install.sh` |
+| Source checkout | `git clone https://github.com/qiz029/dscode.git && cd dscode && npm ci --ignore-scripts && npm run setup` |
+
+The one-line installer resolves the newest release, verifies the sha256 digest GitHub publishes for its tarball and then runs the installation the tarball carries; `sh -s -- <version>` pins an exact release instead of tracking the latest. Every path needs Node, npm and Git—the release tarball installs its own lockfile with `npm ci`, and the npm path installs the pinned profile from the Hub.
+
 The first launch installs the pinned complete preset from [DSH Plugin Hub](https://dshpluginhub.ai)—no manual plugin assembly, no global pnpm. Then enter `/login` and paste your DeepSeek API key into the hidden input: it is stored locally in `~/.dscode/credentials.yaml` with `0600` permissions, shared across projects and installed versions, and never sent to the agent. A `DEEPSEEK_API_KEY` environment variable takes precedence. To use OpenRouter, enter `/provider openrouter`: DSCODE asks for your OpenRouter key (stored the same way, or taken from `OPENROUTER_API_KEY`) and switches the session to the DeepSeek model you were on; every model in OpenRouter's live listing that can call tools is then listed in `/model`, where typing searches. DeepSeek, GLM, Kimi and Qwen models are tuned and tested; other models work on a best-effort basis. `/provider deepseek` switches back, and `/login openrouter` replaces the key. Use `/model` to pick a model or another provider, and `/effort` to adjust reasoning effort; the default route is `deepseek-official/deepseek-flash`. The TUI checks npm for a newer release at startup and `/update` upgrades the whole installation after you exit.
+
+**Six interface languages, English by default.** `/language` opens the picker and `/language ja` switches straight to a locale; 中文, 日本語 and 한국어 are accepted as names too. The set is English, 简体中文, 繁體中文, 日本語, 한국어 and Español. The choice is stored per machine in `~/.dsh/dsh-code/language.json`, and `DSCODE_LANGUAGE=es` overrides it for one run.
 
 ```sh
 dscode --continue                 # continue the last session
@@ -82,6 +95,13 @@ npm start
 npm start -- --cwd /path/to/project
 ```
 
+**One-line install** — the installer runs straight from the repository and fetches the release itself; name an exact version after `--` to pin one instead of tracking the latest:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.14
+```
+
 **From a tar package** — download `dscode-0.7.11.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
 
 ```sh
@@ -90,7 +110,7 @@ tar -xzf dscode-0.7.11.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
-The command lands in `~/.local/bin/dscode` by default—make sure that directory is on your PATH. The tar installer never overwrites an existing command or installation.
+The command lands in `~/.local/bin/dscode` by default—make sure that directory is on your PATH. The installer never overwrites an existing command or installation.
 
 **If the npm name lookup returns 404**, install the same version straight from the official registry tarball:
 
@@ -157,6 +177,8 @@ npm run release:hub         # build the Hub release and .dshprofile
 npm run verify:hub          # temp install, agent check, failed upgrade and rollback
 npm run dist                # build the fallback tar installer
 ```
+
+`make release` runs the whole build job in that order—version check, `npm run check`, the three build steps, `verify:hub`, then `release-candidates.tar.gz`—and `make publish` runs the publish job's phases in order. `make help` lists every target; the workflow itself does not call make.
 
 | Distribution component | Contents |
 |---|---|
