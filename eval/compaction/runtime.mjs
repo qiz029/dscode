@@ -2,7 +2,7 @@ import { Context } from '@deepseek-ai/cordis';
 import { Session } from '@deepseek-ai/dsh-session';
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection';
 import { TokenMeter } from '@deepseek-ai/dsh-token-meter';
-import { BasicCompactionEngine } from '@deepseek-ai/dsh-compaction-basic';
+import { DscodeCompactionEngine } from '../../plugins/compaction/engine.mjs';
 import ToolResultPruner from '@deepseek-ai/dsh-compaction-tool-result-pruner';
 import { LlmRuntime, BlockAssembler, createUserMessage, createAssistantMessage, createSystemMessage, createToolResultMessage } from '@deepseek-ai/dsh-llm';
 
@@ -12,7 +12,7 @@ export const visibleMessages = session => session.surface.nodes.map(seq => sessi
 // Detached sessions, no Host, user state, filesystem tools or live agent turns.
 // Selection, token measurement, tool pairing, pruning, summary prompt and
 // replacement events all come from the pinned production DSH implementation.
-export function createRuntime({ policy, adapter, provider, model, contextWindow, maxTokens = 8192, tools = [], onCall = () => {} }) {
+export function createRuntime({ policy, adapter, provider, model, judgeModel = model, contextWindow, maxTokens = 8192, tools = [], onCall = () => {} }) {
   const ctx = new Context();
   new SessionProjectionRegistry(ctx);
   new TokenMeter(ctx);
@@ -35,7 +35,7 @@ export function createRuntime({ policy, adapter, provider, model, contextWindow,
     }
   });
   if (policy.compact) new ToolResultPruner(ctx, { thresholdChars: 8192, headChars: 4096, tailChars: 1024 });
-  const engine = policy.compact ? new BasicCompactionEngine(ctx, { auto: false, thresholdRatio: policy.thresholdRatio, retainRatio: policy.retainRatio, maxTokens, compactionRetries: 1 }) : null;
+  const engine = policy.compact ? new DscodeCompactionEngine(ctx, { auto: false, thresholdRatio: policy.thresholdRatio, retainRatio: policy.retainRatio, maxTokens, compactionRetries: 1 }) : null;
   const session = Session.create('compaction-eval');
   session.append('request/header', { header: { config: { provider, model }, ...(tools.length ? { tools } : {}) }, reason: 'initial' });
   const agent = { session, options: { provider, model } };
@@ -111,7 +111,7 @@ export function createRuntime({ policy, adapter, provider, model, contextWindow,
       // compressed context. This output is never appended to the session.
       const assembler = new BlockAssembler();
       const messages = [createSystemMessage(system, 'dscode-eval-judge'), user(prompt)];
-      for await (const chunk of ctx.llm.stream({ provider, model, messages, maxTokens: 4096, signal, purpose: 'eval-judge' })) assembler.push(chunk);
+      for await (const chunk of ctx.llm.stream({ provider, model: judgeModel, messages, maxTokens: 4096, signal, purpose: 'eval-judge' })) assembler.push(chunk);
       if (assembler.finish?.kind !== 'stop') throw Error('incomplete-judge-response');
       return assembler.blocks().filter(block => block.type === 'text').map(block => block.text).join('');
     },

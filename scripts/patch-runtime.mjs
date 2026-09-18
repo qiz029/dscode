@@ -4,7 +4,6 @@ import { replaceOnce } from './patch-util.mjs';
 import { patchMacStdin } from './patch-mac-stdin.mjs';
 import { patchStdinStall } from './patch-stdin-stall.mjs';
 import { patchShellCapture, patchTerminalCapture } from './patch-shell-capture.mjs';
-import { patchCompactionBasic } from './patch-compaction.mjs';
 import { ULTRA_POLICY, ultraRequest, FLASH_POLICY, flashRequest } from '../plugins/ultra/policy.mjs';
 
 export function patchDeepSeek(text) {
@@ -156,7 +155,7 @@ export function patchSubagentDriver(text) {
 export const RUNTIME_VERSION = '0.1.5-rc.2';
 
 export function patchRuntime(root, { requireMacStdin = true } = {}) {
-  for (const [pkg, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-subagent-in-process-driver', patchSubagentDriver], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash], ['dsh-compaction-basic', patchCompactionBasic]]) {
+  for (const [pkg, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-subagent-in-process-driver', patchSubagentDriver], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash]]) {
     const dir = join(root, 'node_modules/@deepseek-ai', pkg);
     if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== RUNTIME_VERSION) throw new Error('Revalidate runtime patches before upgrading ' + pkg);
     const path = join(dir, 'lib/index.js');

@@ -34,7 +34,7 @@ export async function runContinuationEvaluation({ dataset, policies, backend = '
     dataset: { id: dataset.id, hash: hash(dataset) }, policies, toolSchemaHash: hash(TOOL_SCHEMAS),
     sourceHashes: Object.fromEntries(readdirSync(here).filter(name => name.endsWith('.mjs')).sort().map(name => [name, hash(readFileSync(join(here, name), 'utf8'))])),
     sharedHashes: Object.fromEntries(['runtime.mjs', 'adapters.mjs'].map(name => [name, hash(readFileSync(join(here, '../compaction', name), 'utf8'))])),
-    dependencyHashes: Object.fromEntries(['dsh-compaction-basic', 'dsh-compaction-tool-result-pruner', 'dsh-token-meter', 'dsh-llm-deepseek'].map(name => [name, hash(readFileSync(join(here, '../../node_modules/@deepseek-ai', name, 'lib/index.js'), 'utf8'))])),
+    dependencyHashes: { 'dscode-compaction-engine': hash(readFileSync(join(here, '../../plugins/compaction/engine.mjs'), 'utf8')), ...Object.fromEntries(['dsh-compaction-basic', 'dsh-compaction-tool-result-pruner', 'dsh-token-meter', 'dsh-llm-deepseek'].map(name => [name, hash(readFileSync(join(here, '../../node_modules/@deepseek-ai', name, 'lib/index.js'), 'utf8'))])) },
     checkHashes: Object.fromEntries(Object.entries(checks).map(([id, path]) => [id, hash(readFileSync(path, 'utf8'))])),
     lockfileHash: hash(readFileSync(join(here, '../../package-lock.json'), 'utf8')),
     endpoint: backend === 'deepseek' ? baseURL ?? 'https://api.deepseek.com' : null,

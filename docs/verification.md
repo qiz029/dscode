@@ -49,7 +49,7 @@ Everything that does not spawn a nested confined harness still runs inside a ses
 - The exact bundled `computer-use` skill loaded through the real Agent loop and exposed native execution tools. The doctor detects wrong same-name skills instead of declaring the catalog sufficient.
 - Deterministic local LLM adapter drove real file write → read → edit → read → skill → shell calls. This tests the Agent and tool pipeline without an external inference service.
 - Nonempty session flushed, disposed and resumed; assistant content, preset and Computer Use activation recovered from durable events.
-- Agent-scoped compaction service and `/compact` command mounted.
+- Agent-scoped compaction service and `/compact` command mounted; the policy is DSCODE's `plugins/compaction/engine.mjs`, a `BasicCompactionEngine` subclass, with the durable surface transaction left upstream.
 - Official Hub schemas accepted the generated draft and release. Official Hub archive reader accepted `.dshprofile` and rejected modified content with the original hash. Repeated builds produced identical bytes.
 - Live Hub CLI import dry-run resolved all three pinned bundles. It did not install or publish a Hub profile.
 
@@ -72,7 +72,7 @@ Run `npm run doctor` to regenerate local evidence. On this workstation the agent
 - Keep upstream standard Agent composition and its compaction isolation intact.
 - Isolate `DSH_AGENTS_HOME`: the existing global Orca skill called `computer-use` otherwise wins discovery and prevents native DSH Computer Use activation.
 - Declare DSH-Code optional peers explicitly and override the entire runtime version family; npm initially retained mixed rc.1/rc.2 versions until clean installation.
-- No custom agent engine, browser extension, or replacement compaction backend is introduced.
+- No custom agent engine, browser extension, or replacement compaction transaction is introduced; DSCODE subclasses the upstream compaction engine for trigger policy, prefetch and overflow recovery only.
 # Auto review 增量验证
 
 新增独立 reviewer 插件，真实 agent 集成测试覆盖允许、拒绝、无效模型输出转人工、usage 和会话恢复。测试多注册一个仅测试用的 MCP 工具，因此 doctor 显示 58 个工具，正常安装仍是原来的 57 个。详细边界见 [auto-review.md](auto-review.md)。远程审核模型未实测。

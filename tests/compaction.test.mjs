@@ -1,14 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
 import { TETRIS_HEIGHT, TETRIS_WIDTH, tetrisFrame, tetrisFrames } from '../plugins/compaction/tetris.mjs';
 import { DEFAULT_THRESHOLD_RATIO, PREFETCH_LEAD_RATIO, compactionPreview, effectiveContextWindow, fitsInWindow, prefetchThresholdTokens, pricedCompactionPolicy, pricedThresholdRatio, thresholdForCacheRatio } from '../plugins/compaction/threshold.mjs';
 import { cacheReadRatio } from '../plugins/session-metrics/pricing.mjs';
 import { setOpenRouterModels as setOpenRouterPrices } from '../plugins/openrouter/models.mjs';
-import { createTestRuntime } from '../scripts/test-runtime.mjs';
-import { patchCompactionBasic } from '../scripts/patch-compaction.mjs';
+import { DscodeCompactionEngine } from '../plugins/compaction/engine.mjs';
 
 const TODAY = Date.UTC(2026, 8, 14, 12);
 const OPENROUTER_FIXTURE = { 'cached/model': { input: 3, output: 15, cacheRead: 0.75 }, 'plain/model': { input: 1, output: 2 } };
@@ -118,84 +114,144 @@ test('a model switch preview compares the context with the new threshold', () =>
   assert.equal(compactionPreview({ used: 10, contextWindow: undefined, thresholdRatio: 0.9 }), undefined);
 });
 
-test('compaction-basic compacts at the priced threshold', async t => {
-  const fixture = createTestRuntime({ runtime: true });
-  t.after(fixture.close);
-  const file = `${fixture.root}/node_modules/@deepseek-ai/dsh-compaction-basic/lib/index.js`;
-  const text = readFileSync(file, 'utf8');
-  assert(text.startsWith('// dscode-compaction-overflow-prune-v1\n'));
-  assert(text.includes('// dscode-compaction-reserve-v1'));
-  assert(text.includes('// dscode-compaction-prefetch-v1'));
-  assert(text.includes('// dscode-compaction-threshold-v1'));
-  assert.equal(patchCompactionBasic(text), text);
-  assert.throws(() => patchCompactionBasic('unknown upstream'), /drift/);
-  assert.match(text, /dscodeEffectiveContextWindow\(context, dscodeModelInfo\)/);
-  assert.match(text, /if \(await this\.dscodeOverflowFits\(agent, target, dscodePrunedGeneration, measurement, signal\)\) return null;/);
-  assert.match(text, /dscodePlanPrefetch\(agent, measurement, spec, spec\.contextWindow, signal\)/);
-  assert.match(text, /const dscodePrefetched = await this\.dscodeCommitPrefetch\(agent\);/);
-  const { BasicCompactionEngine } = await import(pathToFileURL(file).href);
-  // Below the prefetch mark, and again once the threshold itself is due, the plan
-  // step leaves the engine without a background summary to commit.
-  const spec = { thresholdTokens: 800, retainTokens: 160 };
-  const session = { seq: 0, eventAt: () => undefined, surface: { nodes: [] } };
-  const signal = new AbortController().signal;
-  let summarized = false;
-  const engine = { config: {}, dscodePrefetch: new WeakMap(), ctx: { get: () => undefined }, regionDependencies: () => ({ meter: { measure: () => ({ totalTokens: 0, nodes: [] }) }, summarize: () => { summarized = true; } }) };
-  const plan = totalTokens => BasicCompactionEngine.prototype.dscodePlanPrefetch.call(engine, { session }, { totalTokens, nodes: [] }, spec, 1000, signal);
-  plan(699);
-  assert.equal(summarized, false, 'below the mark nothing is summarized');
-  assert.equal(engine.dscodePrefetch.get(session), undefined);
-  plan(800);
-  assert.equal(engine.dscodePrefetch.get(session), undefined, 'the pressure path owns the threshold itself');
-  assert.equal(await BasicCompactionEngine.prototype.dscodeCommitPrefetch.call(engine, { session }), null, 'a missing prefetch commits nothing');
-  // 850 of 1000 tokens: past 80% and 60%, below 90%. A pass past the threshold reaches range selection,
-  // which rejects this fake surface; a pass below it returns null first. The prefetch plan is stubbed
-  // out here because this surface cannot support it; its own behaviour is covered separately.
-  const planned = [];
-  const attempt = (provider, model, dscodePricedThreshold = true, modelInfo = { context: { contextWindow: 1000 } }) => BasicCompactionEngine.prototype.compactIfNeeded.call({
-    config: { thresholdRatio: 0.8, retainRatio: 0.16, modelPolicies: [], dscodePricedThreshold, compactionRetries: 1, maxOverflowRetries: 1 },
-    ctx: { get: () => undefined, tokenMeter: { measure: () => ({ totalTokens: 850, nodes: [{ seq: 1, tokens: 850 }] }) }, llm: { resolveModelInfo: async () => modelInfo } },
+// A fake engine carries the real prototype, so the policy under test is the
+// shipped one while every dependency and the durable transaction stay stubs.
+function makeEngine(overrides = {}) {
+  return Object.assign(Object.create(DscodeCompactionEngine.prototype), {
+    config: { thresholdRatio: 0.8, retainRatio: 0.16, modelPolicies: [], compactionRetries: 1, maxOverflowRetries: 1 },
+    dscodePricedThreshold: true,
     dscodePrefetch: new WeakMap(),
-    dscodePlanPrefetch: (agent, measurement, spec, contextWindow) => { planned.push({ spec, contextWindow }); },
-    dscodeCommitPrefetch: BasicCompactionEngine.prototype.dscodeCommitPrefetch,
-  }, { session: { seq: 0, surface: { nodes: [] }, requestHeader: () => ({ config: { provider, model } }) } }, 'pressure', new AbortController().signal);
+    dscodePendingPrefetch: new WeakMap(),
+    dscodeWarnedTargets: new Set(),
+  }, overrides);
+}
+
+const signal = new AbortController().signal;
+
+test('the engine subclasses the upstream backend instead of patching it', async () => {
+  const { BasicCompactionEngine } = await import('@deepseek-ai/dsh-compaction-basic');
+  assert.ok(DscodeCompactionEngine.prototype instanceof BasicCompactionEngine, 'the durable transaction stays upstream');
+  assert.notEqual(DscodeCompactionEngine.prototype.compactIfNeeded, BasicCompactionEngine.prototype.compactIfNeeded, 'the policy is the override');
+  assert.notEqual(DscodeCompactionEngine.prototype.summarize, BasicCompactionEngine.prototype.summarize, 'the prefetch injection point is the override');
+});
+
+test('pressure compaction waits for the priced threshold', async () => {
+  const attempt = (provider, model, { priced = true, config = {}, modelInfo = { context: { contextWindow: 1000 } } } = {}) => {
+    const engine = makeEngine({
+      dscodePricedThreshold: priced,
+      config: { thresholdRatio: 0.8, retainRatio: 0.16, modelPolicies: [], compactionRetries: 1, ...config },
+      ctx: {
+        get: () => undefined,
+        tokenMeter: { measure: () => ({ totalTokens: 850, nodes: [{ seq: 1, tokens: 850 }] }) },
+        llm: { resolveModelInfo: async () => modelInfo },
+        logger: { warn: () => {} },
+      },
+    });
+    const agent = { session: { seq: 0, surface: { nodes: [] }, requestHeader: () => ({ config: { provider, model } }) } };
+    return DscodeCompactionEngine.prototype.compactIfNeeded.call(engine, agent, 'pressure', signal);
+  };
   assert.equal(await attempt('deepseek-official', 'deepseek-v4-flash'), null, 'a deep cache discount waits until 90%');
   // The adapter reserves the completion budget inside the window, so the messages may only
   // reach 1000 - 256 = 744 - below the 900 a full-window priced threshold would wait for.
-  // Before the reserve was priced in this returned null: the pressure path could never come
-  // due, and every compaction arrived as overflow recovery (a rejected request, then a
-  // synchronous summary - v0.7.15 measured 26.8 s of stall).
-  await assert.rejects(attempt('deepseek-official', 'deepseek-v4-flash', true, { context: { contextWindow: 1000 }, defaultMaxTokens: 256 }), /surface does not match/, 'the completion reserve prices the threshold below the real ceiling');
+  await assert.rejects(attempt('deepseek-official', 'deepseek-v4-flash', { modelInfo: { context: { contextWindow: 1000 }, defaultMaxTokens: 256 } }), /surface does not match/, 'the completion reserve prices the threshold below the real ceiling');
   assert.equal(prefetchThresholdTokens(Math.floor(744 * 0.9), 744), 595, 'the prefetch mark follows the effective window');
-  assert.equal(planned.at(-1).spec.contextWindow, 744, 'the resolved spec carries the effective window');
-  assert.equal(planned.at(-1).contextWindow, 744, 'the prefetch plan is priced from the effective window');
-  await assert.rejects(attempt('deepseek-official', 'deepseek-v4-flash', false), /surface does not match/, 'a configured threshold keeps 80%');
+  await assert.rejects(attempt('deepseek-official', 'deepseek-v4-flash', { priced: false, config: { thresholdRatio: 0.8 } }), /surface does not match/, 'a configured threshold keeps 80%');
   try {
     setOpenRouterPrices(OPENROUTER_FIXTURE);
     await assert.rejects(attempt('openrouter', 'plain/model'), /surface does not match/, 'no cache discount compacts at 60%');
   } finally { setOpenRouterPrices({}, 0); }
+});
 
-  // Overflow recovery prices its prune against the window the provider enforces: when the
-  // prune alone returns the request under it, the caller retries off the replaced surface and
-  // no summary is paid for (v0.7.15: 125 tokens over, 87k pruned, 26.8 s spent summarizing).
-  const overflowAttempt = async (totalTokens, replacesSurface = true) => {
+test('overflow recovery lets its prune decide first', async () => {
+  const attempt = async (totalTokens, replacesSurface = true) => {
     let generation = 0;
     const session = {
       seq: 0,
       surface: { nodes: [], get replaceGeneration() { return generation; } },
       requestHeader: () => ({ config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } }),
     };
-    return BasicCompactionEngine.prototype.compactIfNeeded.call({
-      config: { thresholdRatio: 0.8, retainRatio: 0.16, modelPolicies: [], dscodePricedThreshold: true, compactionRetries: 1, maxOverflowRetries: 1 },
+    const engine = makeEngine({
+      config: { thresholdRatio: 0.8, retainRatio: 0.16, modelPolicies: [], compactionRetries: 1, maxOverflowRetries: 1 },
       ctx: {
         get: () => ({ pruneSession: () => { if (replacesSurface) generation += 1; } }),
         tokenMeter: { measure: () => ({ totalTokens, nodes: [{ seq: 1, tokens: totalTokens }] }) },
         llm: { resolveModelInfo: async () => ({ context: { contextWindow: 1000 }, defaultMaxTokens: 256 }) },
+        logger: { warn: () => {} },
       },
-      dscodeOverflowFits: BasicCompactionEngine.prototype.dscodeOverflowFits,
-    }, { session }, 'context-overflow', new AbortController().signal);
+    });
+    return DscodeCompactionEngine.prototype.compactIfNeeded.call(engine, { session }, 'context-overflow', signal);
   };
-  assert.equal(await overflowAttempt(700), null, 'a prune that already fits the window skips the summary');
-  await assert.rejects(overflowAttempt(700, false), /surface does not match/, 'the skip needs a replaced surface, otherwise the caller would not retry');
+  assert.equal(await attempt(700), null, 'a prune that already fits the window skips the summary');
+  await assert.rejects(attempt(700, false), /surface does not match/, 'the skip needs a replaced surface, otherwise the caller would not retry');
 });
 
+test('a finished prefetch is committed over its own span without a second summary', async () => {
+  const session = { seq: 0, surface: { nodes: [], replaceGeneration: 3 }, requestHeader: () => ({}) };
+  const agent = { session };
+  const summarized = { summary: [{ type: 'text', text: 'cached checkpoint' }] };
+  const engine = makeEngine({
+    dscodePrefetch: new WeakMap([[session, { range: { start: 5, end: 6 }, generation: 3, summarized, failure: null, wait: Promise.resolve() }]]),
+    compactRegion: async (start, end) => {
+      assert.deepEqual([start, end], [5, 6], 'the upstream transaction runs over the prefetched span');
+      return engine.summarize({ messages: [] }, agent, signal);
+    },
+  });
+  assert.equal(await DscodeCompactionEngine.prototype.dscodeCommitPrefetch.call(engine, agent, signal), summarized, 'the transaction commits the summary the prefetch already produced');
+  assert.equal(engine.dscodePendingPrefetch.get(session), undefined, 'the injected summary is consumed exactly once');
+  assert.equal(engine.dscodePrefetch.get(session), undefined, 'a committed prefetch is not held');
+
+  const stale = makeEngine({
+    dscodePrefetch: new WeakMap([[session, { range: { start: 5, end: 6 }, generation: 2, summarized, failure: null, wait: Promise.resolve() }]]),
+    compactRegion: async () => { throw Error('an invalidated prefetch must not reach the transaction'); },
+  });
+  assert.equal(await DscodeCompactionEngine.prototype.dscodeCommitPrefetch.call(stale, agent, signal), null, 'a rewritten surface invalidates the prefetch');
+});
+
+test('the prefetch plan starts only between its mark and the threshold', () => {
+  const session = { seq: 0, surface: { nodes: [] }, requestHeader: () => ({}) };
+  const engine = makeEngine();
+  const spec = { thresholdTokens: 900, contextWindow: 1000, retainTokens: 160 };
+  const plan = totalTokens => DscodeCompactionEngine.prototype.dscodePlanPrefetch.call(engine, { session }, { totalTokens, nodes: [] }, spec, signal);
+  plan(799);
+  assert.equal(engine.dscodePrefetch.get(session), undefined, 'below the mark nothing is summarized');
+  plan(900);
+  assert.equal(engine.dscodePrefetch.get(session), undefined, 'the pressure path owns the threshold itself');
+  plan(800);
+  assert.equal(engine.dscodePrefetch.get(session), undefined, 'an empty surface offers no span to prefetch');
+});
+
+test('the target policy merges the exact-model override', () => {
+  const engine = makeEngine({
+    config: {
+      thresholdRatio: 0.8, retainRatio: 0.16, compactionRetries: 1, maxTokens: 8192, maxOverflowRetries: 1,
+      summarizationProvider: '', summarizationModel: '',
+      modelPolicies: [{ provider: 'deepseek-official', model: 'deepseek-v4-pro', thresholdRatio: 0.5, retainRatio: 0.1 }],
+    },
+  });
+  assert.deepEqual(DscodeCompactionEngine.prototype.dscodeTargetPolicy.call(engine, { provider: 'deepseek-official', model: 'deepseek-v4-pro' }), {
+    target: { provider: 'deepseek-official', model: 'deepseek-v4-pro' }, thresholdRatio: 0.5, retainRatio: 0.1,
+    summarizationProvider: '', summarizationModel: '', maxTokens: 8192, compactionRetries: 1, maxOverflowRetries: 1,
+  });
+  const inherited = DscodeCompactionEngine.prototype.dscodeTargetPolicy.call(engine, { provider: 'other', model: 'x' });
+  assert.equal(inherited.thresholdRatio, 0.8);
+  assert.equal(inherited.retainRatio, 0.16);
+});
+
+test('a compact spec rejects a retention at or above its threshold', () => {
+  const engine = makeEngine();
+  const policy = { target: { provider: 'p', model: 'm' }, thresholdRatio: 0.9, retainRatio: 0.16 };
+  assert.deepEqual(DscodeCompactionEngine.prototype.dscodeCompactSpec.call(engine, policy, 1000), { ...policy, contextWindow: 1000, thresholdTokens: 900, retainTokens: 160 });
+  assert.throws(() => DscodeCompactionEngine.prototype.dscodeCompactSpec.call(engine, { target: { provider: 'p', model: 'm' }, thresholdRatio: 0.5, retainRatio: 0.5 }, 1000), /retainTokens \(500\) must be less than threshold tokens 500/);
+  assert.throws(() => DscodeCompactionEngine.prototype.dscodeCompactSpec.call(engine, policy, 0), /contextWindow/);
+});
+
+test('an active compaction lock rejects a second automatic run', () => {
+  const session = {
+    seq: 2,
+    eventAt: seq => seq === 1 ? { type: 'compaction/start', seq: 1, data: { compactionId: 'x' } } : { type: 'turn/start', seq: 0, data: { turn: 1 } },
+  };
+  const engine = makeEngine();
+  assert.throws(() => DscodeCompactionEngine.prototype.dscodeAssertInactive.call(engine, session, 'automatic pressure compaction'), /compaction already in progress/);
+  const ended = { seq: 2, eventAt: seq => seq === 1 ? { type: 'compaction/end', seq: 1, data: {} } : { type: 'turn/start', seq: 0, data: { turn: 1 } } };
+  assert.equal(DscodeCompactionEngine.prototype.dscodeAssertInactive.call(engine, ended, 'automatic pressure compaction'), undefined);
+});

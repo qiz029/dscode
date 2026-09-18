@@ -10,8 +10,9 @@ import { markdownReport, summarize } from './report.mjs';
 import { JUDGE_PROTOCOL, semanticGrade, calibrateJudge } from './judge.mjs';
 
 const here = import.meta.dirname;
-export async function runEvaluation({ dataset, policies, backend = 'offline', model = backend === 'offline' ? 'scripted-state-fixture' : 'deepseek-flash', contextWindow = 16384, repeats = 1, maxCalls = 200, timeoutMs = 60000, output, apiKey, baseURL, thinking = 'disabled', signal = new AbortController().signal, adapterFactory, onProgress = () => {} }) {
+export async function runEvaluation({ dataset, policies, backend = 'offline', provider, judgeModel, model = backend === 'offline' ? 'scripted-state-fixture' : 'deepseek-flash', contextWindow = 16384, repeats = 1, maxCalls = 200, timeoutMs = 60000, output, apiKey, baseURL, thinking = 'disabled', signal = new AbortController().signal, adapterFactory, onProgress = () => {} }) {
   dataset = validateDataset(dataset); policies = validatePolicies(policies);
+  const routedProvider = provider ?? (backend === 'offline' ? 'eval-offline' : 'deepseek-official');
   integer(contextWindow, 'contextWindow', 4096); integer(repeats, 'repeats', 1, 20); integer(maxCalls, 'maxCalls', 1, 10000); integer(timeoutMs, 'timeoutMs', 1, 300000);
   if (!['offline', 'deepseek'].includes(backend)) throw Error('Unknown backend');
   if (typeof model !== 'string' || !model.trim() || !['disabled', 'enabled'].includes(thinking)) throw Error('Invalid model or thinking configuration');
@@ -25,7 +26,7 @@ export async function runEvaluation({ dataset, policies, backend = 'offline', mo
   mkdirSync(resolve(output, '..'), { recursive: true });
   mkdirSync(output); // Refuse to overwrite or merge an existing run.
   const sourceHashes = Object.fromEntries(readdirSync(here).filter(file => file.endsWith('.mjs')).sort().map(file => [file, hash(readFileSync(join(here, file), 'utf8'))]));
-  const dependencyHashes = Object.fromEntries(['dsh-compaction-basic', 'dsh-compaction-tool-result-pruner', 'dsh-token-meter', 'dsh-llm-deepseek'].map(name => [name, hash(readFileSync(join(here, '../../node_modules/@deepseek-ai', name, 'lib/index.js'), 'utf8'))]));
+  const dependencyHashes = { 'dscode-compaction-engine': hash(readFileSync(join(here, '../../plugins/compaction/engine.mjs'), 'utf8')), ...Object.fromEntries(['dsh-compaction-basic', 'dsh-compaction-tool-result-pruner', 'dsh-token-meter', 'dsh-llm-deepseek'].map(name => [name, hash(readFileSync(join(here, '../../node_modules/@deepseek-ai', name, 'lib/index.js'), 'utf8'))])) };
   const manifest = {
     version: 1, startedAt: new Date().toISOString(), status: 'running',
     backend, model, thinking, contextWindow, repeats, maxCalls, timeoutMs,
@@ -35,7 +36,7 @@ export async function runEvaluation({ dataset, policies, backend = 'offline', mo
     node: process.version,
     endpoint: backend === 'deepseek' ? (baseURL ?? 'https://api.deepseek.com') : null,
     design: 'fixed-transcript-replay-and-recall',
-    grading: hasSemantic ? { protocol: JUDGE_PROTOCOL, answerProtocol: 'recall-v2-reference-and-fenced-json', judgeModel: model, calibrationHash: hash(calibration), blindToPolicy: true } : { protocol: 'exact-v1' },
+    grading: hasSemantic ? { protocol: JUDGE_PROTOCOL, answerProtocol: 'recall-v2-reference-and-fenced-json', judgeModel: judgeModel ?? model, calibrationHash: hash(calibration), blindToPolicy: true } : { protocol: 'exact-v1' },
     modelRevision: 'Requested model id only; provider aliases may change.',
   };
   const rows = [], calls = [], budget = { used: 0, limit: maxCalls };
@@ -45,7 +46,7 @@ export async function runEvaluation({ dataset, policies, backend = 'offline', mo
   let failure;
   try {
     if (hasSemantic) {
-      const runtime = createRuntime({ policy: { compact: false }, adapter: new BudgetAdapter(makeAdapter(), budget, timeoutMs), provider: backend === 'offline' ? 'eval-offline' : 'deepseek-official', model, contextWindow, onCall: call => { const record = { phase: 'judge-calibration', ...call }; calls.push(record); append('calls.jsonl', record); } });
+      const runtime = createRuntime({ policy: { compact: false }, adapter: new BudgetAdapter(makeAdapter(), budget, timeoutMs), provider: routedProvider, model, judgeModel, contextWindow, onCall: call => { const record = { phase: 'judge-calibration', ...call }; calls.push(record); append('calls.jsonl', record); } });
       try {
         const result = await calibrateJudge(calibration.cases, runtime.judge, signal);
         json('judge-calibration.json', result);
@@ -61,7 +62,7 @@ export async function runEvaluation({ dataset, policies, backend = 'offline', mo
         signal.throwIfAborted();
         const identity = { case: item.id, repeat, policy: policy.id };
         let stageId = '';
-        const runtime = createRuntime({ policy, adapter: new BudgetAdapter(firstAdapter && budget.used === 0 ? firstAdapter : makeAdapter(), budget, timeoutMs), provider: backend === 'offline' ? 'eval-offline' : 'deepseek-official', model, contextWindow, onCall: call => { const record = { ...identity, stage: stageId, ...call }; calls.push(record); append('calls.jsonl', record); } });
+        const runtime = createRuntime({ policy, adapter: new BudgetAdapter(firstAdapter && budget.used === 0 ? firstAdapter : makeAdapter(), budget, timeoutMs), provider: routedProvider, model, judgeModel, contextWindow, onCall: call => { const record = { ...identity, stage: stageId, ...call }; calls.push(record); append('calls.jsonl', record); } });
         try {
           runtime.initialize(item.system);
           let broken = false;

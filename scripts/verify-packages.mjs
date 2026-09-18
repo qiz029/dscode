@@ -42,9 +42,11 @@ try {
       assert.match(readFileSync(join(destination, 'cordis.patch.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/subagent-core'/);
       assert(!existsSync(join(destination, 'vendor/pi-ai')), 'OpenRouter no longer runs through a vendored pi-ai adapter');
       assert.equal(pkg.exports['./openrouter'], './plugins/openrouter/index.mjs');
-      assert.match(readFileSync(join(destination, 'vendor/compaction-basic/index.js'), 'utf8'), /from "\.\.\/\.\.\/plugins\/compaction\/threshold\.mjs"/);
+      assert.equal(pkg.exports['./compaction'], './plugins/compaction/engine.mjs', 'the bundle exports the DSCODE compaction engine');
+      assert.match(pkg.dependencies['@deepseek-ai/dsh-compaction-basic'], /^\d+\.\d+\.\d+/, 'the engine resolves its upstream base from the bundle dependencies');
+      assert.match(readFileSync(join(destination, 'plugins/compaction/engine.mjs'), 'utf8'), /from '\.\/threshold\.mjs'/);
       assert.match(readFileSync(join(destination, 'vendor/tui/lib/app.mjs'), 'utf8'), /from ['"]\.\.\/\.\.\/\.\.\/plugins\/compaction\/tetris\.mjs['"]/);
-      assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/compaction-basic'/);
+      assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/compaction'/);
       assert.match(readFileSync(join(destination, 'vendor/tui/lib/app.mjs'), 'utf8'), /DscodeProviderPanel/);
       assert(existsSync(join(destination, 'plugins/providers/catalog.mjs')), 'the terminal imports the provider catalog from the bundle');
       assert(existsSync(join(destination, 'plugins/providers/openrouter-account.mjs')), 'the /openrouter panel reads its account module from the bundle');

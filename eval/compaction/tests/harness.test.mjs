@@ -59,7 +59,8 @@ test('real engine matrix preserves corrections over repeated summaries; controls
   assert(result.calls.every(call => call.usage === null));
   assert.match(readFileSync(join(result.output, 'report.md'), 'utf8'), /OFFLINE PIPELINE CHECK/);
   assert.equal(result.manifest.dataset.hash, hash(dataset));
-  assert.equal(Object.keys(result.manifest.dependencyHashes).length, 4);
+  assert.equal(Object.keys(result.manifest.dependencyHashes).length, 5);
+  assert(Object.keys(result.manifest.dependencyHashes).includes('dscode-compaction-engine'));
 });
 
 test('old constraints and latest corrections survive at least five consecutive summaries', async t => {
@@ -234,7 +235,7 @@ test('a prefetch summarizes early and commits at the threshold without a second 
   };
   for (let n = 0; n < 200 && runtime.measure().totalTokens < 720; n += 1) appendTurn(`stage ${n} ` + 'x'.repeat(160));
   assert(runtime.measure().totalTokens >= 700 && runtime.measure().totalTokens < 800, 'the prefetch mark (70%) is due below the threshold (80%)');
-  runtime.engine.dscodePlanPrefetch(runtime.agent, runtime.measure(), { thresholdTokens: 800, retainTokens: 160 }, contextWindow, signal());
+  runtime.engine.dscodePlanPrefetch(runtime.agent, runtime.measure(), { thresholdTokens: 800, retainTokens: 160, contextWindow }, signal());
   const prefetch = runtime.engine.dscodePrefetch.get(runtime.session);
   assert(prefetch !== undefined, 'crossing the mark starts a background prefetch');
   assert.equal(events('compaction/start'), 0, 'the prefetch appends nothing before the threshold');
@@ -244,7 +245,12 @@ test('a prefetch summarizes early and commits at the threshold without a second 
   for (let n = 0; n < 200 && runtime.measure().totalTokens < 810; n += 1) appendTurn(`later ${n} ` + 'y'.repeat(160));
   appendTurn('the freshest fact survives verbatim');
   assert(runtime.measure().totalTokens >= 800, 'the threshold is due');
+  // Automatic compaction is triggered from a pre-step hook, so the commit is
+  // exercised the way the agent calls it: inside an open turn.
+  turn += 1;
+  runtime.session.append('turn/start', { turn });
   const result = await runtime.engine.compactIfNeeded(runtime.agent, 'pressure', signal());
+  runtime.session.append('turn/end', { turn, reason: { kind: 'completed' } });
   assert(result !== null, 'the pressure path commits the prefetch');
   assert.equal(summaries(), 1, 'the commit reuses the prefetched summary instead of summarizing again');
   assert.equal(events('compaction/start'), 1);
@@ -276,10 +282,12 @@ test('a threshold that arrives mid-prefetch waits under the compaction indicator
     runtime.session.append('turn/end', { turn, reason: { kind: 'completed' } });
   };
   for (let n = 0; n < 200 && runtime.measure().totalTokens < 720; n += 1) appendTurn(`stage ${n} ` + 'x'.repeat(160));
-  runtime.engine.dscodePlanPrefetch(runtime.agent, runtime.measure(), { thresholdTokens: 800, retainTokens: 160 }, contextWindow, signal());
+  runtime.engine.dscodePlanPrefetch(runtime.agent, runtime.measure(), { thresholdTokens: 800, retainTokens: 160, contextWindow }, signal());
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(adapter.compactions, 1, 'the prefetch summarizes in the background');
   for (let n = 0; n < 200 && runtime.measure().totalTokens < 810; n += 1) appendTurn(`later ${n} ` + 'y'.repeat(160));
+  turn += 1;
+  runtime.session.append('turn/start', { turn });
   const compaction = runtime.engine.compactIfNeeded(runtime.agent, 'pressure', signal());
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(events('compaction/start'), 1, 'the wait opens the ordinary compaction indicator');
@@ -287,6 +295,7 @@ test('a threshold that arrives mid-prefetch waits under the compaction indicator
   assert.equal(adapter.compactions, 1, 'the wait does not summarize a second time');
   adapter.gate.resolve();
   const result = await compaction;
+  runtime.session.append('turn/end', { turn, reason: { kind: 'completed' } });
   assert(result !== null, 'the commit resolves once the prefetch finishes');
   assert.equal(events('compaction/end'), 1);
   assert.equal(adapter.compactions, 1);
