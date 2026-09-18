@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { TETRIS_HEIGHT, TETRIS_WIDTH, tetrisFrame, tetrisFrames } from '../plugins/compaction/tetris.mjs';
-import { DEFAULT_THRESHOLD_RATIO, PREFETCH_LEAD_RATIO, compactionPreview, effectiveContextWindow, prefetchThresholdTokens, pricedCompactionPolicy, pricedThresholdRatio, thresholdForCacheRatio } from '../plugins/compaction/threshold.mjs';
+import { DEFAULT_THRESHOLD_RATIO, PREFETCH_LEAD_RATIO, compactionPreview, effectiveContextWindow, fitsInWindow, prefetchThresholdTokens, pricedCompactionPolicy, pricedThresholdRatio, thresholdForCacheRatio } from '../plugins/compaction/threshold.mjs';
 import { cacheReadRatio } from '../plugins/session-metrics/pricing.mjs';
 import { setOpenRouterModels as setOpenRouterPrices } from '../plugins/openrouter/models.mjs';
 import { createTestRuntime } from '../scripts/test-runtime.mjs';
@@ -67,6 +67,20 @@ test('the effective window subtracts the completion budget the adapter reserves'
   assert.equal(effectiveContextWindow(info.context, info), 792_576, 'the engine patch prices this exact pair');
 });
 
+test('fitsInWindow mirrors the rule the provider enforces', () => {
+  assert.equal(fitsInWindow(700, { context: { contextWindow: 1000 }, defaultMaxTokens: 256 }), true);
+  assert.equal(fitsInWindow(744, { context: { contextWindow: 1000 }, defaultMaxTokens: 256 }), true, 'the ceiling itself fits');
+  assert.equal(fitsInWindow(745, { context: { contextWindow: 1000 }, defaultMaxTokens: 256 }), false);
+  assert.equal(fitsInWindow(999, { context: { contextWindow: 1000 } }), true, 'no reserve leaves the whole window');
+  assert.equal(fitsInWindow(1001, { context: { contextWindow: 1000 } }), false);
+  assert.equal(fitsInWindow(10, { context: { contextWindow: undefined } }), false, 'an unknown window is never a fit');
+  assert.equal(fitsInWindow(undefined, { context: { contextWindow: 1000 } }), false);
+  // The observed overflow: 792,701 message tokens plus the 256k budget exceeded 1,048,576 by
+  // 125 tokens, while the prune that ran first freed 87,018 of them.
+  assert.equal(fitsInWindow(792_701, { context: { contextWindow: 1_048_576 }, defaultMaxTokens: 256_000 }), false);
+  assert.equal(fitsInWindow(792_701 - 87_018, { context: { contextWindow: 1_048_576 }, defaultMaxTokens: 256_000 }), true);
+});
+
 test('route prices give the cache-read ratio', async () => {
   assert.equal(cacheReadRatio('deepseek-official', 'deepseek-v4-flash', TODAY), 0.003 / 0.15);
   assert.equal(cacheReadRatio('deepseek-official', 'deepseek-v4-pro', Date.UTC(2026, 8, 12)), 0.022 / 0.66);
@@ -109,12 +123,14 @@ test('compaction-basic compacts at the priced threshold', async t => {
   t.after(fixture.close);
   const file = `${fixture.root}/node_modules/@deepseek-ai/dsh-compaction-basic/lib/index.js`;
   const text = readFileSync(file, 'utf8');
-  assert(text.startsWith('// dscode-compaction-reserve-v1\n'));
+  assert(text.startsWith('// dscode-compaction-overflow-prune-v1\n'));
+  assert(text.includes('// dscode-compaction-reserve-v1'));
   assert(text.includes('// dscode-compaction-prefetch-v1'));
   assert(text.includes('// dscode-compaction-threshold-v1'));
   assert.equal(patchCompactionBasic(text), text);
   assert.throws(() => patchCompactionBasic('unknown upstream'), /drift/);
   assert.match(text, /dscodeEffectiveContextWindow\(context, dscodeModelInfo\)/);
+  assert.match(text, /if \(await this\.dscodeOverflowFits\(agent, target, dscodePrunedGeneration, measurement, signal\)\) return null;/);
   assert.match(text, /dscodePlanPrefetch\(agent, measurement, spec, spec\.contextWindow, signal\)/);
   assert.match(text, /const dscodePrefetched = await this\.dscodeCommitPrefetch\(agent\);/);
   const { BasicCompactionEngine } = await import(pathToFileURL(file).href);
@@ -158,5 +174,28 @@ test('compaction-basic compacts at the priced threshold', async t => {
     setOpenRouterPrices(OPENROUTER_FIXTURE);
     await assert.rejects(attempt('openrouter', 'plain/model'), /surface does not match/, 'no cache discount compacts at 60%');
   } finally { setOpenRouterPrices({}, 0); }
+
+  // Overflow recovery prices its prune against the window the provider enforces: when the
+  // prune alone returns the request under it, the caller retries off the replaced surface and
+  // no summary is paid for (v0.7.15: 125 tokens over, 87k pruned, 26.8 s spent summarizing).
+  const overflowAttempt = async (totalTokens, replacesSurface = true) => {
+    let generation = 0;
+    const session = {
+      seq: 0,
+      surface: { nodes: [], get replaceGeneration() { return generation; } },
+      requestHeader: () => ({ config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } }),
+    };
+    return BasicCompactionEngine.prototype.compactIfNeeded.call({
+      config: { thresholdRatio: 0.8, retainRatio: 0.16, modelPolicies: [], dscodePricedThreshold: true, compactionRetries: 1, maxOverflowRetries: 1 },
+      ctx: {
+        get: () => ({ pruneSession: () => { if (replacesSurface) generation += 1; } }),
+        tokenMeter: { measure: () => ({ totalTokens, nodes: [{ seq: 1, tokens: totalTokens }] }) },
+        llm: { resolveModelInfo: async () => ({ context: { contextWindow: 1000 }, defaultMaxTokens: 256 }) },
+      },
+      dscodeOverflowFits: BasicCompactionEngine.prototype.dscodeOverflowFits,
+    }, { session }, 'context-overflow', new AbortController().signal);
+  };
+  assert.equal(await overflowAttempt(700), null, 'a prune that already fits the window skips the summary');
+  await assert.rejects(overflowAttempt(700, false), /surface does not match/, 'the skip needs a replaced surface, otherwise the caller would not retry');
 });
 

@@ -43,7 +43,7 @@ export function patchCompactionPrefetch(text) {
 
 /** Apply every compaction patch to one pinned engine source, in marker order. */
 export function patchCompactionBasic(text) {
-  return patchCompactionReserve(patchCompactionPrefetch(patchCompactionPricing(text)));
+  return patchCompactionOverflowPrune(patchCompactionReserve(patchCompactionPrefetch(patchCompactionPricing(text))));
 }
 
 // Completion reserve: an adapter that keeps the completion budget inside the context
@@ -52,6 +52,48 @@ export function patchCompactionBasic(text) {
 // put it above that ceiling, which made the pressure path - and with it prefetch
 // compaction - unreachable: every compaction arrived as overflow recovery, which prunes
 // and then summarizes synchronously (v0.7.15 measured a 26.8 s stall per compaction).
+// Overflow recovery: the pruner runs first and may already return the failed request under the
+// window. The caller retries whenever that prune replaced the surface, so a summary here would
+// only add a model call and its stall to a request that no longer needs one. v0.7.15 hit this
+// with a 125-token overshoot: pruning freed 87k tokens and the engine still summarized for 26.8 s.
+export function patchCompactionOverflowPrune(text) {
+  const marker = '// dscode-compaction-overflow-prune-v1';
+  if (text.includes(marker)) return text;
+  text = replaceOnce(text,
+    'import { effectiveContextWindow as dscodeEffectiveContextWindow, prefetchThresholdTokens as dscodePrefetchThresholdTokens, pricedCompactionPolicy as dscodePricedCompactionPolicy } from "../../../../plugins/compaction/threshold.mjs";',
+    'import { effectiveContextWindow as dscodeEffectiveContextWindow, fitsInWindow as dscodeFitsInWindow, prefetchThresholdTokens as dscodePrefetchThresholdTokens, pricedCompactionPolicy as dscodePricedCompactionPolicy } from "../../../../plugins/compaction/threshold.mjs";');
+  text = replaceOnce(text, DSCODE_REGION_ANCHOR, dscodeOverflowFitsMethod() + DSCODE_REGION_ANCHOR);
+  text = replaceOnce(text, DSCODE_OVERFLOW_PRUNE_BLOCK, DSCODE_OVERFLOW_PRUNE_BLOCK_AFTER);
+  return marker + '\n' + text;
+}
+
+/** The overflow branch's prune-then-compact prologue, matched exactly once. */
+const DSCODE_OVERFLOW_PRUNE_BLOCK = '\t\t\tif (prune !== void 0) {\n\t\t\t\tprune.pruneSession(agent.session);\n\t\t\t\tmeasurement = meter.measure(agent.session);\n\t\t\t}\n\t\t\tconst range = selectCompactableRange(agent.session, measurement, 0);';
+/** The same prologue, remembering the surface generation and skipping a needless summary. */
+const DSCODE_OVERFLOW_PRUNE_BLOCK_AFTER = '\t\t\tconst dscodePrunedGeneration = agent.session.surface.replaceGeneration;\n\t\t\tif (prune !== void 0) {\n\t\t\t\tprune.pruneSession(agent.session);\n\t\t\t\tmeasurement = meter.measure(agent.session);\n\t\t\t}\n\t\t\tif (await this.dscodeOverflowFits(agent, target, dscodePrunedGeneration, measurement, signal)) return null;\n\t\t\tconst range = selectCompactableRange(agent.session, measurement, 0);';
+
+/** The overflow-recovery fit check, inserted ahead of the region dependencies it reuses. */
+function dscodeOverflowFitsMethod() {
+  return [
+    '\t/**',
+    '\t * dscode: whether overflow-recovery pruning alone returned the failed request under the',
+    '\t * window. The caller retries whenever the prune replaced the surface, so a summary here',
+    '\t * would only add a model call and its stall to a request that already fits.',
+    '\t * @param agent - agent recovering from a provider context overflow.',
+    '\t * @param target - the routed provider/model that rejected the request.',
+    '\t * @param generation - the surface generation before the prune.',
+    '\t * @param measurement - the measurement taken after the prune.',
+    '\t * @param signal - live turn cancellation signal.',
+    '\t * @returns whether the retry may skip compaction.',
+    '\t */',
+    '\tasync dscodeOverflowFits(agent, target, generation, measurement, signal) {',
+    '\t\tif (agent.session.surface.replaceGeneration <= generation) return false;',
+    '\t\tconst info = await this.ctx.llm.resolveModelInfo(target.provider, target.model, signal);',
+    '\t\treturn dscodeFitsInWindow(measurement.totalTokens, info);',
+    '\t}',
+    '',
+  ].join('\n');
+}
 export function patchCompactionReserve(text) {
   const marker = '// dscode-compaction-reserve-v1';
   if (text.includes(marker)) return text;

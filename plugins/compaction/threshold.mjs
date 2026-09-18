@@ -42,12 +42,30 @@ export function prefetchThresholdTokens(thresholdTokens, contextWindow, leadRati
  * @param context - the resolved model info context, `{ contextWindow }`.
  * @param modelInfo - the resolved model info, whose `defaultMaxTokens` is that budget.
  */
+/** The completion budget an adapter reserves inside the window, 0 when it reports none. */
+function completionReserve(contextWindow, modelInfo) {
+  const reserve = modelInfo?.defaultMaxTokens;
+  if (!Number.isInteger(reserve) || reserve <= 0 || reserve >= contextWindow) return 0;
+  return reserve;
+}
+
 export function effectiveContextWindow(context, modelInfo) {
   const contextWindow = context?.contextWindow;
   if (!Number.isInteger(contextWindow) || contextWindow <= 0) return contextWindow;
-  const reserve = modelInfo?.defaultMaxTokens;
-  if (!Number.isInteger(reserve) || reserve <= 0 || reserve >= contextWindow) return contextWindow;
-  return contextWindow - reserve;
+  return contextWindow - completionReserve(contextWindow, modelInfo);
+}
+
+/**
+ * Whether a measured request envelope plus the reserved completion budget fits the models
+ * window, which is the rule the provider enforces. Overflow recovery uses it to tell a
+ * request that pruning alone returned under the window from one that still needs a summary.
+ * @param totalTokens - the measured request envelope.
+ * @param modelInfo - the resolved model info: `context.contextWindow` and `defaultMaxTokens`.
+ */
+export function fitsInWindow(totalTokens, modelInfo) {
+  const contextWindow = modelInfo?.context?.contextWindow;
+  if (!Number.isInteger(totalTokens) || !Number.isInteger(contextWindow) || contextWindow <= 0) return false;
+  return totalTokens + completionReserve(contextWindow, modelInfo) <= contextWindow;
 }
 
 /** The route's threshold ratio, waiting for the OpenRouter listing when it has not loaded yet. */
