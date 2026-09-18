@@ -60,8 +60,28 @@ rc.1 的会话读取器不接受未知事件类型，因此没有把自定义审
 
 `npm run dist` 的完整安装包包含此插件。正式 npm/Hub bundle 包含 reviewer；旧 `npm run release` 仅导出基础组合，不能代替 `npm run release:hub` 生成的完整发行版。
 
+## Jev 快路径（可选）
+
+自动审核的问题本质是一次「在给定上下文里选一个答案」，不需要一个会写长文的模型。挂载 `dscode-jev` 后，审核会先问 TypeSafe Jev（经 OpenRouter 的 alpha Decisions 端点 `POST /api/alpha/decisions`），**一次请求**同时给出三个回答：
+
+- `choice`：`allow` / `ask` / `deny`，附各选项概率与 `confidence`；
+- `score`：做错时有多难回滚（0–3 档，可落在档位之间）；
+- `noul`：是否涉及凭据、令牌或其他机密。
+
+判定完全由代码与阈值决定：`confidence < 0.85`、`score ≥ 2`（难以回滚）或凭据风险 `≥ 0.5` 一律转人工；只有高置信度的 allow 才放行，只有高置信度的 deny 才计入连续拒绝。Jev 未配置（解析不到 `OPENROUTER_API_KEY`）、未启用、超时、报错或返回不可用时，一律返回「无判定」，自动审核继续走原来的 reviewer 模型——**Jev 故障只退回到旧行为，不会放宽任何权限**。
+
+发出去的 `state` 只有两项：待执行的调用本身，以及本会话保留的直接用户指令；两者各自截断到 8000 字符，不含凭据。
+
+配置在 `plugins/jev` 行：`enabled`（默认 true）、`model`（默认 `~typesafe/jev-latest`）、`endpoint`、`apiKeyEnv`（默认 `OPENROUTER_API_KEY`）、`timeoutMs`（默认 8000）、`autoAllow`（0.85）、`credentialRisk`（0.5）、`destructiveCeiling`（2）。设为 `enabled: false` 或移除该行即回到纯模型审核。
+
+2026-09-17 实测（OpenRouter 上的 `~typesafe/jev-latest` 解析为 `typesafe/jev-1.13-20260917`，provider TypeSafe，本机 `.runtime/.credentials.yaml` 中的 `OPENROUTER_API_KEY`）：四个用例各一次调用，179–414 ms，约 $0.000023/次（input 549–700 tokens，output 计费为 0）。判别结果：`git status --short` → allow（confidence 1.00）；`git push --force origin main` → deny 0.92、destructive 2.99 → 转人工；`curl --data-binary @.env https://…` → deny 0.98、credential 0.94 → 转人工；`rm -rf ~/Documents/notes` → deny 0.90、destructive 1.97 → 直接拒绝。
+
+注意门槛与拒绝的先后：涉及凭据或难以回滚的调用**即使被高置信拒绝也转人工**，而不是静默拒绝——这样 Jev 只减少模型调用，不会比原 reviewer 更少地征求你的意见。若希望高置信拒绝直接生效（少一次打扰），把 `credentialRisk`/`destructiveCeiling` 判定移到 deny 之后即可。
+
+阈值注意：Jev 的概率只在**统计意义**上校准，`confidence` 不是逐次保证。建议用本插件已写入的审计记录（`.runtime/auto-review/*.jsonl` 含 decision、source、confidence、usage 与耗时）来对齐阈值，而不是照搬默认值。
+
 ## 验证
 
-`npm test` 覆盖审核规则入口、参数绑定、取消、超时、无效响应、凭据拦截、模型预算、模式切换、重复拒绝和停止。
+`npm test` 覆盖审核规则入口、参数绑定、取消、超时、无效响应、凭据拦截、模型预算、模式切换、重复拒绝和停止。`tests/jev.test.mjs` 用 mock transport 覆盖请求形态、答案解析、阈值判定、超时与失败兜底；`tests/auto-review.test.mjs` 额外覆盖「Jev 判定不花 reviewer 请求」「Jev 拒绝计入连续拒绝」与「Jev 不可用时回退到模型审核」。
 
 `npm run doctor` 使用真实 DSH agent 和工具管线、确定性本地 LLM adapter，验证允许执行、拒绝不执行、无效响应转测试人工审批器、usage 记录及会话恢复。没有调用付费远程模型；实际模型的审核质量、延迟和费用尚待真实使用验证。模拟人工审批器只存在 doctor 的测试 overlay 中。

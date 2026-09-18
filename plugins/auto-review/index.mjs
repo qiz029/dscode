@@ -75,6 +75,28 @@ export function apply(ctx, config) {
       return outcome;
     };
     if (state.blocked) return 'rejected';
+    // One place applies a verdict, whether it came from Jev or from the reviewer
+    // model, so the pending-action binding and the strike accounting cannot drift.
+    const applyVerdict = (decision, details) => {
+      if (req.signal?.aborted) {
+        record(req, { decision: 'cancelled', reason: 'Caller cancelled review.', ...details });
+        return 'cancelled';
+      }
+      if (mode(req.agent) !== 'auto') return fallback('Permission mode changed while review was pending.', details);
+      if (decision.decision === 'human') return fallback(decision.reason, details);
+      // Bind approval to the still-pending immutable invocation; no grant cache.
+      if (calls.get(req.agent)?.get(req.callId) !== exec || fingerprint(action) !== actionHash) return fallback('Pending action changed during review.', details);
+      record(req, { ...decision, ...details });
+      if (decision.decision === 'deny') {
+        state.denied.set(actionHash, userSeq);
+        state.denials++;
+        state.blocked = state.denials >= 3;
+        announce(req.agent, `Automatic review rejected ${req.toolName}: ${decision.reason}. Do not retry the same outcome via another command or tool. Continue only with a materially safer alternative or ask the user.${state.blocked ? ' Stop this turn: three consecutive denials.' : ''}`);
+        return 'rejected';
+      }
+      state.denials = 0;
+      return 'allowed-once';
+    };
     if (!exec || exec.name !== req.toolName) return fallback('Exact pending tool parameters are unavailable.');
     const workspace = req.agent.session.header.cwd;
     const action = { tool: exec.name, arguments: exec.arguments, cwd: exec.name === 'shell_retry' && exec.arguments.workdir ? resolve(workspace ?? process.cwd(), exec.arguments.workdir) : workspace, ...(exec.name === 'shell_retry' ? { environment: 'fresh shell; does not inherit persistent bash state' } : {}) };
@@ -96,6 +118,35 @@ export function apply(ctx, config) {
     if (!target.provider || !target.model) return fallback('No reviewer model route is configured.', { actionHash });
     state.reviews++;
     const started = Date.now();
+    // Jev answers the same question far faster and cheaper than the reviewer model.
+    // It returns undefined when it is unavailable, unsure or failing, which leaves
+    // the reviewer path below untouched.
+    const jev = ctx.get('jev');
+    if (jev) {
+      let verdict;
+      try {
+        verdict = await jev.approval({ action, context, sessionId: req.agent.session.id, signal: req.signal });
+      } catch (error) {
+        // A broken decisions backend must not change review behaviour.
+        ctx.logger?.info?.(`auto-review: Jev unavailable: ${error.message}`);
+        verdict = undefined;
+      }
+      if (verdict !== undefined) {
+        return applyVerdict({ decision: verdict.decision, reason: verdict.reason }, {
+          actionHash, provider: 'openrouter', model: verdict.model, source: 'jev',
+          confidence: verdict.confidence, destructive: verdict.destructive, credentialRisk: verdict.credentialRisk,
+          durationMs: verdict.durationMs ?? (Date.now() - started),
+          usage: verdict.usage ?? null, usageComplete: verdict.usage != null,
+        });
+      }
+      // A caller that cancelled must not fall through to a reviewer request.
+      if (req.signal?.aborted) {
+        return applyVerdict({ decision: 'cancelled' }, {
+          actionHash, provider: 'openrouter', model: jev.model ?? 'jev', source: 'jev',
+          durationMs: Date.now() - started, usage: null, usageComplete: false,
+        });
+      }
+    }
     const controller = new AbortController();
     const signal = req.signal ? AbortSignal.any([req.signal, controller.signal]) : controller.signal;
     const timer = setTimeout(() => controller.abort(new Error('Reviewer timed out')), config.timeoutMs);
@@ -149,24 +200,7 @@ export function apply(ctx, config) {
       durationMs: Date.now() - started,
       usage: assembler.usage ?? null, usageComplete: completed && assembler.usage !== undefined,
     };
-    if (req.signal?.aborted) {
-      record(req, { decision: 'cancelled', reason: 'Caller cancelled review.', ...details });
-      return 'cancelled';
-    }
-    if (mode(req.agent) !== 'auto') return fallback('Permission mode changed while review was pending.', details);
-    if (decision.decision === 'human') return fallback(decision.reason, details);
-    // Bind approval to the still-pending immutable invocation; no grant cache.
-    if (calls.get(req.agent)?.get(req.callId) !== exec || fingerprint(action) !== actionHash) return fallback('Pending action changed during review.', details);
-    record(req, { ...decision, ...details });
-    if (decision.decision === 'deny') {
-      state.denied.set(actionHash, userSeq);
-      state.denials++;
-      state.blocked = state.denials >= 3;
-      announce(req.agent, `Automatic review rejected ${req.toolName}: ${decision.reason}. Do not retry the same outcome via another command or tool. Continue only with a materially safer alternative or ask the user.${state.blocked ? ' Stop this turn: three consecutive denials.' : ''}`);
-      return 'rejected';
-    }
-    state.denials = 0;
-    return 'allowed-once';
+    return applyVerdict(decision, details);
   }
 
   ctx.on('approval/request', (req, next) => {

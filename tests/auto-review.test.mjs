@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { apply } from '../plugins/auto-review/index.mjs';
 import { escalationDiagnosticGrant, needsMcpApproval, redact, parseDecision } from '../plugins/auto-review/policy.mjs';
 
-function fixture({ decision = 'allow', timeout = false, budget = 2, policy = 'ask' } = {}) {
+function fixture({ decision = 'allow', timeout = false, budget = 2, policy = 'ask', jev } = {}) {
   const auditDirectory = mkdtempSync(join(tmpdir(), 'dscode-review-test-'));
   directories.push(auditDirectory);
   const records = () => auditStore(auditDirectory).read('fixture-session');
@@ -20,6 +20,7 @@ function fixture({ decision = 'allow', timeout = false, budget = 2, policy = 'as
   const session = { id: 'fixture-session', seq: 2, header: { cwd: '/project' }, snapshotEvents: () => events, append(type, data) { events.push({ seq: events.length, type, data }); }, requestHeader: () => ({ config: { provider: 'fixture', model: 'test' } }) };
   const agent = { session, inject: message => notices.push(message), cancel: cause => { agent.cancelled = cause; } };
   const ctx = {
+    get: key => (key === 'jev' ? jev : undefined),
     on: (name, fn) => { hooks[name] = fn; }, commands: { register: cmd => { commands[cmd.name] = cmd; } },
     permissionPresets: { current: () => permission }, approval: { effectivePolicy: () => policy }, logger: { info() {} },
     llm: { async *stream(options) {
@@ -235,4 +236,55 @@ test('a torn audit line after a crash is skipped, never fatal', () => {
   const records = audit.read('fixture-session');
   assert.equal(records.length, 1);
   assert.equal(records[0].decision, 'allow');
+});
+
+test('a Jev verdict decides the call without spending a reviewer request', async () => {
+  const verdict = { decision: 'allow', reason: 'Automatic review approved the action.', source: 'jev', model: 'typesafe/jev-1.13', confidence: 0.93, destructive: 0.4, credentialRisk: 0.01, durationMs: 7, usage: { input_tokens: 100, output_tokens: 0 } };
+  const f = fixture({ jev: { approval: async () => verdict } });
+  const { req } = await f.pending();
+  assert.equal(await f.answer(req), 'allowed-once');
+  assert.equal(f.requests.length, 0, 'the reviewer model must not be called when Jev decides');
+  const last = f.records().at(-1);
+  assert.equal(last.source, 'jev');
+  assert.equal(last.model, 'typesafe/jev-1.13');
+  assert.equal(last.confidence, 0.93);
+  assert.equal(last.usage.input_tokens, 100);
+  assert.equal(f.human(), 0);
+});
+
+test('a Jev denial rejects the call and keeps the strike accounting', async () => {
+  const f = fixture({ jev: { approval: async () => ({ decision: 'deny', reason: 'Outside the instruction.', source: 'jev', model: 'typesafe/jev-1.13', confidence: 0.91 }) } });
+  const { req } = await f.pending();
+  assert.equal(await f.answer(req), 'rejected');
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.records().at(-1).decision, 'deny');
+  assert.match(JSON.stringify(f.notices), /Automatic review rejected bash/);
+});
+
+test('an unavailable or unsure Jev leaves the reviewer model in charge', async () => {
+  for (const jev of [{ approval: async () => undefined }, { approval: async () => { throw new Error('down'); } }, undefined]) {
+    const f = fixture({ jev });
+    const { req } = await f.pending();
+    assert.equal(await f.answer(req), 'allowed-once');
+    assert.equal(f.requests.length, 1, 'the reviewer model answers when Jev does not');
+    assert.equal(f.human(), 0);
+  }
+});
+
+test('a Jev answer without usage is not recorded as complete', async () => {
+  const f = fixture({ jev: { approval: async () => ({ decision: 'allow', reason: 'Automatic review approved the action.', source: 'jev', model: 'typesafe/jev-1.13', confidence: 0.9 }) } });
+  assert.equal(await f.answer((await f.pending()).req), 'allowed-once');
+  const last = f.records().at(-1);
+  assert.equal(last.usage, null);
+  assert.equal(last.usageComplete, false, 'a verdict without usage must not claim complete accounting');
+});
+
+test('a cancellation during Jev does not start a reviewer request', async () => {
+  const f = fixture({ jev: { approval: async () => undefined, model: 'typesafe/jev-1.13' } });
+  const controller = new AbortController();
+  const { req } = await f.pending('bash', {}, controller.signal);
+  controller.abort();
+  assert.equal(await f.answer(req), 'cancelled');
+  assert.equal(f.requests.length, 0, 'no reviewer call may start on an aborted signal');
+  assert.equal(f.human(), 0);
 });
