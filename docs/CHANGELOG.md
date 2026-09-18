@@ -8,6 +8,8 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 ## [Unreleased]
 
+## [0.7.15] - 2026-09-17
+
 ### Added
 
 - Automatic permission review can be answered by TypeSafe Jev through OpenRouter's alpha Decisions endpoint instead of spending a reviewer model call. `dscode-jev` sends one request carrying four typed questions — a `choice` (allow/ask/deny) with per-option probabilities, whether the retained instruction authorizes this exact action, how hard the action is to undo, and whether it touches credentials — and decides in code with asymmetric gates: a decisive deny (confidence and `P(deny)` both high, or a slightly lower confidence corroborated by a crossed risk ceiling) is honoured, while allowing still needs a confident allow with no credential or hard-to-undo signal. An instruction Jev reads as authorizing the exact action vetoes a silent rejection. An unconfigured, unsure or failing Jev returns no verdict, so the reviewer model still answers and behaviour degrades to the previous one. The plugin is inert without a resolvable `OPENROUTER_API_KEY`, and `enabled: false` or removing the row disables it.
