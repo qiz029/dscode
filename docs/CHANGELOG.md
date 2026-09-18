@@ -6,7 +6,19 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes under Unreleased. -->
 
-## [Unreleased]
+## [0.7.17] - 2026-09-18
+
+### Changed
+
+- Automatic compaction is now DSCODE's own `plugins/compaction/engine.mjs` - a `BasicCompactionEngine` subclass overriding `compactIfNeeded` and `summarize` - instead of four build-time rewrites of the upstream package. The priced threshold, completion reserve, background prefetch and overflow prune-first policy are unchanged; the durable surface transaction, marker pair and stability checks stay upstream, and `@deepseek-ai/dsh-compaction-basic` is no longer patched or vendored.
+- `/language` offers every language the DSCODE message tables carry (`en`, `zh-CN`, `zh-TW`, `ja`, `ko`, `es`) instead of English and Chinese only: the picker, argument parsing and `language.json` persistence now follow `plugins/i18n`, so `zh`, `jp` and `繁體中文` resolve through its alias table and a saved `zh` upgrades to `zh-CN`. The terminal's own shell strings still translate English and Simplified Chinese alone; every other choice paints the shell in English and DSCODE's labels in the chosen language.
+
+### Fixed
+
+- The compaction evaluation harness mounted the unpatched upstream engine, so it stopped measuring the shipped policy after the subclass migration; it mounts `DscodeCompactionEngine` again, records the engine source hash, and lets the judge model differ from the tested model.
+- `OpenRouterAdapter` reported the route's live 1M window during evaluation, which priced the threshold far above every replayed history; a windowed wrapper now reports the window the harness enforces.
+- A semantic judge that wrapped its verdict object in a sentence or a fence silently ungraded whole batches, which made calibration fail (10/14, 6/14 and 4/14 across three models). The parser extracts the outermost object instead; calibration passes 14/14.
+- A prefetch committed through the upstream transaction now opens its compaction marker before waiting for the background summary, so a threshold that arrives mid-prefetch still shows the compaction indicator.
 
 ## [0.7.16] - 2026-09-17
 
