@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or usage help
+    url: https://github.com/qiz029/dscode/discussions/categories/q-a
+    about: Ask in Q&A — include your macOS, Node and DSCODE versions.
+  - name: Feature idea
+    url: https://github.com/qiz029/dscode/discussions/categories/ideas
+    about: Float the idea in Discussions before it becomes an issue.
+  - name: Show and tell
+    url: https://github.com/qiz029/dscode/discussions/categories/show-and-tell
+    about: Share skills, presets, hooks and workflows built on DSCODE.
+  - name: Security or privacy report
+    url: https://github.com/qiz029/dscode/security/advisories/new
+    about: Please report privately — never in a public issue.

@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a reproducible problem with DSCODE
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do not paste credentials, session contents or private paths.
+        For security or privacy issues, follow [SECURITY.md](https://github.com/qiz029/dscode/blob/main/SECURITY.md) instead of opening an issue.
+  - type: input
+    id: version
+    attributes:
+      label: DSCODE version
+      description: Shown in the TUI header, or `npm view @toddzheng024/dscode version`
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "14.6"
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node -v`
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How is it installed
+      options:
+        - npm launcher (npm install -g @toddzheng024/dscode)
+        - Hub profile
+        - From source (git clone)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: The smallest sequence that shows it, including the exact command or prompt.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Doctor output
+      description: "`/doctor` in the TUI, or `npm run doctor` in a source checkout. Paste the summary."
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant event log excerpt
+      description: Redact paths, prompts, tokens and session contents first.
+      render: text
+    validations:
+      required: false

@@ -1,0 +1,50 @@
+name: Feature request
+description: Suggest a capability or an improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that DSCODE makes hard today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggested approach
+      description: What would you like it to do? A rough sketch is fine.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you use now, or other designs you weighed.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Agent loop and tools
+        - Compaction and context
+        - Subagents and delegation
+        - Review and approvals
+        - Memory
+        - Providers and routing
+        - TUI and panels
+        - MCP, skills and hooks
+        - Packaging, release and Hub
+        - Documentation
+    validations:
+      required: true
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to open a pull request for this
+        - label: I would rather just describe the need
