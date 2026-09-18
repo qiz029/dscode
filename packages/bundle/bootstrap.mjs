@@ -18,6 +18,7 @@ export function apply(ctx) {
   // resolution the launcher runs happens here before the agent preset mounts.
   process.env.DSCODE_SKILL_ANCESTOR_DIRS = JSON.stringify(ancestorSkillDirs({ cwd: process.cwd(), home: homedir() }));
   process.env.DSCODE_INSTRUCTION_HOME = writeWorkspaceInstructions({ cwd: process.cwd(), home: homedir(), stateDir: home }) ?? home;
+  process.env.DSCODE_SANDBOX_RUNNER = join(root, 'plugins/tui-tools/sandbox-runner.mjs');
   ctx.provide('dscodePaths', { presets: join(root, 'presets'), hooks: hookConfig.path });
   const oldPath = process.env.PATH;
   const added = join(root, 'bin');

@@ -1,0 +1,16 @@
+# Copy to config/harness.local.yml to enable DSCODE's own sandbox runner. It applies the
+# same write policy as the built-in macOS Seatbelt rung — writes only to the workspace,
+# /tmp and the platform temp area — plus one extra grant the built-in profile lacks:
+# /dev/ptmx. Without that grant a confined command cannot allocate a PTY
+# (`posix_openpt: Operation not permitted`), which breaks nested harnesses, tmux, expect
+# and node-pty based test suites. Inside an already-confined process it inherits the
+# enclosing profile instead of nesting a second one, which is what lets `make release`,
+# `npm run doctor` and a nested dscode run from inside a dscode session.
+#
+# The provider appends the bwrap-compatible profile arguments and `--` plus the command,
+# so runnerCommand is only the program and the script. Both values are required: the
+# signature is how the provider tells our failures apart from a denied command.
+- id: sandbox
+  config:
+    runnerCommand: !!js "[process.execPath, process.env.DSCODE_SANDBOX_RUNNER]"
+    runnerFailureSignatures: ['dscode-sandbox-runner']

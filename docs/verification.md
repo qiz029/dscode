@@ -22,6 +22,18 @@ The GitHub Actions workflow runs the gate on macOS with Node 22.19 and 24. Addin
 
 Asking for a wider sandbox does not lift this. `danger-full-access` widens the DSH *file policy*, while the OS-level profile that refuses the nested `sandbox_apply` remains in force, and a backgrounded command does not inherit the wider mode at all. Run these from a normal terminal instead: `make verify`, `make release`, `make publish` and `npm run doctor` all complete there, and the release workflow covers the same ground on CI.
 
+These commands can be made to work from a session by configuring DSCODE's own sandbox runner (`plugins/tui-tools/sandbox-runner.mjs`, enabled by copying `config/harness.local.example.yml` to `config/harness.local.yml`). The provider appends a bwrap-compatible profile plus `--` and the command; the runner translates the writable grants into a Seatbelt profile, adds `(allow file-write* (literal "/dev/ptmx"))`, and — inside an already-confined process, where the kernel refuses to apply another profile — inherits the enclosing profile instead of nesting a second one. That addresses both symptoms above: a PTY can be allocated under the session's own shell, and a nested harness starts at all.
+
+The apply path cannot be exercised from inside a session, because applying a profile is exactly what is refused there, so `tests/sandbox-runner.test.mjs` drives it through a shim that records the profile and execs the command, and asserts the PTY grant and the workspace subpath are present. On a normal host, verify the real path with:
+
+```bash
+node plugins/tui-tools/sandbox-runner.mjs --ro-bind / / --dev /dev --unshare-pid --proc /proc \
+  --die-with-parent --tmpfs /tmp --bind "$PWD" "$PWD" -- /bin/sh -c \
+  'node -e "require(\"fs\").openSync(\"/dev/ptmx\",\"r+\")"; echo PTY_OK; touch ~/dscode-should-fail'
+```
+
+which must print `PTY_OK` and refuse the home write. The runner is an operator assertion — configuring it skips the provider's functional probes — so its profile stays the built-in one plus the single PTY grant, with no other relaxation.
+
 Everything that does not spawn a nested confined harness still runs inside a session: `npm run check` (lint, coverage, integration probes, package checks and eval), `npm run test:unit`, `npm run test:coverage`, `npm run test:integration`, `npm run test:package` and `npm run test:eval`. To publish from here, push the `v<version>` tag — the release workflow carries the npm and Hub credentials (for 0.7.15 it built, verified and published from `v0.7.15`).
 
 ## Historical verification records

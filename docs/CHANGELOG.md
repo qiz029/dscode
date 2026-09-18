@@ -8,6 +8,10 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 ## [Unreleased]
 
+### Added
+
+- A custom sandbox runner (`plugins/tui-tools/sandbox-runner.mjs`, enabled by copying `config/harness.local.example.yml` to `config/harness.local.yml`) applies the built-in write policy plus the one grant the stock macOS profile lacks — `/dev/ptmx` — so a confined command can allocate a PTY again, and it inherits the enclosing profile instead of nesting a second one. With it configured, `npm run doctor`, `make verify`, `make release` and a nested dscode run from inside a dscode session instead of only from a normal terminal.
+
 ## [0.7.15] - 2026-09-17
 
 ### Added

@@ -60,6 +60,7 @@ export function environment(home = runtimeHome, cwd = process.cwd()) {
     ...process.env, PATH: join(root, 'bin') + ':' + process.env.PATH, DSH_HOME: home, DSH_AGENTS_HOME: join(home, 'agents'),
     DSCODE_SKILL_ANCESTOR_DIRS: JSON.stringify(ancestorSkillDirs({ cwd, home: userHome })),
     DSCODE_INSTRUCTION_HOME: instructions ?? home,
+    DSCODE_SANDBOX_RUNNER: join(root, 'plugins/tui-tools/sandbox-runner.mjs'),
     DSH_TUI_REVIEW_ENTRY: join(root, 'plugins/auto-review/index.mjs'),
   };
 }
