@@ -58,7 +58,7 @@ import { dscodeChatLines } from './dscode/chat.ts'
 import { readFileSync } from 'node:fs'
 import { footerFor as dscodeFooterFor } from '../../../plugins/session-metrics/view.mjs'
 import { newerVersion as dscodeNewerVersion } from '../../../plugins/tui-tools/update.mjs'
-import { t as dscodeMessage, normalizeLanguage as dscodeNormalizeLanguage } from '../../../plugins/i18n/messages.mjs'
+import { languageName as dscodeLanguageName, normalizeLanguage as dscodeNormalizeLanguage, t as dscodeMessage } from '../../../plugins/i18n/messages.mjs'
 import { dscodeTelemetryNodes } from './dscode/telemetry.ts'
 import { dscodeFooterHeader } from './render/status.ts'
 import { dscodePadEnd, welcomeArtRows, welcomePath, WELCOME_ART, WELCOME_ART_SMALL } from './dscode/welcome.ts'
@@ -5496,9 +5496,10 @@ function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, de
       if (text === '/language' || text.startsWith('/language ')) {
         const argument = text.slice('/language'.length).trim()
         if (argument === '') openLanguage()
-        else if (argument === 'en' || argument === 'zh') {
-          saveLanguage(parseLanguageName(argument))
-          notify(t('notice.languageSaved', { name: argument }))
+        else if (dscodeNormalizeLanguage(argument) !== null) {
+          const name = parseLanguageName(argument)
+          saveLanguage(name)
+          notify(t('notice.languageSaved', { name: dscodeLanguageName(name) }))
           refresh()
         } else notify(t('notice.usage.language'), 'warning')
         return

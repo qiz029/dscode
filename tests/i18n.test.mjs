@@ -53,3 +53,26 @@ test('the update messages interpolate in every language', () => {
     assert.ok(t(code, 'update.newest').trim().length > 0, code);
   }
 });
+
+test('the terminal language list and parsing follow the DSCODE tables', async () => {
+  const terminal = await import('../packages/tui/src/i18n.ts');
+  assert.deepEqual(terminal.LANGUAGE_NAMES, LANGUAGES.map(language => language.code), 'the picker offers exactly the DSCODE languages');
+  assert.deepEqual(terminal.LANGUAGES.map(row => row.id), LANGUAGES.map(language => language.code));
+  assert.deepEqual(terminal.LANGUAGES.map(row => row.label), LANGUAGES.map(language => language.name));
+  assert.equal(terminal.parseLanguageName('zh'), 'zh-CN', 'the legacy persisted value still resolves');
+  assert.equal(terminal.parseLanguageName('jp'), 'ja', 'aliases resolve');
+  assert.equal(terminal.parseLanguageName('繁體中文'), 'zh-TW');
+  assert.equal(terminal.parseLanguageName('nope'), 'en', 'an unknown value falls back to English');
+  assert.equal(terminal.parseLanguageName(undefined), 'en');
+
+  const title = code => {
+    terminal.setLanguage(code);
+    return terminal.t('language.title');
+  };
+  const english = title('en');
+  const chinese = title('zh-CN');
+  assert.notEqual(english, chinese, 'zh-CN paints the Chinese catalogue');
+  assert.equal(title('zh-TW'), chinese, 'zh-TW reuses the Chinese catalogue');
+  for (const code of ['ja', 'ko', 'es']) assert.equal(title(code), english, `${code} degrades to the English shell`);
+  terminal.setLanguage('en');
+});
