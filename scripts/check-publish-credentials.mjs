@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolvePublishToken, npmWithToken, NPM_USER } from './npm-token.mjs';
+import { withHubRetry } from './hub-retry.mjs';
 
 const root = join(import.meta.dirname, '..');
 const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
@@ -17,7 +18,8 @@ console.log(`npm credential OK: ${NPM_USER}`);
 if (!process.env.DSH_HUB_TOKEN) throw new Error('No Hub token: set DSH_HUB_TOKEN (the Hub CI credential) before running this check.');
 const { getAccessToken } = await import('../node_modules/@dsh-plugin-hub/cli/dist/auth.js');
 const { HubApiClient } = await import('../node_modules/@dsh-plugin-hub/cli/dist/api-client.js');
-const profile = await new HubApiClient(undefined, () => getAccessToken()).profile('dscode');
+const client = new HubApiClient(undefined, () => getAccessToken());
+const profile = await withHubRetry(() => client.profile('dscode'), { label: 'Reading the dscode profile' });
 console.log(`Hub credential OK: the dscode profile is ${profile.visibility}, latest ${profile.latestVersion ?? 'unknown'}`);
 // The publish phases are idempotent: an identical version already on npm is a re-run, not a
 // conflict. Only a different build under the same version has to stop the release.

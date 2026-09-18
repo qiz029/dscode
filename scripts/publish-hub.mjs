@@ -6,6 +6,7 @@ import { validatePackageDirectory } from '../node_modules/@dsh-plugin-hub/cli/di
 import { HubApiClient } from '../node_modules/@dsh-plugin-hub/cli/dist/api-client.js';
 import { getAccessToken } from '../node_modules/@dsh-plugin-hub/cli/dist/auth.js';
 import { resolvePublishToken, npmWithToken, NPM_USER } from './npm-token.mjs';
+import { withHubRetry } from './hub-retry.mjs';
 const root = join(import.meta.dirname,'..');
 const out = join(root,'artifacts/npm');
 const read = path => JSON.parse(readFileSync(path,'utf8'));
@@ -63,29 +64,29 @@ else if(phase==='profile') {
   // Ask the Hub to pull the package from npm now instead of waiting for its hourly sync.
   // Require Hub discovery of this exact version before saving a release; the sync can trail npm too.
   for (let attempt = 1; ; attempt++) {
-    const synced=await client.syncPackage(pack.name);
+    const synced=await withHubRetry(()=>client.syncPackage(pack.name),{label:'Hub package sync'});
     if(synced.status!=='accepted') throw Error(`Hub did not sync ${pack.name}: ${synced.reason ?? synced.status}`);
     console.log(`Hub synced ${synced.slug ?? pack.name}@${synced.latestVersion ?? '?'} (${synced.versionsAdded ?? 0} new versions)`);
-    const known=await client.package(pack.name);
+    const known=await withHubRetry(()=>client.package(pack.name),{label:'Hub package lookup'});
     if((known.versions ?? []).some(v=>(v.version ?? v)===pack.version)) break;
     if(attempt >= WAIT_ATTEMPTS) throw Error(`Hub still lists ${pack.name} up to ${known.latestVersion}; ${pack.version} is not visible yet.`);
     await sleep(WAIT_MS);
   }
-  await client.saveProfileDraft({...read(join(out,'profile-draft.json')),visibility:'public'});
+  await withHubRetry(()=>client.saveProfileDraft({...read(join(out,'profile-draft.json')),visibility:'public'}),{label:'Hub profile draft'});
   try {
-    console.log(JSON.stringify(await client.publishProfile('dscode',pack.version,true),null,2));
+    console.log(JSON.stringify(await withHubRetry(()=>client.publishProfile('dscode',pack.version,true),{label:'Hub profile release'}),null,2));
   } catch (error) {
     // Hub versions are immutable. A re-run after a later phase failed must be able to skip the
     // profile it already published instead of dying on the 409 and dragging the remaining
     // phases (launcher, release asset) down with it.
     const message = error instanceof Error ? error.message : String(error);
-    const published = message.includes('version_is_immutable') ? await client.profile('dscode') : undefined;
+    const published = message.includes('version_is_immutable') ? await withHubRetry(()=>client.profile('dscode'),{label:'Hub profile lookup'}) : undefined;
     if (!published?.versions?.some(entry => (entry.version ?? entry) === pack.version)) throw error;
     console.log(`Hub already holds dscode@${pack.version}; skipping the immutable re-publish.`);
   }
 } else {
   await npmMetadata();
-  const profile=await client.profile('dscode');
+  const profile=await withHubRetry(()=>client.profile('dscode'),{label:'Hub profile lookup'});
   // Accept only an exact release returned by the public Hub resolver.
   const selected=profile.versions.find(v=>v.version===pack.version);
   if(profile.visibility !== 'public' || !selected?.bundles.some(b=>b.packageName===pack.name && b.version===pack.version && b.integrity===pack.integrity)) throw Error('The matching public Hub release is not available.');
