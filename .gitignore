@@ -14,6 +14,9 @@ config/*.local.json
 # Generated release packages and machine-specific verification evidence
 artifacts/
 
+# Packed by `make candidates` for a publish job
+release-candidates.tar.gz
+
 # Local npm cache configured in .npmrc for the test runtime and probe tooling
 .npm-cache/
 
