@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { FAILURE_PREFIX, parseProfile, run, seatbeltApplies, seatbeltProfile, writableRoots } from '../plugins/tui-tools/sandbox-runner.mjs';
+import { FATAL_PREFIX, NOTICE_PREFIX, parseProfile, run, seatbeltApplies, seatbeltProfile, writableRoots } from '../plugins/tui-tools/sandbox-runner.mjs';
 
 const RUNNER = join(import.meta.dirname, '..', 'plugins', 'tui-tools', 'sandbox-runner.mjs');
 const upstreamWorkspaceWrite = root => ['--ro-bind', '/', '/', '--dev', '/dev', '--unshare-pid', '--proc', '/proc', '--die-with-parent', '--tmpfs', '/tmp', '--bind', root, root, '--', '/bin/sh', '-c', 'printf RUNNER_OK'];
@@ -64,7 +64,7 @@ test('inside an existing profile the runner inherits instead of nesting a second
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /RUNNER_OK/);
     if (applies.ok) assert.equal(result.stderr, '', 'an unconfined host applies the profile and says nothing');
-    else assert.match(result.stderr, /inheriting the enclosing profile/);
+    else { assert.ok(result.stderr.includes(NOTICE_PREFIX), result.stderr); assert.match(result.stderr, /inheriting the enclosing profile/); }
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -74,8 +74,17 @@ test('the runner fails loudly and closed when it cannot confine', async () => {
   const lines = [];
   const stderr = { write: line => lines.push(line) };
   assert.equal(await run(['--ro-bind', '/', '/', '--'], { stderr }), 126);
-  assert.match(lines.at(-1), new RegExp(`^${FAILURE_PREFIX}no command after --`));
+  assert.match(lines.at(-1), new RegExp(`^${FATAL_PREFIX}no command after --`));
   const missing = join(tmpdir(), 'dscode-runner-does-not-exist');
   assert.equal(await run(['--', '/bin/true'], { exec: missing, stderr }), 126);
   assert.match(lines.at(-1), /is not available; refusing to run unconfined/);
+});
+
+test('the configured failure signature matches real failures and never a notice', () => {
+  const example = readFileSync(join(import.meta.dirname, '..', 'config', 'harness.local.example.yml'), 'utf8');
+  const signature = /runnerFailureSignatures:\s*\[\s*[\u0027\u0022]?([^\u0027\u0022\]]+)/.exec(example)?.[1];
+  assert.ok(signature, 'the example must configure a runner failure signature');
+  assert.equal(signature, FATAL_PREFIX.trim());
+  assert.ok(FATAL_PREFIX.toLowerCase().includes(signature.toLowerCase()));
+  assert.ok(!NOTICE_PREFIX.toLowerCase().includes(signature.toLowerCase()), 'a notice must not match the signature');
 });

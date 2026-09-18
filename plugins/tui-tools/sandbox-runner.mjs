@@ -21,7 +21,11 @@ import { fileURLToPath } from 'node:url';
 export const NAME = 'dscode-sandbox-runner';
 // Configure this string as runnerFailureSignatures so the provider recognises our
 // own failures instead of reading them as a denied command.
-export const FAILURE_PREFIX = `${NAME}: `;
+export const FATAL_PREFIX = `${NAME}: fatal: `;
+// Informational output must never carry the configured failure signature: the provider
+// turns any non-zero exit whose stderr matches it into a sandbox failure, so a notice
+// would misreport a failing command as a broken runner.
+export const NOTICE_PREFIX = `${NAME}: notice: `;
 export const SANDBOX_EXEC = '/usr/bin/sandbox-exec';
 
 const OPERAND_FLAGS = new Map([['--ro-bind', 2], ['--bind', 2], ['--tmpfs', 1], ['--dev', 1], ['--proc', 1], ['--dir', 1]]);
@@ -85,7 +89,7 @@ function runUnder(program, args) {
     const forward = signal => () => { try { child.kill(signal); } catch { /* already gone */ } };
     const handlers = Object.keys(SIGNAL_CODES).map(signal => [signal, forward(signal)]);
     for (const [signal, handler] of handlers) process.on(signal, handler);
-    child.on('error', error => { process.stderr.write(`${FAILURE_PREFIX}${error.message}\n`); resolvePromise(126); });
+    child.on('error', error => { process.stderr.write(`${FATAL_PREFIX}${error.message}\n`); resolvePromise(126); });
     child.on('exit', (code, signal) => resolvePromise(code ?? SIGNAL_CODES[signal] ?? 1));
   });
 }
@@ -93,19 +97,19 @@ function runUnder(program, args) {
 export async function run(argv, { exec = SANDBOX_EXEC, stderr = process.stderr } = {}) {
   const parsed = parseProfile(argv);
   if (parsed.command.length === 0) {
-    stderr.write(`${FAILURE_PREFIX}no command after --\n`);
+    stderr.write(`${FATAL_PREFIX}no command after --\n`);
     return 126;
   }
   const [program, ...args] = parsed.command;
   const applies = seatbeltApplies(exec);
   if (!applies.ok && applies.reason === 'missing') {
-    stderr.write(`${FAILURE_PREFIX}${exec} is not available; refusing to run unconfined\n`);
+    stderr.write(`${FATAL_PREFIX}${exec} is not available; refusing to run unconfined\n`);
     return 126;
   }
   if (!applies.ok) {
     // Applying a profile is what the kernel refuses inside an existing one, so this
     // process is already confined: inherit that profile rather than nest a second.
-    stderr.write(`${FAILURE_PREFIX}inheriting the enclosing profile (${applies.reason})\n`);
+    stderr.write(`${NOTICE_PREFIX}inheriting the enclosing profile (${applies.reason})\n`);
     return runUnder(program, args);
   }
   return runUnder(exec, ['-p', seatbeltProfile(writableRoots(parsed)), '--', program, ...args]);
@@ -113,7 +117,7 @@ export async function run(argv, { exec = SANDBOX_EXEC, stderr = process.stderr }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   run(process.argv.slice(2)).then(code => { process.exitCode = code; }).catch(error => {
-    process.stderr.write(`${FAILURE_PREFIX}${error.message}\n`);
+    process.stderr.write(`${FATAL_PREFIX}${error.message}\n`);
     process.exitCode = 126;
   });
 }

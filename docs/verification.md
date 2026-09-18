@@ -32,7 +32,7 @@ node plugins/tui-tools/sandbox-runner.mjs --ro-bind / / --dev /dev --unshare-pid
   'node -e "require(\"fs\").openSync(\"/dev/ptmx\",\"r+\")"; echo PTY_OK; touch ~/dscode-should-fail'
 ```
 
-which must print `PTY_OK` and refuse the home write. The runner is an operator assertion — configuring it skips the provider's functional probes — so its profile stays the built-in one plus the single PTY grant, with no other relaxation.
+which must print `PTY_OK` and refuse the home write. The runner is an operator assertion — configuring it skips the provider's functional probes — so its profile stays the built-in one plus the single PTY grant, with no other relaxation. A non-zero exit whose stderr matches the configured signature is reported as a sandbox failure rather than a failed command, so the signature names only the runner fatal: lines and the inheriting notice deliberately cannot match it.
 
 Everything that does not spawn a nested confined harness still runs inside a session: `npm run check` (lint, coverage, integration probes, package checks and eval), `npm run test:unit`, `npm run test:coverage`, `npm run test:integration`, `npm run test:package` and `npm run test:eval`. To publish from here, push the `v<version>` tag — the release workflow carries the npm and Hub credentials (for 0.7.15 it built, verified and published from `v0.7.15`).
 
