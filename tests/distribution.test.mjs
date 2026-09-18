@@ -10,7 +10,8 @@ test('launcher routes management separately, pins install version and preserves 
  assert.deepEqual(commandPlan([],release,false),{launch:[],install:true});
  assert.deepEqual(commandPlan(['--continue'],release,true),{launch:['--continue'],install:false});
  assert.deepEqual(commandPlan(['update','0.2.0'],release,true).hub,['profile','upgrade','dscode','--version','0.2.0','--profile','dscode']);
- assert.throws(()=>commandPlan(['update','latest'],release,true));
+ assert.deepEqual(commandPlan(['update','latest'],release,true).hub,['profile','upgrade','dscode','--version','0.1.0','--profile','dscode'],'"latest" is the default the TUI schedules');
+ assert.throws(()=>commandPlan(['update','newest'],release,true));
  assert.throws(()=>commandPlan(['rollback','--help'],release,true));
  assert.deepEqual(commandPlan(['rollback'],release,true).hub,['profile','rollback','--profile','dscode']);
  assert.deepEqual(commandPlan(['doctor'],release,true),{doctor:'analyze'});

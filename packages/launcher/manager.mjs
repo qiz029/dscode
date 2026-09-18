@@ -21,11 +21,13 @@ export function commandPlan(args, release, installed, launcherVersion) {
   }
   const flags = ['--profile', 'dscode'];
   if (command === 'install' || command === 'update') {
-    if (rest.length > 1 || rest[0] && !/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(rest[0])) throw Error('Usage: dscode install|update [exact-version]');
-    if (command === 'install') return { hub: ['profile', installed ? 'upgrade' : 'apply', release.slug, '--version', rest[0] ?? release.version, ...flags] };
+    // "latest" is what the TUI's `/update` schedules when no version is named; it is the default here too.
+    const explicit = rest[0] === 'latest' ? undefined : rest[0];
+    if (rest.length > 1 || explicit && !/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(explicit)) throw Error('Usage: dscode install|update [exact-version]');
+    if (command === 'install') return { hub: ['profile', installed ? 'upgrade' : 'apply', release.slug, '--version', explicit ?? release.version, ...flags] };
     // An exact argument updates launcher and profile to that version; without one, a newer
     // launcher found on npm moves both, and otherwise the profile follows this launcher.
-    const wanted = rest[0] ?? launcherVersion;
+    const wanted = explicit ?? launcherVersion;
     const version = wanted ?? release.version;
     return { hub: ['profile', installed ? 'upgrade' : 'apply', release.slug, '--version', version, ...flags],
       ...(wanted && wanted !== release.version ? { launcherUpdate: wanted } : {}) };
@@ -105,9 +107,12 @@ export function compareVersion(left, right) {
  * be read falls back to this launcher's recommended version.
  */
 export async function launcherUpdateVersion(arg, release, { fetchImpl = fetch, log = console.error } = {}) {
-  if (arg) return arg;
+  if (arg && arg !== 'latest') return arg;
   try {
-    const response = await fetchImpl(`https://registry.npmjs.org/${LAUNCHER_PACKAGE}/latest`, { headers: { accept: 'application/vnd.npm.install-v1+json' } });
+    // Plain JSON, not the abbreviated `application/vnd.npm.install-v1+json`: the registry
+    // answers 406 for that type on the `/latest` dist-tag endpoint, which silently turned
+    // every launcher self-update into "no newer version".
+    const response = await fetchImpl(`https://registry.npmjs.org/${LAUNCHER_PACKAGE}/latest`, { headers: { accept: 'application/json' } });
     if (!response.ok) throw Error(`HTTP ${response.status}`);
     const version = (await response.json()).version;
     return typeof version === 'string' && /^\d+\.\d+\.\d+/.test(version) && compareVersion(version, release.version) > 0 ? version : undefined;

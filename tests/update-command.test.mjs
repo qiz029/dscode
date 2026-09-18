@@ -23,6 +23,9 @@ test('fetchLatestVersion answers only a readable, well-formed listing', async ()
   assert.equal(await fetchLatestVersion({ fetchImpl: async () => ({ ok: false, status: 500 }) }), undefined);
   assert.equal(await fetchLatestVersion({ fetchImpl: async () => ({ ok: true, json: async () => ({ version: 'latest' }) }) }), undefined);
   assert.equal(await fetchLatestVersion({ fetchImpl: async () => { throw Error('offline'); } }), undefined);
+  let asked;
+  assert.equal(await fetchLatestVersion({ fetchImpl: async (url, init) => { asked = init.headers.accept; return { ok: true, json: async () => ({ version: '0.7.11' }) }; } }), '0.7.11');
+  assert.equal(asked, 'application/json', 'the abbreviated metadata type is answered 406 on the /latest endpoint');
 });
 
 test('planUpdate targets the tree it is installed in, and the npm launcher otherwise', () => {

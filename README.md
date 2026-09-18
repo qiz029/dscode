@@ -98,7 +98,7 @@ The command lands in `~/.local/bin/dscode` by default—make sure that directory
 npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.11.tgz
 ```
 
-**Upgrade** — `dscode update [exact-version]` updates the whole installation in one step, and requires no running DSCODE sessions. On the npm/Hub install it replaces the launcher binary with npm and then upgrades the installed profile to the same version. On a tar install it downloads the release tarball, verifies it against the release's sha256 digest, swaps the installation directory in place and migrates `.runtime`, `.env` and local `config/`; the previous installation is kept as a sibling backup directory. A source checkout refuses and points at git pull instead.
+**Upgrade** — `dscode update [exact-version]` updates the whole installation in one step, and requires no running DSCODE sessions. On the npm/Hub install it replaces the launcher binary with npm and then upgrades the installed profile to the same version. On a tar install it downloads the release tarball, verifies it against the release's sha256 digest, swaps the installation directory in place and migrates `.runtime`, `.env` and local `config/`; the previous installation is kept as a sibling backup directory. A source checkout updates itself the same way: `git pull --ff-only` on the branch it tracks, then `npm ci --ignore-scripts` and `npm run setup`; uncommitted changes in tracked files refuse before anything runs, so a failed update never half-applies.
 
 ```sh
 dscode update                  # latest release

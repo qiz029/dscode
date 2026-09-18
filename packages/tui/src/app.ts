@@ -6327,7 +6327,9 @@ export function App(props: AppProps): ReactElement {
     if (process.env.DSCODE_UPDATE_CHECK === 'off') return
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 8000)
-    fetch(DSCODE_REGISTRY_URL, { headers: { accept: 'application/vnd.npm.install-v1+json' }, signal: controller.signal })
+    // Plain JSON: the registry answers 406 for the abbreviated metadata type on the
+    // `/latest` dist-tag endpoint, which silently suppressed this notice.
+    fetch(DSCODE_REGISTRY_URL, { headers: { accept: 'application/json' }, signal: controller.signal })
       .then(response => (response.ok ? response.json() : undefined))
       .then(data => {
         const latest = data?.version

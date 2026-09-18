@@ -7,12 +7,14 @@ import { join } from 'node:path';
 import { parseUpdateArgs, releaseAsset, verifyDigest, migrateState, selfUpdate } from '../scripts/self-update.mjs';
 import { compareVersion, launcherUpdateVersion, installLauncher, commandPlan } from '../packages/launcher/manager.mjs';
 import { EventEmitter } from 'node:events';
+import { spawnSync } from 'node:child_process';
 
 test('update args accept only an exact version', () => {
   assert.deepEqual(parseUpdateArgs([]), { version: undefined });
   assert.deepEqual(parseUpdateArgs(['0.7.9']), { version: '0.7.9' });
   assert.deepEqual(parseUpdateArgs(['0.8.0-rc.1']), { version: '0.8.0-rc.1' });
-  assert.throws(() => parseUpdateArgs(['latest']), /Usage/);
+  assert.deepEqual(parseUpdateArgs(['latest']), { version: undefined }, '"latest" is what the TUI schedules when no version is named');
+  assert.throws(() => parseUpdateArgs(['newest']), /Usage/);
   assert.throws(() => parseUpdateArgs(['--force']), /Usage/);
   assert.throws(() => parseUpdateArgs(['0.7.9', 'extra']), /Usage/);
 });
@@ -104,12 +106,53 @@ function fakeExec(stagedVersion) {
   } };
 }
 
-test('selfUpdate refuses a source checkout before touching anything', async t => {
+function checkoutExec(calls, { dirty = false, changed = true } = {}) {
+  let head = 'head-before';
+  return (argv, options = {}) => {
+    calls.push(argv.join(' '));
+    if (argv[0] === 'ps') return '  /sbin/launchd\n';
+    if (argv[2] === '--porcelain') return dirty ? ' M bin/dscode.mjs\n' : '';
+    if (argv[1] === 'rev-parse') return `${head}\n`;
+    if (argv[1] === 'pull') {
+      if (changed) { head = 'head-after'; writeFileSync(join(options.cwd, 'package.json'), JSON.stringify({ version: '0.7.9' })); }
+      return '';
+    }
+    if (argv[0] === 'npm') return '';
+    throw Error(`unexpected command: ${argv.join(' ')}`);
+  };
+}
+
+test('selfUpdate updates a source checkout through git and reinstalls its dependencies', async t => {
   const { installDir } = installFixture(t);
   mkdirSync(join(installDir, '.git'));
-  let fetched = false;
-  await assert.rejects(selfUpdate([], { installDir, fetchImpl: async () => { fetched = true; return { ok: true, json: async () => ({}) }; } }), /git pull/);
-  assert.equal(fetched, false);
+  const calls = [];
+  const result = await selfUpdate([], { installDir, exec: checkoutExec(calls), fetchImpl: async () => { throw Error('a source checkout must not read GitHub'); } });
+  assert.deepEqual(result, { status: 'updated', from: '0.7.8', to: '0.7.9', method: 'git' });
+  assert.deepEqual(calls, ['ps -axo command=', 'git status --porcelain --untracked-files=no', 'git rev-parse HEAD', 'git pull --ff-only', 'git rev-parse HEAD', 'npm ci --ignore-scripts --no-audit', 'npm run setup']);
+});
+
+test('selfUpdate reports a source checkout already at its branch tip', async t => {
+  const { installDir } = installFixture(t);
+  mkdirSync(join(installDir, '.git'));
+  const calls = [];
+  assert.deepEqual(await selfUpdate([], { installDir, exec: checkoutExec(calls, { changed: false }) }), { status: 'current', version: '0.7.8' });
+  assert.ok(!calls.includes('npm ci --ignore-scripts --no-audit'), 'nothing is reinstalled when the pull brings no commit');
+});
+
+test('selfUpdate refuses a dirty source checkout before running anything', async t => {
+  const { installDir } = installFixture(t);
+  mkdirSync(join(installDir, '.git'));
+  const calls = [];
+  await assert.rejects(selfUpdate([], { installDir, exec: checkoutExec(calls, { dirty: true }) }), /uncommitted changes/);
+  assert.deepEqual(calls, ['ps -axo command=', 'git status --porcelain --untracked-files=no']);
+});
+
+test('selfUpdate refuses an exact version for a source checkout', async t => {
+  const { installDir } = installFixture(t);
+  mkdirSync(join(installDir, '.git'));
+  const calls = [];
+  await assert.rejects(selfUpdate(['0.7.9'], { installDir, exec: checkoutExec(calls) }), /tracks its own branch/);
+  assert.deepEqual(calls, []);
 });
 
 test('selfUpdate reports an up-to-date install without swapping', async t => {
@@ -172,6 +215,43 @@ test('compareVersion is numeric and puts a prerelease below its release', () => 
   assert.ok(compareVersion('0.7.9', '0.10.0') < 0);
 });
 
+test('selfUpdate updates a real git checkout whose branch advanced', async t => {
+  const parent = mkdtempSync(join(tmpdir(), 'dscode-git-'));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const origin = join(parent, 'origin.git'), work = join(parent, 'work');
+  const git = args => {
+    const result = spawnSync('git', ['-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false', ...args], { encoding: 'utf8' });
+    assert.equal(result.status, 0, `git ${args.join(' ')}: ${result.stderr}`);
+    return result.stdout ?? '';
+  };
+  git(['init', '--bare', origin]);
+  git(['clone', origin, work]);
+  writeFileSync(join(work, 'package.json'), JSON.stringify({ version: '0.7.13' }));
+  git(['-C', work, 'add', '.']);
+  git(['-C', work, 'commit', '-m', 'release 0.7.13']);
+  git(['-C', work, 'push', 'origin', 'HEAD']);
+  writeFileSync(join(work, 'package.json'), JSON.stringify({ version: '0.7.14' }));
+  git(['-C', work, 'commit', '-am', 'release 0.7.14']);
+  git(['-C', work, 'push', 'origin', 'HEAD']);
+  git(['-C', work, 'reset', '--hard', 'HEAD~1']);
+  // Real git, real pull; only the npm steps are stubbed so the test stays offline and fast.
+  const calls = [];
+  const exec = (argv, options = {}) => {
+    calls.push(argv.join(' '));
+    if (argv[0] === 'ps') return '  /sbin/launchd\n';
+    if (argv[0] !== 'git') return '';
+    const result = spawnSync('git', argv.slice(1), { cwd: options.cwd, encoding: 'utf8' });
+    if (result.status !== 0) throw Error(`git ${argv.slice(1).join(' ')} failed: ${result.stderr}`);
+    return result.stdout ?? '';
+  };
+  assert.deepEqual(await selfUpdate([], { installDir: work, exec }), { status: 'updated', from: '0.7.13', to: '0.7.14', method: 'git' });
+  assert.equal(JSON.parse(readFileSync(join(work, 'package.json'), 'utf8')).version, '0.7.14');
+  assert.deepEqual(calls.filter(line => line.startsWith('npm')), ['npm ci --ignore-scripts --no-audit', 'npm run setup']);
+  assert.deepEqual(await selfUpdate([], { installDir: work, exec }), { status: 'current', version: '0.7.14' }, 'a checkout already at the branch tip is left alone');
+  writeFileSync(join(work, 'package.json'), JSON.stringify({ version: '0.7.99' }));
+  await assert.rejects(selfUpdate([], { installDir: work, exec }), /uncommitted changes/);
+});
+
 test('launcherUpdateVersion prefers an explicit argument and asks npm otherwise', async t => {
   const release = { version: '0.7.8' };
   assert.equal(await launcherUpdateVersion('0.9.0', release), '0.9.0');
@@ -180,6 +260,10 @@ test('launcherUpdateVersion prefers an explicit argument and asks npm otherwise'
   const same = { ok: true, json: async () => ({ version: '0.7.8' }) };
   assert.equal(await launcherUpdateVersion(undefined, release, { fetchImpl: async () => same }), undefined);
   assert.equal(await launcherUpdateVersion(undefined, release, { fetchImpl: async () => ({ ok: false, status: 500 }) }), undefined, 'a failing registry falls back to the current launcher');
+  let asked;
+  assert.equal(await launcherUpdateVersion(undefined, release, { fetchImpl: async (url, init) => { asked = init.headers.accept; return newer; } }), '0.7.9');
+  assert.equal(asked, 'application/json', 'the abbreviated metadata type is answered 406 on the /latest endpoint, which silently disabled this check');
+  assert.equal(await launcherUpdateVersion('latest', release, { fetchImpl: async () => newer }), '0.7.9', '"latest" asks npm like no argument at all');
 });
 
 test('installLauncher runs npm install -g for the exact version and fails closed', async t => {
@@ -206,5 +290,6 @@ test('commandPlan wires launcher and profile versions for update', () => {
   assert.equal(commandPlan(['update', '0.7.9'], release, true).launcherUpdate, '0.7.9', 'an explicit version updates the launcher too');
   assert.equal(commandPlan(['update', '0.7.8'], release, true).launcherUpdate, undefined, 'the running launcher version needs no npm pass');
   assert.equal(commandPlan(['install', '0.7.9'], release, false).launcherUpdate, undefined, 'a fresh install never self-updates');
+  assert.deepEqual(commandPlan(['update', 'latest'], release, true).hub, commandPlan(['update'], release, true).hub, '"latest" plans the same upgrade as no argument');
   assert.deepEqual(commandPlan(['install', '0.7.9'], release, false).hub, ['profile', 'apply', 'dscode', '--version', '0.7.9', '--profile', 'dscode']);
 });

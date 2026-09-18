@@ -37,7 +37,9 @@ function fixture(t) {
   const processes = [], runtimePids = new Set();
   const start = args => {
     const manager = join(launcher, 'manager.mjs');
-    const program = `import {run} from ${JSON.stringify(manager)}; await run(${JSON.stringify(args)},${JSON.stringify(release)});`;
+    // The fixture never reads the registry: a successful npm check would run a real
+    // `npm install -g` in the middle of the unit suite.
+    const program = `globalThis.fetch = async () => { throw Error('offline fixture'); };\nimport {run} from ${JSON.stringify(manager)}; await run(${JSON.stringify(args)},${JSON.stringify(release)});`;
     const child = spawn(process.execPath, ['--input-type=module', '-e', program], {
       env: { ...process.env, DSCODE_HOME: home }, stdio: ['ignore', 'pipe', 'pipe'],
     });

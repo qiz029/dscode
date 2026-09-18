@@ -34,7 +34,9 @@ export async function fetchLatestVersion({ fetchImpl = fetch, timeoutMs = 8000 }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetchImpl(REGISTRY_URL, { headers: { accept: 'application/vnd.npm.install-v1+json' }, signal: controller.signal });
+    // Plain JSON: the registry answers 406 for the abbreviated metadata type on the
+    // `/latest` dist-tag endpoint.
+    const response = await fetchImpl(REGISTRY_URL, { headers: { accept: 'application/json' }, signal: controller.signal });
     if (!response.ok) return undefined;
     const version = (await response.json())?.version;
     return typeof version === 'string' && VERSION_PATTERN.test(version) ? version : undefined;

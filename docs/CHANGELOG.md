@@ -8,7 +8,14 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 ## [Unreleased]
 
-<!-- Add upcoming changes here. -->
+### Added
+
+- `dscode update` also updates a source checkout: `git pull --ff-only` on the branch it tracks, then `npm ci --ignore-scripts` and `npm run setup`. A tracked modification, a running session or an explicit version refuses before anything changes, so a failed update never half-applies and no install shape needs a separate upgrade ritual.
+
+### Fixed
+
+- The npm registry version check asked for abbreviated metadata (`application/vnd.npm.install-v1+json`) on the `/latest` dist-tag endpoint, which the registry answers with 406. The launcher's own self-update, the TUI's `/update` lookup and the startup update notice all failed silently, so an npm/Hub installation could never move itself to a newer release.
+- `dscode update latest` — the form the TUI's `/update` schedules when the user names no version — was rejected as "not an exact version" by the launcher and by the source/tar entry alike. It now means the newest release.
 
 ## [0.7.14] - 2026-09-17
 
