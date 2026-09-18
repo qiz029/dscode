@@ -43,7 +43,31 @@ export function patchCompactionPrefetch(text) {
 
 /** Apply every compaction patch to one pinned engine source, in marker order. */
 export function patchCompactionBasic(text) {
-  return patchCompactionPrefetch(patchCompactionPricing(text));
+  return patchCompactionReserve(patchCompactionPrefetch(patchCompactionPricing(text)));
+}
+
+// Completion reserve: an adapter that keeps the completion budget inside the context
+// window rejects the request once messages plus completion exceed the window, so the
+// messages may only reach window - maxTokens. Pricing the threshold from the full window
+// put it above that ceiling, which made the pressure path - and with it prefetch
+// compaction - unreachable: every compaction arrived as overflow recovery, which prunes
+// and then summarizes synchronously (v0.7.15 measured a 26.8 s stall per compaction).
+export function patchCompactionReserve(text) {
+  const marker = '// dscode-compaction-reserve-v1';
+  if (text.includes(marker)) return text;
+  text = replaceOnce(text,
+    'import { prefetchThresholdTokens as dscodePrefetchThresholdTokens, pricedCompactionPolicy as dscodePricedCompactionPolicy } from "../../../../plugins/compaction/threshold.mjs";',
+    'import { effectiveContextWindow as dscodeEffectiveContextWindow, prefetchThresholdTokens as dscodePrefetchThresholdTokens, pricedCompactionPolicy as dscodePricedCompactionPolicy } from "../../../../plugins/compaction/threshold.mjs";');
+  text = replaceOnce(text,
+    'const context = (await this.ctx.llm.resolveModelInfo(target.provider, target.model, signal)).context;',
+    'const dscodeModelInfo = await this.ctx.llm.resolveModelInfo(target.provider, target.model, signal);\n\t\tconst context = dscodeModelInfo.context;');
+  text = replaceOnce(text,
+    'const spec = resolveCompactSpec(await dscodePricedCompactionPolicy(this.config, policy), context.contextWindow);',
+    'const spec = resolveCompactSpec(await dscodePricedCompactionPolicy(this.config, policy), dscodeEffectiveContextWindow(context, dscodeModelInfo));');
+  text = replaceOnce(text,
+    'this.dscodePlanPrefetch(agent, measurement, spec, context.contextWindow, signal);',
+    'this.dscodePlanPrefetch(agent, measurement, spec, spec.contextWindow, signal);');
+  return marker + '\n' + text;
 }
 
 const DSCODE_REGION_ANCHOR = '\t/** Bind the effective token meter and dynamically dispatched summarizer hook. */\n\tregionDependencies() {';

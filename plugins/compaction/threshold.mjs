@@ -28,6 +28,28 @@ export function prefetchThresholdTokens(thresholdTokens, contextWindow, leadRati
   return Math.max(0, thresholdTokens - Math.floor(contextWindow * leadRatio));
 }
 
+/**
+ * The window the session messages may occupy. An adapter that keeps the completion
+ * budget inside the context window rejects a request once messages plus completion
+ * exceed it, so a threshold priced from the full window sits above a ceiling the
+ * provider enforces first: the pressure path never fires and every compaction arrives
+ * through overflow recovery, which summarizes synchronously and stalls the turn.
+ *
+ * A reported budget is always subtracted: every OpenAI-compatible adapter counts
+ * `max_tokens` toward the same limit, and an adapter that reports none keeps the full
+ * window, so the subtraction can only make compaction earlier than the low-level
+ * threshold would, never later than the provider allows.
+ * @param context - the resolved model info context, `{ contextWindow }`.
+ * @param modelInfo - the resolved model info, whose `defaultMaxTokens` is that budget.
+ */
+export function effectiveContextWindow(context, modelInfo) {
+  const contextWindow = context?.contextWindow;
+  if (!Number.isInteger(contextWindow) || contextWindow <= 0) return contextWindow;
+  const reserve = modelInfo?.defaultMaxTokens;
+  if (!Number.isInteger(reserve) || reserve <= 0 || reserve >= contextWindow) return contextWindow;
+  return contextWindow - reserve;
+}
+
 /** The route's threshold ratio, waiting for the OpenRouter listing when it has not loaded yet. */
 export async function pricedThresholdRatio(provider, model, now = Date.now()) {
   if (provider === 'openrouter') await ensureOpenRouterModels({ home: process.env.DSH_HOME, now });

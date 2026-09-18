@@ -39,7 +39,7 @@ import { internals, type TuiMount } from './internals.ts'
 import { syncModelCapabilities } from './model-capabilities.ts'
 import { ensureProviderRoute as dscodeEnsureProviderRoute, migrateOpenRouterProfile as dscodeMigrateOpenRouter } from '../../../plugins/providers/catalog.mjs'
 import { grokStatusSnapshot } from '../../../plugins/grok/status.mjs'
-import { compactionPreview as dscodeCompactionPreview, pricedThresholdRatio as dscodePricedThresholdRatio } from '../../../plugins/compaction/threshold.mjs'
+import { compactionPreview as dscodeCompactionPreview, effectiveContextWindow as dscodeEffectiveContextWindow, pricedThresholdRatio as dscodePricedThresholdRatio } from '../../../plugins/compaction/threshold.mjs'
 import { dscodeLoadOpenRouterAccountFor, dscodeManagementKeyStatus, dscodeSaveManagementKey, type DscodeCompactionPreview } from './app.ts'
 import { buildModelSelection, applyModelSelectionToConfig, loadModelDirectory, modelSelectionLabel, pendingModelSelection, resolveEffectiveSelection, type ModelRow } from './models.ts'
 import {
@@ -1605,14 +1605,14 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
   // before a switch that would compact the conversation.
   const dscodeCompactionPreviewFor = async (row: ModelRow): Promise<DscodeCompactionPreview | undefined> => {
     const meter = ctx.get('tokenMeter') as { measure?: (session: unknown) => { totalTokens: number } } | undefined
-    const llm = ctx.get('llm') as { resolveModelInfo?: (provider: string, model: string) => Promise<{ context?: { contextWindow?: number } } | undefined> } | undefined
+    const llm = ctx.get('llm') as { resolveModelInfo?: (provider: string, model: string) => Promise<{ context?: { contextWindow?: number }; defaultMaxTokens?: number } | undefined> } | undefined
     const session = active?.session
     if (session === undefined || typeof meter?.measure !== 'function' || typeof llm?.resolveModelInfo !== 'function') return undefined
     const used = meter.measure(session).totalTokens
     const info = await llm.resolveModelInfo(row.provider, row.model)
     return dscodeCompactionPreview({
       used,
-      contextWindow: info?.context?.contextWindow,
+      contextWindow: dscodeEffectiveContextWindow(info?.context, info),
       thresholdRatio: await dscodePricedThresholdRatio(row.provider, row.model),
       label: row.provider + '/' + row.model,
     })

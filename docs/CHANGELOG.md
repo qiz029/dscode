@@ -12,6 +12,10 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 - A custom sandbox runner (`plugins/tui-tools/sandbox-runner.mjs`, enabled by copying `config/harness.local.example.yml` to `config/harness.local.yml`) applies the built-in write policy plus the one grant the stock macOS profile lacks — `/dev/ptmx` — so a confined command can allocate a PTY again, and it inherits the enclosing profile instead of nesting a second one. With it configured, `npm run doctor`, `make verify`, `make release` and a nested dscode run from inside a dscode session instead of only from a normal terminal.
 
+### Fixed
+
+- Automatic compaction now prices its threshold against the room the messages actually have. An adapter that reserves its completion budget inside the context window (the DeepSeek adapter defaults to 256k, exposed as `defaultMaxTokens`) rejects a request once messages plus completion exceed the window, so 90% of the full 1M window (943,718 tokens) sat above the real message ceiling of 792,576: the pressure path could never come due, and every compaction arrived through overflow recovery, which prunes and then summarizes synchronously. The v0.7.15 event log shows what that costs: `compaction/summary` arrived 26.8 s after `compaction/start`, and prefetch compaction - which is only ever planned inside the pressure path - never ran in any of the five sessions that compacted on this machine. `effectiveContextWindow` subtracts the reserve, in both the engine patch and the `/model` switch preview, so the priced threshold (713,318) and the prefetch mark (634,061) land below the ceiling the provider enforces.
+
 ## [0.7.15] - 2026-09-17
 
 ### Added
