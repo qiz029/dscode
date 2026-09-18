@@ -25,11 +25,18 @@ export function applyJudgments(grade, items, text) {
   if (!items.length) return result;
   try {
     let parsed;
-    // A judge may wrap the object in a sentence or a fence; only the verdict object matters.
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}');
-    if (start < 0 || end <= start) throw Error('invalid JSON');
-    try { parsed = JSON.parse(text.slice(start, end + 1)); } catch { throw Error('invalid JSON'); }
+    // A judge may explain itself, quote the rubric, or fence its object, and an example
+    // brace can precede the real answer. Only the object carrying the required top-level
+    // key is the verdict, so try each of its occurrences, newest first.
+    for (let key = text.lastIndexOf('"verdicts"'); key >= 0; key = text.lastIndexOf('"verdicts"', key - 1)) {
+      const start = text.lastIndexOf('{', key);
+      const end = text.lastIndexOf('}');
+      if (start < 0 || end <= start) continue;
+      try { parsed = JSON.parse(text.slice(start, end + 1)); break; } catch { /* try the next occurrence */ }
+    }
+    if (parsed === undefined) {
+      try { parsed = JSON.parse(text); } catch { throw Error('invalid JSON'); }
+    }
     if (!parsed || Object.keys(parsed).join() !== 'verdicts' || !Array.isArray(parsed.verdicts) || parsed.verdicts.length !== items.length) throw Error('shape');
     const ids = new Set();
     for (const verdict of parsed.verdicts) {
