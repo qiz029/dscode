@@ -6,15 +6,17 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes under Unreleased. -->
 
-## [Unreleased]
+## [0.7.18] - 2026-09-19
 
 ### Added
 
 - Prebuilt release tarballs, `dscode-<version>-darwin-arm64.tar.gz` and `-darwin-x64.tar.gz`: the source tree with the locked `node_modules` already installed for that platform. The `curl | sh` installer and `dscode update` prefer the one for this machine, so installing and upgrading reach GitHub only and need neither npm nor an npm registry - a corporate registry proxy no longer ends the install at `npm ci`. The source tarball stays as the fallback for a platform without a prebuilt package, and `DSCODE_INSTALL_SOURCE=1` selects it. `npm run dist` builds all three (`DSCODE_PREBUILT_ARCHS` narrows or skips the prebuilt ones) and the release workflow and `make attach` upload them.
+- The compaction eval can now pick discriminating samples and measure context fidelity without extra model calls. `--baseline <run> [--baseline-policy full]` keeps only the cases an earlier run answered in full (every repeat, no infrastructure error) and writes the filtered dataset next to the new run so the breakdown tool can re-verify its hash. `retention` in `scores.jsonl` - the `Evidence kept` columns in `report.md` - compares each probe's verbatim source quote against the exact context its answer came from, on token boundaries and with no judge call. Policies may carry a `summaryInstruction` that the eval inserts before the upstream summarization instruction, so summary-content A/B comparisons need no product change; `eval/experiments/` records the first one, where a keep-the-quotes instruction changed neither fidelity nor accuracy.
 
 ### Fixed
 
 - A `.env` in the directory DSCODE was started from no longer affects the launch. Upstream read it as a project layer, so a workspace file injected its variables into the agent process, and one bootstrap-only name in it (any `DSH_*`, `NODE_OPTIONS`, a CA path) aborted the start with "only the launching environment may set". A pinned `dsh-app-boot` patch drops that layer on repository and tar installs; the installation's own `.env` is still loaded by the launcher.
+- Compaction eval probe replies that are not a single JSON object, or that are cut off before the JSON completes, now get one protocol retry carrying a correction hint and counted in `answerRetries`; the rejected reply never enters the session, so a retry cannot affect later checkpoints. LongMemEval evidence quotes are cut on word boundaries instead of mid-word, so token-boundary fidelity matching no longer reports a false loss on an uncompressed history; the corrected dataset is written to `eval/private/longmemeval/tier1-wordboundary.json` without overwriting the original.
 
 ## [0.7.17] - 2026-09-18
 

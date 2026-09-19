@@ -7,6 +7,22 @@ import ToolResultPruner from '@deepseek-ai/dsh-compaction-tool-result-pruner';
 import { LlmRuntime, BlockAssembler, createUserMessage, createAssistantMessage, createSystemMessage, createToolResultMessage } from '@deepseek-ai/dsh-llm';
 
 export const user = text => createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'plugin', plugin: 'dscode-eval' } });
+
+// The upstream engine exposes exactly one summarization hook, so an A/B of
+// summary content stays inside the eval instead of patching the product engine.
+// The instruction is inserted before the upstream instruction, which stays the
+// message that actually asks for the summary.
+export class EvalCompactionEngine extends DscodeCompactionEngine {
+  constructor(ctx, config, summaryInstruction) {
+    super(ctx, config);
+    this.dscodeSummaryInstruction = summaryInstruction;
+  }
+  async summarize(input, agent, signal) {
+    if (!this.dscodeSummaryInstruction) return super.summarize(input, agent, signal);
+    const messages = [...input.messages, createUserMessage({ content: [{ type: 'text', text: this.dscodeSummaryInstruction }], source: { kind: 'plugin', plugin: 'dscode-eval' } })];
+    return super.summarize({ ...input, messages }, agent, signal);
+  }
+}
 export const visibleMessages = session => session.surface.nodes.map(seq => session.deriveEventMessage(session.eventAt(seq))).filter(Boolean);
 
 // Detached sessions, no Host, user state, filesystem tools or live agent turns.
@@ -35,7 +51,7 @@ export function createRuntime({ policy, adapter, provider, model, judgeModel = m
     }
   });
   if (policy.compact) new ToolResultPruner(ctx, { thresholdChars: 8192, headChars: 4096, tailChars: 1024 });
-  const engine = policy.compact ? new DscodeCompactionEngine(ctx, { auto: false, thresholdRatio: policy.thresholdRatio, retainRatio: policy.retainRatio, maxTokens, compactionRetries: 1 }) : null;
+  const engine = policy.compact ? new EvalCompactionEngine(ctx, { auto: false, thresholdRatio: policy.thresholdRatio, retainRatio: policy.retainRatio, maxTokens, compactionRetries: 1 }, policy.summaryInstruction) : null;
   const session = Session.create('compaction-eval');
   session.append('request/header', { header: { config: { provider, model }, ...(tools.length ? { tools } : {}) }, reason: 'initial' });
   const agent = { session, options: { provider, model } };

@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { validateDataset, validatePolicies, gradeResponse, probePrompt, hash } from '../fixture.mjs';
 import { OfflineAdapter, BudgetAdapter, deepseekAdapter } from '../adapters.mjs';
 import { createRuntime, visibleMessages, user } from '../runtime.mjs';
-import { runEvaluation } from '../runner.mjs';
+import { runEvaluation, selectBaselineCases } from '../runner.mjs';
+import { measureRetention } from '../retention.mjs';
 import { summarize } from '../report.mjs';
 
 const dataset = JSON.parse(readFileSync(new URL('../fixtures/synthetic.json', import.meta.url)));
@@ -299,4 +300,94 @@ test('a threshold that arrives mid-prefetch waits under the compaction indicator
   assert(result !== null, 'the commit resolves once the prefetch finishes');
   assert.equal(events('compaction/end'), 1);
   assert.equal(adapter.compactions, 1);
+});
+
+test('retention counts verdict-free evidence survival in the probe context', () => {
+  const messages = [{ role: 'user', content: [{ type: 'text', text: 'I met Sophia at a coffee shop in the city.' }] }];
+  const probes = [{ id: 'where', category: 'recall', question: 'Where?', accept: ['a coffee shop'], evidence: [{ stage: 'checkpoint', message: 0, quote: 'a coffee shop in the city' }] }];
+  const kept = measureRetention(messages, probes);
+  assert.deepEqual([kept.quotes, kept.retained, kept.quoteRatio], [1, 1, 1]);
+  const lost = measureRetention([{ role: 'user', content: [{ type: 'text', text: 'Earlier work has been summarized.' }] }], probes);
+  assert.deepEqual([lost.quotes, lost.retained, lost.termRatio], [1, 0, 0]);
+  // A file name that only survives inside a longer identifier is not retained;
+  // the looser term ratio may still credit the shared word.
+  const partial = measureRetention([{ role: 'user', content: [{ type: 'text', text: 'See login.tsx for details.' }] }], [{ id: 'f', category: 'artifact', question: 'Which file?', accept: ['login.ts'], evidence: [{ stage: 'checkpoint', message: 0, quote: 'login.ts' }] }]);
+  assert.equal(partial.retained, 0);
+  assert.equal(measureRetention(messages, [{ id: 'none', category: 'recall', question: 'q', accept: ['a'] }]), null);
+});
+
+test('retention detects evidence the native compressor summarized away', async () => {
+  const probes = [{ id: 'where', category: 'recall', question: 'Where did I meet Sophia?', accept: ['a coffee shop in the city'], evidence: [{ stage: 'checkpoint', message: 0, quote: 'I met Sophia at a coffee shop in the city' }] }];
+  const observe = async policy => {
+    const runtime = createRuntime({ policy, adapter: new OfflineAdapter(16384), provider: 'eval-offline', model: 'fixture', contextWindow: 16384 });
+    try {
+      runtime.initialize('Answer from history only.');
+      await runtime.append({ role: 'user', text: 'I met Sophia at a coffee shop in the city.' }, signal());
+      for (let n = 0; n < 16; n++) await runtime.append({ role: 'user', text: 'Filler session about unrelated topics. '.repeat(60) }, signal());
+      return { compacted: runtime.session.snapshotEvents().some(event => event.type === 'compaction/summary'), retention: measureRetention(visibleMessages(runtime.session), probes) };
+    } finally { await runtime.close(); }
+  };
+  const kept = await observe(policies.find(item => item.id === 'full'));
+  const lost = await observe(policies.find(item => item.id === 'controlled-25'));
+  assert.equal(kept.compacted, false); assert.equal(lost.compacted, true);
+  assert.deepEqual([kept.retention.quotes, kept.retention.retained], [1, 1]);
+  assert.deepEqual([lost.retention.quotes, lost.retention.retained], [1, 0]);
+  assert(lost.retention.termRatio < kept.retention.termRatio);
+});
+test('one protocol retry recovers a malformed probe reply without entering the history', async t => {
+  let replies = 0;
+  class Flaky extends OfflineAdapter {
+    async *stream(options) {
+      if (options.purpose !== 'compaction' && ++replies === 1) {
+        yield { type: 'block-start', index: 0, blockType: 'text' };
+        yield { type: 'block-end', index: 0, block: { type: 'text', text: 'I would say run tests.' } };
+        yield { type: 'finish', reason: { kind: 'stop' } };
+        return;
+      }
+      yield* super.stream(options);
+    }
+  }
+  const result = await runEvaluation({ dataset: tiny(), policies: [policies[0]], adapterFactory: () => new Flaky(16384), output: join(directory(t), 'retry') });
+  assert.equal(result.rows[0].answerRetries, 1);
+  assert.equal(result.rows[0].grade.passed, 1);
+  assert.equal(result.manifest.status, 'completed');
+  assert.equal(result.rows[0].retention, null);
+  const saved = readFileSync(join(result.output, 'contexts.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(saved[0].response, '{"answers":{"next":"run tests"}}');
+  assert(!JSON.stringify(saved[0].messages).includes('I would say run tests.'));
+});
+
+test('baseline selection keeps only cases the full-context policy answered completely', t => {
+  const file = join(directory(t), 'scores.jsonl');
+  const line = (item, policy, passed, total, error = null, repeat = 1) => JSON.stringify({ case: item, repeat, policy, stage: 'checkpoint', error, grade: { passed, total }, compactions: 0, prunes: 0 });
+  writeFileSync(file, [
+    line('keep', 'full', 1, 1),
+    line('keep', 'compact-80', 0, 1),
+    line('drop', 'full', 0, 1),
+    line('errored', 'full', 0, 1, 'invalid-answer-json'),
+    line('missing', 'compact-80', 1, 1),
+    line('flaky-repeat', 'full', 1, 1, null, 1),
+    line('flaky-repeat', 'full', 0, 1, null, 2),
+  ].join('\n') + '\n');
+  const dataset = { version: 2, id: 'selection', cases: [{ id: 'keep' }, { id: 'drop' }, { id: 'errored' }, { id: 'missing' }, { id: 'flaky-repeat' }] };
+  const picked = selectBaselineCases(dataset, file);
+  assert.deepEqual(picked.dataset.cases.map(item => item.id), ['keep']);
+  assert.deepEqual(picked.selection, { source: file, policy: 'full', selected: 1, total: 5 });
+  assert.throws(() => selectBaselineCases(dataset, file, 'compact-90'), /passes every probe/);
+});
+
+test('a summary instruction variant changes only the compaction request', async t => {
+  const requests = [];
+  class Capture extends OfflineAdapter {
+    async *stream(options) { requests.push(structuredClone({ purpose: options.purpose, messages: options.messages })); yield* super.stream(options); }
+  }
+  const variant = { id: 'keepfacts', compact: true, thresholdRatio: 0.25, retainRatio: 0.064, summaryInstruction: 'PRESERVE_QUOTABLE_FACTS_CANARY' };
+  const input = structuredClone(dataset); input.cases = [input.cases[0]];
+  const result = await runEvaluation({ dataset: input, policies: [variant], adapterFactory: () => new Capture(16384), output: join(directory(t), 'summary-instruction') });
+  assert(summarize(result.rows)[0].compactions > 0);
+  const summaries = requests.filter(request => request.purpose === 'compaction');
+  assert(summaries.length > 0);
+  assert(summaries.every(request => JSON.stringify(request).includes('PRESERVE_QUOTABLE_FACTS_CANARY')));
+  assert(requests.filter(request => request.purpose !== 'compaction').every(request => !JSON.stringify(request).includes('PRESERVE_QUOTABLE_FACTS_CANARY')));
+  assert.throws(() => validatePolicies([{ ...variant, summaryInstruction: '' }]), /summaryInstruction/);
 });

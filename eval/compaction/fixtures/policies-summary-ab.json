@@ -1,0 +1,11 @@
+[
+  { "id": "full", "compact": false },
+  { "id": "compact-80", "compact": true, "thresholdRatio": 0.8, "retainRatio": 0.16 },
+  {
+    "id": "compact-80-keepfacts",
+    "compact": true,
+    "thresholdRatio": 0.8,
+    "retainRatio": 0.16,
+    "summaryInstruction": "Additional requirement for the summary you are about to write: keep every concrete fact a later question might need as a self-contained sentence that can be quoted back verbatim. Preserve names, numbers, dates, places, file paths, error codes and stated user preferences in their original wording instead of paraphrasing or generalizing them away. Dropping such a fact is worse than returning a longer summary."
+  }
+]

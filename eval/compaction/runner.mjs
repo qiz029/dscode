@@ -1,16 +1,17 @@
 import { readFileSync, readdirSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { hash, integer, validateDataset, validatePolicies, probePrompt, gradeResponse } from './fixture.mjs';
 import { OfflineAdapter, BudgetAdapter, deepseekAdapter } from './adapters.mjs';
 import { createRuntime, visibleMessages } from './runtime.mjs';
+import { measureRetention } from './retention.mjs';
 import { markdownReport, summarize } from './report.mjs';
 import { JUDGE_PROTOCOL, semanticGrade, calibrateJudge } from './judge.mjs';
 
 const here = import.meta.dirname;
-export async function runEvaluation({ dataset, policies, backend = 'offline', provider, judgeModel, model = backend === 'offline' ? 'scripted-state-fixture' : 'deepseek-flash', contextWindow = 16384, repeats = 1, maxCalls = 200, timeoutMs = 60000, output, apiKey, baseURL, thinking = 'disabled', signal = new AbortController().signal, adapterFactory, onProgress = () => {} }) {
+export async function runEvaluation({ dataset, policies, backend = 'offline', provider, judgeModel, model = backend === 'offline' ? 'scripted-state-fixture' : 'deepseek-flash', contextWindow = 16384, repeats = 1, maxCalls = 200, timeoutMs = 60000, output, apiKey, baseURL, thinking = 'disabled', signal = new AbortController().signal, adapterFactory, selection = null, onProgress = () => {} }) {
   dataset = validateDataset(dataset); policies = validatePolicies(policies);
   const routedProvider = provider ?? (backend === 'offline' ? 'eval-offline' : 'deepseek-official');
   integer(contextWindow, 'contextWindow', 4096); integer(repeats, 'repeats', 1, 20); integer(maxCalls, 'maxCalls', 1, 10000); integer(timeoutMs, 'timeoutMs', 1, 300000);
@@ -36,6 +37,7 @@ export async function runEvaluation({ dataset, policies, backend = 'offline', pr
     node: process.version,
     endpoint: backend === 'deepseek' ? (baseURL ?? 'https://api.deepseek.com') : null,
     design: 'fixed-transcript-replay-and-recall',
+    selection,
     grading: hasSemantic ? { protocol: JUDGE_PROTOCOL, answerProtocol: 'recall-v2-reference-and-fenced-json', judgeModel: judgeModel ?? model, calibrationHash: hash(calibration), blindToPolicy: true } : { protocol: 'exact-v1' },
     modelRevision: 'Requested model id only; provider aliases may change.',
   };
@@ -43,6 +45,9 @@ export async function runEvaluation({ dataset, policies, backend = 'offline', pr
   const json = (name, value) => writeFileSync(join(output, name), JSON.stringify(value, null, 2) + '\n');
   const append = (name, value) => appendFileSync(join(output, name), JSON.stringify(value) + '\n');
   json('manifest.json', manifest);
+  // A filtered run ships the exact dataset it used so the breakdown tool can
+  // re-verify the manifest hash.
+  if (selection) json('dataset.json', dataset);
   let failure;
   try {
     if (hasSemantic) {
@@ -69,12 +74,32 @@ export async function runEvaluation({ dataset, policies, backend = 'offline', pr
           for (const stage of item.stages) {
             signal.throwIfAborted(); stageId = stage.id;
             const seq = runtime.session.seq;
-            let response = '', error = broken ? 'prior-stage-failed' : null;
+            let response = '', error = broken ? 'prior-stage-failed' : null, answerRetries = 0;
+            let grade = gradeResponse('', stage.probes);
             const beforeTokens = runtime.measure().totalTokens;
+            // A truncated or malformed reply is a protocol failure, not a model
+            // answer: it gets one retry carrying a correction hint. The rejected
+            // reply is never appended to the session, so a retry cannot leak an
+            // earlier answer into a later checkpoint.
+            const probeOnce = async correction => {
+              try { return { response: await runtime.answer(probePrompt(stage.probes, { correction }), signal), truncated: false }; }
+              catch (cause) {
+                if (cause.message === 'incomplete-probe-response') return { response: '', truncated: true };
+                throw cause;
+              }
+            };
             try {
               if (!broken) {
                 for (const message of stage.messages) await runtime.append(message, signal);
-                response = await runtime.answer(probePrompt(stage.probes), signal);
+                let attempt = await probeOnce();
+                grade = gradeResponse(attempt.response, stage.probes);
+                if ((attempt.truncated || grade.parseError) && !signal.aborted && budget.used < budget.limit) {
+                  answerRetries = 1;
+                  attempt = await probeOnce(grade.parseError ?? 'the reply was cut off before the JSON object was complete');
+                  grade = gradeResponse(attempt.response, stage.probes);
+                }
+                if (attempt.truncated) throw Error('incomplete-probe-response');
+                response = attempt.response;
               }
             } catch (cause) {
               if (signal.aborted || budget.used >= budget.limit) throw cause;
@@ -82,20 +107,24 @@ export async function runEvaluation({ dataset, policies, backend = 'offline', pr
               const knownCodes = ['MAX_TOKENS', 'MISSING_CREDENTIAL', 'INVALID_CREDENTIAL', 'CONTEXT_WINDOW_EXCEEDED', 'QUOTA_EXCEEDED'];
               error = knownCodes.includes(cause.code) ? cause.code : ['probe-context-overflow', 'incomplete-probe-response'].includes(cause.message) ? cause.message : 'runtime-or-provider-error';
               broken = true;
+              grade = gradeResponse('', stage.probes);
             }
             const events = runtime.session.snapshotEvents().slice(seq);
-            let grade = gradeResponse(response, stage.probes);
             if (!error && grade.parseError) error = grade.parseError;
             if (!error && hasSemantic) {
               grade = await semanticGrade(grade, stage.probes, runtime.judge, signal, evidence => append('judgments.jsonl', { ...identity, stage: stage.id, ...evidence }));
               if (grade.judgeError) error = grade.judgeError;
             }
-            const row = { ...identity, stage: stage.id, beforeTokens, afterTokens: runtime.measure().totalTokens, compactions: events.filter(event => event.type === 'compaction/summary').length, prunes: events.filter(event => event.type === 'compaction/prune').length, error, grade };
+            // Probes never enter the session, so this projection is the exact
+            // context the answer was produced from. Retention is measured
+            // deterministically, without any extra provider call.
+            const messages = visibleMessages(runtime.session);
+            const row = { ...identity, stage: stage.id, beforeTokens, afterTokens: runtime.measure().totalTokens, compactions: events.filter(event => event.type === 'compaction/summary').length, prunes: events.filter(event => event.type === 'compaction/prune').length, error, answerRetries, retention: measureRetention(messages, stage.probes), grade };
             rows.push(row); append('scores.jsonl', row);
             // Native failure events include an error chain which can contain
             // provider response bodies. Persist only the bounded failure code.
             const compactions = events.filter(event => event.type.startsWith('compaction/')).map(event => event.data.error === undefined ? event : { ...event, data: { ...event.data, error: error ?? 'compaction-failed' } });
-            append('contexts.jsonl', { ...identity, stage: stage.id, messages: visibleMessages(runtime.session), compactions, response });
+            append('contexts.jsonl', { ...identity, stage: stage.id, messages, compactions, response });
             onProgress(row);
           }
         } finally { await runtime.close(); }
@@ -112,19 +141,46 @@ export async function runEvaluation({ dataset, policies, backend = 'offline', pr
   return { output, manifest, rows, calls };
 }
 
+// Keep only cases an earlier full-context run answered completely: those are the
+// probes that can actually distinguish compaction policies from no compaction.
+export function selectBaselineCases(dataset, baselinePath, policyId = 'full') {
+  const file = baselinePath.endsWith('.jsonl') ? baselinePath : join(baselinePath, 'scores.jsonl');
+  const rows = readFileSync(file, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
+  // A case must carry every repeat the baseline itself planned; a run that was
+  // cut short would otherwise qualify on partial evidence.
+  let expectedRuns = null;
+  try { expectedRuns = JSON.parse(readFileSync(join(dirname(file), 'manifest.json'), 'utf8')).repeats ?? null; } catch { /* older run without a manifest */ }
+  const totals = new Map();
+  for (const row of rows) {
+    if (row.policy !== policyId) continue;
+    // Every repeat must pass in full: a case that failed once would otherwise be
+    // kept by another repeat's scores and stop being discriminating.
+    const entry = totals.get(row.case) ?? { runs: 0, failed: 0 };
+    entry.runs += 1;
+    if (row.error || row.grade.passed !== row.grade.total) entry.failed += 1;
+    totals.set(row.case, entry);
+  }
+  const cases = dataset.cases.filter(item => { const entry = totals.get(item.id); return entry !== undefined && entry.runs > 0 && entry.failed === 0 && (expectedRuns === null || entry.runs >= expectedRuns); });
+  if (!cases.length) throw Error(`No case passes every probe under policy ${policyId} in ${file}`);
+  return { dataset: { ...dataset, cases }, selection: { source: file, policy: policyId, selected: cases.length, total: dataset.cases.length } };
+}
+
 export async function main(args = process.argv.slice(2)) {
   const { values } = parseArgs({ args, options: {
     backend: { type: 'string', default: 'offline' }, dataset: { type: 'string' }, policies: { type: 'string' }, model: { type: 'string' }, out: { type: 'string' },
-    'context-window': { type: 'string', default: '16384' }, repeats: { type: 'string', default: '1' }, 'max-calls': { type: 'string', default: '200' }, 'timeout-ms': { type: 'string', default: '60000' }, 'base-url': { type: 'string' }, thinking: { type: 'string', default: 'disabled' }, help: { type: 'boolean' },
+    baseline: { type: 'string' }, 'baseline-policy': { type: 'string', default: 'full' }, 'context-window': { type: 'string', default: '16384' }, repeats: { type: 'string', default: '1' }, 'max-calls': { type: 'string', default: '200' }, 'timeout-ms': { type: 'string', default: '60000' }, 'base-url': { type: 'string' }, thinking: { type: 'string', default: 'disabled' }, help: { type: 'boolean' },
   } });
-  if (values.help) { console.log('node eval/compaction/runner.mjs [--backend offline|deepseek] [--dataset path] [--policies path] [--context-window 16384] [--repeats 1] [--max-calls 200] [--timeout-ms 60000] [--model deepseek-flash] [--base-url https://api.deepseek.com] [--thinking disabled|enabled] [--out new-directory]'); return; }
+  if (values.help) { console.log('node eval/compaction/runner.mjs [--backend offline|deepseek] [--dataset path] [--policies path] [--context-window 16384] [--repeats 1] [--max-calls 200] [--timeout-ms 60000] [--model deepseek-flash] [--base-url https://api.deepseek.com] [--thinking disabled|enabled] [--baseline earlier-run-directory] [--baseline-policy full] [--out new-directory]'); return; }
   if (!['disabled', 'enabled'].includes(values.thinking)) throw Error('thinking must be disabled or enabled');
   const controller = new AbortController();
   const abort = () => controller.abort(Error('eval-interrupted'));
   process.once('SIGINT', abort); process.once('SIGTERM', abort);
   try {
     const fixtureName = values.backend === 'offline' ? 'synthetic.json' : 'coding-v2.json';
-    const result = await runEvaluation({ dataset: JSON.parse(readFileSync(values.dataset ?? join(here, 'fixtures', fixtureName), 'utf8')), policies: JSON.parse(readFileSync(values.policies ?? join(here, 'policies.json'), 'utf8')), backend: values.backend, model: values.model, contextWindow: Number(values['context-window']), repeats: Number(values.repeats), maxCalls: Number(values['max-calls']), timeoutMs: Number(values['timeout-ms']), output: values.out, apiKey: process.env.DEEPSEEK_API_KEY, baseURL: values['base-url'], thinking: values.thinking, signal: controller.signal, onProgress: row => console.log(`${row.case}/${row.policy}/${row.stage}: ${row.grade.passed}/${row.grade.total}; summaries=${row.compactions}${row.error ? '; ' + row.error : ''}`) });
+    let dataset = JSON.parse(readFileSync(values.dataset ?? join(here, 'fixtures', fixtureName), 'utf8'));
+    let selection = null;
+    if (values.baseline) { const picked = selectBaselineCases(dataset, values.baseline, values['baseline-policy']); dataset = picked.dataset; selection = picked.selection; }
+    const result = await runEvaluation({ dataset, selection, policies: JSON.parse(readFileSync(values.policies ?? join(here, 'policies.json'), 'utf8')), backend: values.backend, model: values.model, contextWindow: Number(values['context-window']), repeats: Number(values.repeats), maxCalls: Number(values['max-calls']), timeoutMs: Number(values['timeout-ms']), output: values.out, apiKey: process.env.DEEPSEEK_API_KEY, baseURL: values['base-url'], thinking: values.thinking, signal: controller.signal, onProgress: row => console.log(`${row.case}/${row.policy}/${row.stage}: ${row.grade.passed}/${row.grade.total}; summaries=${row.compactions}${row.error ? '; ' + row.error : ''}`) });
     console.log(`Report: ${join(result.output, 'report.md')}`);
     if (result.manifest.status !== 'completed' || result.rows.some(row => row.grade.passed < row.grade.total)) process.exitCode = 1;
   } finally { process.removeListener('SIGINT', abort); process.removeListener('SIGTERM', abort); }

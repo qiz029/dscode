@@ -63,15 +63,20 @@ export function validatePolicies(input) {
   unique(input.map(policy => policy.id), 'policy id');
   for (const policy of input) {
     if (!nonempty(policy.id) || typeof policy.compact !== 'boolean') throw Error('Policy needs id and compact');
-    keys(policy, ['id', 'compact', 'thresholdRatio', 'retainRatio'], 'policy');
+    keys(policy, ['id', 'compact', 'thresholdRatio', 'retainRatio', 'summaryInstruction'], 'policy');
+    if (policy.summaryInstruction !== undefined && !nonempty(policy.summaryInstruction)) throw Error('summaryInstruction must be a nonempty string');
     if (policy.compact && !(Number.isFinite(policy.thresholdRatio) && policy.thresholdRatio > 0 && policy.thresholdRatio < 1 && Number.isFinite(policy.retainRatio) && policy.retainRatio >= 0 && policy.retainRatio < policy.thresholdRatio)) throw Error('Policy requires 0 <= retainRatio < thresholdRatio < 1');
   }
   return structuredClone(input);
 }
 
-// Gold answers never enter this projection or the compressor's input.
-export function probePrompt(probes) {
-  return 'Answer using only the supplied conversation. Return exactly a JSON object {"answers":{"probe-id":"answer"}}. Use concise literal values, paths or phrases; no explanation. If unknown, answer "UNKNOWN".\n' + JSON.stringify(probes.map(({ id, question }) => ({ id, question })));
+// Gold answers never enter this projection or the compressor's input. The
+// optional correction is an eval-side retry hint: it never names a gold answer
+// and is only appended after a reply failed the answer protocol.
+export function probePrompt(probes, { correction } = {}) {
+  const instruction = 'Answer using only the supplied conversation. Return exactly a JSON object {"answers":{"probe-id":"answer"}}. Use concise literal values, paths or phrases; no explanation. If unknown, answer "UNKNOWN".';
+  const hint = correction ? `\nYour previous reply was rejected (${correction}) and was not recorded as an answer. Reply with ONLY that JSON object: no prose, no markdown fences, no extra keys.` : '';
+  return instruction + hint + '\n' + JSON.stringify(probes.map(({ id, question }) => ({ id, question })));
 }
 // Preserve case: file paths, identifiers and error strings may be case-sensitive.
 const normalize = text => text.normalize('NFKC').trim().replace(/\s+/gu, ' ');

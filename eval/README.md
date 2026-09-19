@@ -70,6 +70,36 @@ npm run eval:compaction -- --backend deepseek \
 
 默认采用 **16,384 token 的缩小窗口**，方便便宜地触发压缩、检查退化；它不是对 1M 窗口最佳阈值的验证。要研究 250K / 400K / 800K，必须用 `--context-window 1000000` 和确实达到相应长度的会话，并检查压缩次数。
 
+### 证据保真度与有区分度样本
+
+每个检查点都会在模型实际看到的上下文上确定性地测量「证据保真度」（报告里的 `Evidence kept`）：v2 探针的 `evidence.quote` 是逐字原文，指标统计这些原句（quotes）以及其中 ≥4 字符的词（terms）是否仍然存在。它不调用模型、不调用裁判，因此没有采样方差，可以每次运行都记录。解读方式：摘要留住原句时通过率接近 `full`；原句丢失时探针几乎必然失败（在 longmemeval tier1 的实测里为 4%–6%）。它衡量的是「摘要是否保住原文」，不是摘要可读性，也不证明判分正确。terms 只是筛查信号：无关句子复用同一个常用词也会把它抬高，判断事实是否仍然可用要看 quotes。
+
+已有一次 `full` 运行后，可以用它只保留能区分策略的样本，避免在没有区分度的探针上重复花钱：
+
+```bash
+npm run eval:compaction -- --backend deepseek --model deepseek-flash \
+  --dataset eval/private/longmemeval/tier1.json --context-window 131072 \
+  --baseline eval/results/<full-run> --baseline-policy full \
+  --repeats 3 --max-calls 900 --out eval/results/<new-run>
+```
+
+`--baseline` 读取该次运行的 `scores.jsonl`，只保留在指定策略下每个探针都通过、没有基础设施错误、且 repeat 数达到基线 `manifest.json` 所记录 repeats 的 case；筛选后的数据集会写入新运行的 `dataset.json`，`manifest.json` 的 `selection` 记录来源与数量，便于复核工具重新校验 hash。
+
+探针答复若不是单个合法 JSON 对象、或流在完成 JSON 之前被截断，会带纠正提示重试一次（计入调用上限），并在 `scores.jsonl` 的 `answerRetries` 记录；被拒绝的答复不会进入会话，因此不影响后续检查点。
+
+上面的 `Evidence kept` 按原句（quotes）衡量「原文是否还在」，因此对**摘要改写**天然不敏感：摘要即使保住了事实，原句也会消失。它适合筛查与机制解释；判断「换成保事实的摘要是否有用」要用同一 run 内配对后的探针通过率（配合 `--repeats 3`），不要只看 quotes。同一 case 同策略在不同 run 之间会翻转，跨 run 比较（尤其换后端或换模型快照）无效。
+
+摘要内容的 A/B 不需要改产品代码：引擎只暴露一个 `summarize()` 钩子，eval 通过策略里的 `summaryInstruction` 字段在压缩请求中追加一条指示。现成对照见 `compaction/fixtures/policies-summary-ab.json`（`full` / `compact-80` / `compact-80-keepfacts`）：
+
+```bash
+npm run eval:compaction -- --backend deepseek --model deepseek-flash \
+  --dataset eval/private/longmemeval/tier1-wordboundary.json \
+  --policies eval/compaction/fixtures/policies-summary-ab.json \
+  --context-window 131072 --repeats 3 \
+  --baseline eval/results/<full-run> --baseline-policy full \
+  --max-calls 2400 --out eval/results/<ab-run>
+```
+
 ## 编码任务续做评测
 
 `continuation/fixtures/cases.json` 有重试头解析、分页窗口、配额预留三个合成任务。每个 case 包含早期任务说明、最新纠正、初始源码与可见测试，以及期望占用的窗口比例。运行时按 `--context-window` 生成相同的中性检查记录，让策略在其真实配置阈值触发；case 的源码和任务说明不会因策略不同而改变。当前三项压力目标约为 53%、84%、86%，因此 1M 运行可触及 25%、40%、80% 三档。

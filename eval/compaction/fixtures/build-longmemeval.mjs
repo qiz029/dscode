@@ -39,10 +39,14 @@ const tokensOf = chars => Math.ceil(chars * TOKENS_PER_CHAR);
 const charsOf = sessions => sessions.reduce((total, session) => total + session.chars, 0);
 const evenly = (list, count) => count >= list.length ? [...list] : Array.from({ length: count }, (_, index) => list[Math.floor(index * list.length / count)]);
 
-/** A quote that appears verbatim inside one emitted message text. */
+/** A whole-token quote that appears verbatim inside one emitted message text. */
 function quoteFrom(text) {
   const line = text.split('\n').map(value => value.trim()).find(value => value.length >= 24);
-  return (line ?? text.trim()).slice(0, 160);
+  const full = line ?? text.trim();
+  if (full.length <= 160) return full;
+  // Retention matches whole tokens, so never cut a word in half.
+  const boundary = full.slice(0, 160).search(/\s+\S*$/u);
+  return boundary >= 24 ? full.slice(0, boundary).trim() : full.slice(0, 160);
 }
 
 /** Normalize one history into the compaction band by dropping or repeating filler sessions. */

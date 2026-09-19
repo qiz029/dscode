@@ -25,8 +25,10 @@ export class OfflineAdapter extends LlmAdapter {
     let text;
     if (options.purpose === 'compaction') text = this.loseState ? 'Earlier work has been summarized.' : `<state>${JSON.stringify(state)}</state>`;
     else {
+      // The probe list is the last line of the prompt, so retry hints may be
+      // inserted before it without changing what this double parses.
       const prompt = options.messages.at(-1).content[0].text;
-      const probes = JSON.parse(prompt.slice(prompt.indexOf('\n') + 1));
+      const probes = JSON.parse(prompt.trim().split('\n').at(-1));
       text = JSON.stringify({ answers: Object.fromEntries(probes.map(probe => [probe.id, state[probe.id] ?? 'UNKNOWN'])) });
     }
     yield { type: 'block-start', index: 0, blockType: 'text' };
