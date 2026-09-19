@@ -6,6 +6,8 @@
 
 **在终端里写代码，让脚本接入当前会话，让 agent 之间交接任务。**
 
+![观看 DSCODE 90 秒演示](assets/demo.gif)
+
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111827?logo=apple&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-22.19%2B%20%7C%2024%2B-43853D?logo=node.js&logoColor=white)
 ![DSH](https://img.shields.io/badge/DSH-0.1.5--rc.2-2563EB)

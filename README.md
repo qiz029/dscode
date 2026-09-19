@@ -6,6 +6,8 @@
 
 **Write code in your terminal. Plug scripts into a live session. Hand tasks between agents.**
 
+![Watch the 90-second DSCODE demo](assets/demo.gif)
+
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111827?logo=apple&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-22.19%2B%20%7C%2024%2B-43853D?logo=node.js&logoColor=white)
 ![DSH](https://img.shields.io/badge/DSH-0.1.5--rc.2-2563EB)
