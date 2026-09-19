@@ -145,6 +145,19 @@ export function patchSubagentDriver(text) {
   return '// dscode-child-cwd-v1\n' + replaceOnce(text, 'meta: childSessionMeta(parent, childDepth, seed !== void 0),', 'meta: childSessionMeta(parent, childDepth, seed !== void 0, request.workspaceCwd),');
 }
 /**
+ * The invoking directory's `.env` belongs to the project being worked on, not to DSCODE:
+ * upstream reads it as a "project layer", so a workspace file could inject variables into
+ * the agent process, and one bootstrap-only name in it (any `DSH_*`, `NODE_OPTIONS`, a CA
+ * path) aborted the launch. DSCODE's own settings come from the installation's `.env`,
+ * which the launcher loads; only the Harness-home layer is still read here.
+ */
+export function patchAppBoot(text) {
+  if (text.includes('// dscode-no-project-env-v1')) return text;
+  text = replaceOnce(text, '\tconst project = readEnvLayer(binName, cwd, warn, home);', '\tconst project = void 0;');
+  text = replaceOnce(text, '\tconst user = home === resolve(cwd) ? void 0 : readEnvLayer(binName, home, warn, home);', '\tconst user = readEnvLayer(binName, home, warn, home);');
+  return '// dscode-no-project-env-v1\n' + text;
+}
+/**
  * Apply the pinned runtime patches to an installed dependency tree.
  * @param root - install root holding `node_modules`.
  * @param options - `requireMacStdin` fails when the macOS process inspector is absent
@@ -164,6 +177,17 @@ export function patchRuntime(root, { requireMacStdin = true } = {}) {
     if (before !== after) writeFileSync(path, after);
   }
   patchMacStdinPackage(root, { required: requireMacStdin });
+}
+
+// dsh-app-boot is host plane: a repository or tar install owns its copy, while a staged
+// release build vendors only plugin packages, so this runs from provision instead.
+export function patchAppBootPackage(root) {
+  const dir = join(root, 'node_modules/@deepseek-ai/dsh-app-boot');
+  if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== RUNTIME_VERSION) throw new Error('Revalidate runtime patches before upgrading dsh-app-boot');
+  const path = join(dir, 'lib/index.js');
+  const before = readFileSync(path, 'utf8');
+  const after = patchAppBoot(before);
+  if (before !== after) writeFileSync(path, after);
 }
 
 // The macOS process inspector lives in a content-hashed chunk, so find the file

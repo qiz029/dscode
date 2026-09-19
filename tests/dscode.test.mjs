@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { patchDeepSeek, patchBash, patchPersistent, patchSubagent, patchSubagentCore, patchSubagentDriver, patchTerminalBash, patchMacStdinPackage, RUNTIME_VERSION } from '../scripts/patch-runtime.mjs';
+import { patchDeepSeek, patchBash, patchPersistent, patchSubagent, patchSubagentCore, patchSubagentDriver, patchTerminalBash, patchAppBoot, patchMacStdinPackage, RUNTIME_VERSION } from '../scripts/patch-runtime.mjs';
 import { patchMacStdin, MAC_INSPECTOR_ANCHOR } from '../scripts/patch-mac-stdin.mjs';
 import { createTestRuntime } from '../scripts/test-runtime.mjs';
 import { pathToFileURL } from 'node:url';
@@ -105,7 +105,7 @@ test('the macOS stdin inspector is patched, reported unchanged, or refused loudl
 });
 
 test('pinned runtime patches are idempotent and reject unknown upstream code', () => {
-  for (const [name, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-subagent-in-process-driver', patchSubagentDriver], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash]]) {
+  for (const [name, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-subagent-in-process-driver', patchSubagentDriver], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash], ['dsh-app-boot', patchAppBoot]]) {
     const text = readFileSync(`${root}/node_modules/@deepseek-ai/${name}/lib/index.js`, 'utf8');
     assert.equal(patch(text), text);
     assert.throws(() => patch('unknown upstream'));

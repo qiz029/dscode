@@ -6,6 +6,12 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes under Unreleased. -->
 
+## [Unreleased]
+
+### Fixed
+
+- A `.env` in the directory DSCODE was started from no longer affects the launch. Upstream read it as a project layer, so a workspace file injected its variables into the agent process, and one bootstrap-only name in it (any `DSH_*`, `NODE_OPTIONS`, a CA path) aborted the start with "only the launching environment may set". A pinned `dsh-app-boot` patch drops that layer on repository and tar installs; the installation's own `.env` is still loaded by the launcher.
+
 ## [0.7.17] - 2026-09-18
 
 ### Changed

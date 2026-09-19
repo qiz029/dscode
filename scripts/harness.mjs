@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { validateHooks } from '../plugins/tui-tools/hooks.mjs';
 import { writeHookConfig } from '../plugins/tui-tools/hook-sources.mjs';
 import { ancestorSkillDirs, writeWorkspaceInstructions } from '../plugins/tui-tools/workspace-discovery.mjs';
-import { patchRuntime } from './patch-runtime.mjs';
+import { patchRuntime, patchAppBootPackage } from './patch-runtime.mjs';
 import { patchInkFrame } from './patch-ink.mjs';
 import { provisionPreset } from './preset.mjs';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, lstatSync, realpathSync } from 'node:fs';
@@ -25,6 +25,7 @@ export function provision(home = runtimeHome, { cwd = root, env = process.env } 
   // Ink owns the frame repaint; the vendored terminal cannot carry this one.
   patchInkFrame(root);
   patchRuntime(root);
+  patchAppBootPackage(root);
   const presets = provisionPreset(root, home);
   const hooksPath = join(root, 'config/hooks.local.json');
   if (!existsSync(hooksPath)) writeFileSync(hooksPath, '{"hooks": {}}\n', { mode: 0o600, flag: 'wx' });
