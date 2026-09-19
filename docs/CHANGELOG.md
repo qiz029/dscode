@@ -6,6 +6,17 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes under Unreleased. -->
 
+## [0.7.20] - 2026-09-19
+
+### Fixed
+
+- Jev judged every escalation without ever seeing the user's instruction. `contextFor` hands the retained instructions over as `{ seq, text }`, but `approvalState` read `message.content[].text`, so `userInstructions` was always empty and `authorized` never rose above 0.07 - a user-authorized release then read as unauthorized and asked the human every time. The state now accepts `{ text }`, a string `content` and a content-block array, and a string `content` no longer throws a `TypeError` that silently disabled Jev.
+
+### Changed
+
+- Jev scores `authorized` on the instruction alone, separately from how risky the action is: an action the instruction asks for scores high even when it is dangerous, and a risky action nobody asked for scores low. The instruction almost never names the exact command, so the question is about the task it asks for, with explicit disjoint bands (>=0.9 directly asks for the step, [0.6,0.9) a necessary step of a stated task, [0.2,0.6) plausibly part of it but optional or unclear, <0.2 not covered). This score is what lets the allow-direction guards defer to the reviewer model, so the overlap that could flip a decision either way is gone. `verdict.deny` narrows "publish something" to a publication the instruction did not ask for.
+
+
 ## [0.7.19] - 2026-09-19
 
 ### Changed

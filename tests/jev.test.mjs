@@ -97,6 +97,15 @@ test('the approval state carries the pending call and the retained instruction, 
   const state = approvalState({ action: { tool: 'bash', arguments: { command: 'rm -rf build' } }, context: { userMessages: [{ content: [{ text: 'Clean the build directory.' }] }] } });
   assert.match(state.pendingToolCall, /rm -rf build/);
   assert.equal(state.userInstructions, 'Clean the build directory.');
+  // `contextFor` hands instructions over as `{ seq, text }`; reading only
+  // `content` left Jev judging every escalation with no instruction at all.
+  const fromSession = approvalState({ action: { tool: 'bash', arguments: { command: 'make release' } }, context: { userMessages: [{ seq: 7, text: 'Ship the release.' }] } });
+  assert.equal(fromSession.userInstructions, 'Ship the release.');
+  const mixed = approvalState({ action: {}, context: { userMessages: [{ seq: 1, text: 'Ship it.' }, { content: [{ text: 'And tag it.' }] }] } });
+  assert.equal(mixed.userInstructions, 'Ship it.\n---\nAnd tag it.');
+  // A raw message may carry `content` as a plain string; that must not throw.
+  assert.equal(approvalState({ action: {}, context: { userMessages: [{ content: 'Ship it.' }] } }).userInstructions, 'Ship it.');
+  assert.equal(approvalState({ action: {}, context: { userMessages: [{ content: 42 }, {}] } }).userInstructions, '');
   const huge = approvalState({ action: 'x'.repeat(20000), context: {} });
   assert(huge.pendingToolCall.length < 8100);
   assert.match(huge.pendingToolCall, /truncated/);

