@@ -288,3 +288,24 @@ test('a cancellation during Jev does not start a reviewer request', async () => 
   assert.equal(f.requests.length, 0, 'no reviewer call may start on an aborted signal');
   assert.equal(f.human(), 0);
 });
+
+test('a deferred Jev verdict is decided by the reviewer model, not the human', async () => {
+  const verdict = { decision: 'defer', reason: 'Automatic review found possible credential handling.', source: 'jev', model: 'typesafe/jev-1.13', confidence: 0.92, credentialRisk: 0.9, durationMs: 7, usage: { input_tokens: 10, output_tokens: 0 } };
+  const f = fixture({ jev: { approval: async () => verdict } });
+  const { req } = await f.pending('shell_retry', { command: 'make release', sandbox_permissions: 'danger-full-access', justification: 'verify needs sandbox-exec' });
+  assert.equal(await f.answer(req), 'allowed-once');
+  assert.equal(f.requests.length, 1, 'a deferred verdict must reach the reviewer model');
+  assert.equal(f.human(), 0);
+  const records = f.records();
+  assert(records.some(record => record.decision === 'deferred' && record.source === 'jev'));
+  assert.equal(records.at(-1).decision, 'allow');
+});
+
+test("the reviewer model's own human verdict still reaches the user after a defer", async () => {
+  const verdict = { decision: 'defer', reason: 'Automatic review asked for a human decision.', source: 'jev', model: 'typesafe/jev-1.13', confidence: 0.7, durationMs: 5, usage: { input_tokens: 5, output_tokens: 0 } };
+  const f = fixture({ decision: 'human', jev: { approval: async () => verdict } });
+  const { req } = await f.pending('shell_retry', { command: 'make release', sandbox_permissions: 'danger-full-access' });
+  assert.equal(await f.answer(req), 'allowed-once');
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.human(), 1, 'a deferred verdict that the reviewer cannot settle asks the user');
+});

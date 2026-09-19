@@ -72,9 +72,11 @@ rc.1 的会话读取器不接受未知事件类型，因此没有把自定义审
 判定顺序在代码里，而且**放行与拒绝的门槛刻意不对称**——放行是最危险的方向，拒绝只是「请不要这么做」：
 
 1. **自动拒绝**：`deny` 且（置信度 ≥ `autoDeny`(0.95) 且 `P(deny)` ≥ `autoDenyProbability`(0.9)）**或**（置信度 ≥ `autoDenyCorroborated`(0.9) 且 `score ≥ destructiveCeiling`(2) 或凭据风险 ≥ `credentialRisk`(0.5) 至少一项已越线）。若 `authorized ≥ authorizedVeto`(0.6)——即指令看起来就是要求它做这件事——则**否决自动拒绝、改为转人工**：错杀一次拒绝的代价是用户要的活没做，而且连提示都看不到。
-2. **风险转人工**：凭据风险 ≥ 0.5 或 `score ≥ 2` → 转人工（这一步现在只守放行方向）。
+2. **已授权时转交模型深审**：凭据风险 ≥ 0.5、`score ≥ 2`、`choice` 不是 `allow`、或置信度 < `autoAllow`(0.85)，这四条都只守放行方向、都不构成拒绝。若 `authorized ≥ authorizedVeto`(0.6)——指令看起来就是要它做这件事——它们不再直接找人，而是返回 `defer`，由 reviewer 模型看着完整待执行参数与保留指令决断：Jev 的分数偏粗，而本部署本来就允许常规网络访问、也允许 CLI 使用它自己保存的凭据。reviewer 自己判 `human` 时仍然会找人，`defer` 从不会被当成放行。
 3. **自动放行**：`allow` 且置信度 ≥ `autoAllow`(0.85)，且未触发第 2 步。
-4. 其余（`ask`、不够自信、越线但未被拒绝）→ 转人工。
+4. 其余（未到 `authorizedVeto` 的 `ask`、不够自信、越线但未被拒绝）→ 转人工。
+
+一次 `defer` 在审计里留下两行：先记 Jev 自己的判定与风险分数（`decision: deferred`，带 `credentialRisk`、`destructive`、`authorized`），再记 reviewer 模型的实际裁决；只有 `allow` 会真正放行。也就是说第 2 步把凭据与不可撤销风险从「硬停」改成了「第二个模型判断 + 人工兜底」——这是刻意的取舍，代价是这两个信号不再单独一票否决，收益是用户已明确要求的提权（例如发布流程里必须出沙箱的验证）不会每次都打断人。想恢复硬停就把 `authorizedVeto` 调高于 1（或按下面的方式关掉 Jev）。
 
 Jev 未配置（解析不到 `OPENROUTER_API_KEY`）、未启用、超时、报错或返回不可用时，一律返回「无判定」，自动审核继续走原来的 reviewer 模型——**Jev 故障只退回到旧行为，不会放宽任何权限**。
 
@@ -88,6 +90,6 @@ Jev 未配置（解析不到 `OPENROUTER_API_KEY`）、未启用、超时、报�
 
 ## 验证
 
-`npm test` 覆盖审核规则入口、参数绑定、取消、超时、无效响应、凭据拦截、模型预算、模式切换、重复拒绝和停止。`tests/jev.test.mjs` 用 mock transport 覆盖请求形态、答案解析、阈值判定、超时与失败兜底；`tests/auto-review.test.mjs` 额外覆盖「Jev 判定不花 reviewer 请求」「Jev 拒绝计入连续拒绝」与「Jev 不可用时回退到模型审核」。
+`npm test` 覆盖审核规则入口、参数绑定、取消、超时、无效响应、凭据拦截、模型预算、模式切换、重复拒绝和停止。`tests/jev.test.mjs` 用 mock transport 覆盖请求形态、答案解析、阈值判定、超时与失败兜底；`tests/auto-review.test.mjs` 额外覆盖「Jev 判定不花 reviewer 请求」「Jev 拒绝计入连续拒绝」「Jev 不可用时回退到模型审核」，以及「已授权时 Jev 把守卫交给 reviewer 模型、而 reviewer 自己判人工时仍会找人」。
 
 `npm run doctor` 使用真实 DSH agent 和工具管线、确定性本地 LLM adapter，验证允许执行、拒绝不执行、无效响应转测试人工审批器、usage 记录及会话恢复。没有调用付费远程模型；实际模型的审核质量、延迟和费用尚待真实使用验证。模拟人工审批器只存在 doctor 的测试 overlay 中。

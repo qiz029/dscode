@@ -94,6 +94,9 @@ export function apply(ctx, config) {
         announce(req.agent, `Automatic review rejected ${req.toolName}: ${decision.reason}. Do not retry the same outcome via another command or tool. Continue only with a materially safer alternative or ask the user.${state.blocked ? ' Stop this turn: three consecutive denials.' : ''}`);
         return 'rejected';
       }
+      // Only an explicit allow runs: `defer` and any future verdict value fall back
+      // to the human instead of being read as approval.
+      if (decision.decision !== 'allow') return fallback(decision.reason ?? 'Unrecognized review verdict.', details);
       state.denials = 0;
       return 'allowed-once';
     };
@@ -132,13 +135,18 @@ export function apply(ctx, config) {
         verdict = undefined;
       }
       if (verdict !== undefined) {
-        return applyVerdict({ decision: verdict.decision, reason: verdict.reason }, {
+        const jevDetails = {
           actionHash, provider: 'openrouter', model: verdict.model, source: 'jev',
           choice: verdict.choice, confidence: verdict.confidence, denyProbability: verdict.denyProbability,
           authorized: verdict.authorized, destructive: verdict.destructive, credentialRisk: verdict.credentialRisk,
           durationMs: verdict.durationMs ?? (Date.now() - started),
           usage: verdict.usage ?? null, usageComplete: verdict.usage != null,
-        });
+        };
+        // Jev hands its risk guards over when the instruction authorizes the work;
+        // the reviewer model below sees the pending arguments and decides, and its
+        // own `human` verdict still reaches the user.
+        if (verdict.decision !== 'defer') return applyVerdict({ decision: verdict.decision, reason: verdict.reason }, jevDetails);
+        record(req, { decision: 'deferred', reason: verdict.reason, ...jevDetails });
       }
       // A caller that cancelled must not fall through to a reviewer request.
       if (req.signal?.aborted) {

@@ -6,7 +6,7 @@ import { ancestorSkillDirs, writeWorkspaceInstructions } from '../plugins/tui-to
 import { patchRuntime, patchAppBootPackage } from './patch-runtime.mjs';
 import { patchInkFrame } from './patch-ink.mjs';
 import { provisionPreset } from './preset.mjs';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, lstatSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, chmodSync, readFileSync, writeFileSync, symlinkSync, lstatSync, realpathSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -52,8 +52,44 @@ export function provision(home = runtimeHome, { cwd = root, env = process.env } 
   return profile;
 }
 
+/**
+ * Align the Hub CLI's login with the state directory this launcher hands out.
+ *
+ * `dsh-hub login` writes `$DSH_HOME/.hub/auth.json`, but a login made outside
+ * DSCODE lands in `~/.dsh/.hub/auth.json`. A session whose `DSH_HOME` points
+ * elsewhere then reads "Not signed in", which sends the agent hunting for
+ * tokens it should never handle. Copying the file once keeps the CLI working
+ * and, because the copy lives under the state directory, lets the CLI refresh
+ * its own session without leaving the sandbox. An existing copy always wins:
+ * a refresh written there must never be overwritten by a stale user file.
+ * @param home - state directory this launch hands to the child as DSH_HOME.
+ * @param userHome - the real user home that holds a possible manual login.
+ * @returns whether a copy was made.
+ */
+export function alignHubCredentials(home = runtimeHome, userHome = homedir()) {
+  try {
+    const target = join(home, '.hub', 'auth.json');
+    const source = join(userHome, '.dsh', '.hub', 'auth.json');
+    // An existing copy wins, which also covers the layout where the state
+    // directory is the user home itself: there the CLI reads that one file.
+    if (existsSync(target) || resolve(target) === resolve(source) || !existsSync(source)) return false;
+    const directory = dirname(target);
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    // mkdir's mode applies only to a directory it creates, so normalize one that
+    // already exists: the token must not sit in a listable directory.
+    try { chmodSync(directory, 0o700); } catch { /* a copy is still better than no login */ }
+    writeFileSync(target, readFileSync(source, 'utf8'), { mode: 0o600 });
+    return true;
+  } catch {
+    // Best effort: the copy only spares the CLI a manual login, so an unreadable
+    // source, a vanished file or a full disk must never stop the launch.
+    return false;
+  }
+}
+
 export function environment(home = runtimeHome, cwd = process.cwd()) {
   const userHome = homedir();
+  alignHubCredentials(home, userHome);
   // Ancestor discovery is resolved here because only the launcher knows the
   // session directory; the preset reads the results from these two variables.
   const instructions = writeWorkspaceInstructions({ cwd, home: userHome, stateDir: home });

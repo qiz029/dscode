@@ -100,10 +100,18 @@ export function approvalVerdict(answers, thresholds = DEFAULT_THRESHOLDS) {
   }
 
   // Everything below guards the allow direction: high risk or a non-allowing
-  // answer never runs without the human.
-  if (credentialRisk >= thresholds.credentialRisk) return { decision: 'human', reason: 'Automatic review found possible credential handling.', ...detail };
-  if (destructive >= thresholds.destructiveCeiling) return { decision: 'human', reason: 'Automatic review judged this action hard to undo.', ...detail };
-  if (verdict.choice !== 'allow') return { decision: 'human', reason: 'Automatic review asked for a human decision.', ...detail };
-  if (confidence < thresholds.autoAllow) return { decision: 'human', reason: `Automatic review was not confident enough (${confidence.toFixed(2)}).`, ...detail };
+  // answer must not run on Jev's word alone. None of these guards is a denial, so
+  // when the instruction itself authorizes the work they defer to the reviewer
+  // model, which sees the exact pending arguments and the retained instruction:
+  // Jev's scores are coarse, and this deployment already allows ordinary network
+  // access and a CLI's own stored credentials. A caller that does not know
+  // `defer` must treat it as "review me", never as an allow.
+  const guard = reason => authorized >= thresholds.authorizedVeto
+    ? { decision: 'defer', reason, ...detail }
+    : { decision: 'human', reason, ...detail };
+  if (credentialRisk >= thresholds.credentialRisk) return guard('Automatic review found possible credential handling.');
+  if (destructive >= thresholds.destructiveCeiling) return guard('Automatic review judged this action hard to undo.');
+  if (verdict.choice !== 'allow') return guard('Automatic review asked for a human decision.');
+  if (confidence < thresholds.autoAllow) return guard(`Automatic review was not confident enough (${confidence.toFixed(2)}).`);
   return { decision: 'allow', reason: 'Automatic review approved the action.', ...detail };
 }

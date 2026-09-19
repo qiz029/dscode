@@ -130,3 +130,17 @@ test('the plugin stays inert without a key and fails closed when the call fails'
   } finally { globalThis.fetch = original; }
   assert.equal(apply(ctx, { enabled: false }).approval ? await apply(ctx, { enabled: false }).approval({ action: {}, context: {} }) : undefined, undefined, 'a disabled plugin never decides');
 });
+
+test('an authorizing instruction defers Jev risk guards to the reviewer model', () => {
+  const authorized = { authorized: { noul: 0.8 } };
+  for (const overrides of [
+    { ...authorized, credential_risk: { noul: 0.9 } },
+    { ...authorized, destructive: { score: 2.4 } },
+    { ...authorized, verdict: { choice: 'ask', confidence: 0.99 } },
+    { ...authorized, verdict: { choice: 'allow', confidence: 0.5 } },
+  ]) assert.equal(approvalVerdict(answers(overrides)).decision, 'defer', JSON.stringify(overrides));
+  // Below the veto score the same guards still ask the human.
+  assert.equal(approvalVerdict(answers({ authorized: { noul: DEFAULT_THRESHOLDS.authorizedVeto - 0.01 }, credential_risk: { noul: 0.9 } })).decision, 'human');
+  // A confident deny is not one of the allow-direction guards: it still reaches the human.
+  assert.equal(approvalVerdict(answers({ ...authorized, verdict: { choice: 'deny', confidence: 0.99, probabilities: { deny: 0.98 } } })).decision, 'human');
+});

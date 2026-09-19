@@ -6,6 +6,16 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes under Unreleased. -->
 
+## [0.7.19] - 2026-09-19
+
+### Changed
+
+- Jev's allow-direction guards (credential risk, hard-to-undo work, a non-`allow` choice, low confidence) no longer ask the human on their own when the retained instruction authorizes the exact action: they return `defer`, and the reviewer model - which sees the pending arguments and the instruction - decides. Jev's scores are coarse and this deployment already allows ordinary network access and a CLI's own stored credentials, so treating every such guard as a hard stop turned user-authorized work (a release that must leave the sandbox) into a manual approval every time. The deny direction is unchanged, `defer` is never read as approval, and a reviewer `human` verdict still reaches the user.
+
+### Added
+
+- The launcher copies a Hub login found in `~/.dsh/.hub/auth.json` into the state directory it hands the session as `DSH_HOME`, once, when no copy exists. A login made outside DSCODE previously left the CLI reporting "Not signed in" from inside a session whose `DSH_HOME` pointed elsewhere, which sent the agent looking for tokens it should never handle; the copy also lets the CLI refresh its own session under the state directory. An existing copy always wins, the directory is normalized to `0700` and the file to `0600`, and any read or write failure is ignored so the copy can never stop a launch.
+
 ## [0.7.18] - 2026-09-19
 
 ### Added
