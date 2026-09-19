@@ -6,6 +6,17 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes under Unreleased. -->
 
+## [0.7.21] - 2026-09-19
+
+### Added
+
+- `/btw <question>` runs a side question immediately in a child session seeded from the main log, read-only and on the cheapest supported effort, and renders the answer in its own panel. Beyond 400 seeded events (or before the first turn completes) the child runs unseeded with a bounded brief instead; either way the exchange never enters the main transcript, its model context, or the session cards.
+- `dscode-time-marks`: every message a step admits and every turn that closes adds one hidden, plugin-sourced reading of the host clock to the model's context. The terminal renders nothing for it, and no message body is rewritten. Relay sources now carry `label`/`mode`/`composedAt`, so a queued message's wait is reported.
+
+### Changed
+
+- The status footer's geometry now follows terminal width alone. The permission badge anchors the first row's right edge, the cycle hint keeps its columns whether or not it is painted, and every live figure (counters, wall times, rates, tokens, cache share, context readout) is right-aligned inside fixed columns with `--` placeholders instead of groups that appear and vanish on a threshold. The telemetry string pads its live figures the same way and its slot reserves those columns; the money pair stays unpadded, because reserving those columns evicts a per-second figure at the widths the footer runs at.
+
 ## [0.7.20] - 2026-09-19
 
 ### Fixed

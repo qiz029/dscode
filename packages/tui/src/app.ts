@@ -56,7 +56,7 @@ import { imeCursorRowsUp, useImeCursorAnchor } from './render/ime-cursor.ts'
 import { readClipboardImage } from './dscode/clipboard-image/index.mjs'
 import { dscodeChatLines } from './dscode/chat.ts'
 import { readFileSync } from 'node:fs'
-import { footerFor as dscodeFooterFor } from '../../../plugins/session-metrics/view.mjs'
+import { FOOTER_FIGURE_RESERVE, footerFor as dscodeFooterFor } from '../../../plugins/session-metrics/view.mjs'
 import { newerVersion as dscodeNewerVersion } from '../../../plugins/tui-tools/update.mjs'
 import { languageName as dscodeLanguageName, normalizeLanguage as dscodeNormalizeLanguage, t as dscodeMessage } from '../../../plugins/i18n/messages.mjs'
 import { dscodeTelemetryNodes } from './dscode/telemetry.ts'
@@ -183,6 +183,8 @@ import type { QuestionSnapshot, QuestionStore } from './questions.ts'
 import type { SkillsView, SkillRow } from './skills.ts'
 import { isPathLikeMentionQuery, type MentionCandidate } from './mentions.ts'
 import type { SubagentFeedView, SubagentRow } from './subagents.ts'
+import { createTranscriptStore } from './store.ts'
+import type { BtwFeed, BtwRun } from './btw.ts'
 import type { UsageView } from './render/usage.ts'
 import { AgentsPanel, editQuery, EffortPanel as NativeEffortPanel, HistoryPanel, JobsPanel, ModePanel, PermissionPanel, PluginPanel, ResumePanel, ReviewPickerPanel, SchedulePanel, SearchPanel, StatuslinePanel, runClock, SubagentPanel, UsagePanel, type JobRow, type SearchRow } from './kernel-panels.ts'
 import type { PresetRow } from './presets.ts'
@@ -247,6 +249,7 @@ const SYNCHRONIZED_UPDATE_BEGIN = '\x1b[?2026h'
 const SYNCHRONIZED_UPDATE_END = '\x1b[?2026l'
 import {
   layoutStatusBar,
+  padValue,
   parseStatuslineItems,
   statusCycleHint,
   STATUS_GROUP_SEPARATOR,
@@ -351,6 +354,7 @@ const LOCAL_COMMANDS: readonly LocalCommand[] = [
   { label: '/animation', descriptionKey: 'cmd.animation' },
   { label: '/history', descriptionKey: 'cmd.history' },
   { label: '/queue', descriptionKey: 'cmd.queue' },
+  { label: '/btw', descriptionKey: 'cmd.btw' },
   { label: '/usage', descriptionKey: 'cmd.usage' },
   { label: '/agents', descriptionKey: 'cmd.agents' },
   { label: '/todos', descriptionKey: 'cmd.todos' },
@@ -405,6 +409,10 @@ export interface AppProps {
   questions: QuestionStore
   /** Live subagent activity feed (child sessions of the current root). */
   subagents: SubagentFeedView
+  /** Live side-question runs (/btw), each with its own transcript. */
+  btw: BtwFeed
+  /** Run one side question beside this session, immediately and out of band. */
+  startBtw: (question: string) => void
   /** Live slash-command descriptor list (completion candidates). */
   commands: CommandsView
   /** Live user-invocable skill catalog (completion candidates). */
@@ -1316,6 +1324,84 @@ export function queuedInboxRows(
 }
 
 /** A bounded, keyboard-owned management surface for the durable next-turn inbox. */
+/** Fallback transcript for a panel with no run yet: the store hook must always run. */
+const EMPTY_BTW_STORE = createTranscriptStore()
+
+/** One localized word per run status. */
+const BTW_STATUS_KEYS = {
+  running: 'panel.btw.running',
+  done: 'panel.btw.done',
+  failed: 'panel.btw.failed',
+  cancelled: 'panel.btw.cancelled',
+} as const
+
+/**
+ * The /btw panel: side questions answered beside the main conversation. Each
+ * run renders its own transcript, so a full answer is readable while the
+ * exchange stays out of the main transcript and out of its model context.
+ */
+export function BtwPanel({ feed, runs, selected, onSelect, onClose }: {
+  feed: BtwFeed
+  runs: readonly BtwRun[]
+  selected: string | undefined
+  onSelect: (id: string) => void
+  onClose: () => void
+}): ReactElement {
+  const stdout = useStdout().stdout
+  const viewport = panelViewport(stdout?.columns ?? 80, stdout?.rows ?? 30)
+  const run = runs.find(entry => entry.id === selected) ?? runs[0]
+  const store = (run === undefined ? undefined : feed.store(run.id)) ?? EMPTY_BTW_STORE
+  const subscribe = useCallback((listener: () => void) => store.subscribe(listener), [store])
+  const read = useCallback(() => store.getView(), [store])
+  const view = useSyncExternalStore(subscribe, read)
+  // The panel follows the newest rows: an answer longer than the pane stays
+  // readable as it streams, and the composer below is never covered.
+  const lines = useMemo(
+    () => view.entries.flatMap(entry => transcriptEntryLines(entry, viewport.contentColumns)),
+    [view.entries, viewport.contentColumns],
+  )
+  const step = (delta: number): void => {
+    if (runs.length < 2) return
+    const at = runs.findIndex(entry => entry.id === run?.id)
+    onSelect(runs[(at + delta + runs.length) % runs.length].id)
+  }
+  useStableInput((input, key) => {
+    if (key.escape || input === 'q') {
+      onClose()
+      return
+    }
+    if (key.leftArrow) step(1)
+    if (key.rightArrow) step(-1)
+  })
+  const accent = panelAccent('btw', getPalette().brand)
+  const title = run === undefined
+    ? t('panel.btw.title')
+    : `${t('panel.btw.title')} · ${t(BTW_STATUS_KEYS[run.status])} · ${run.title}`
+  const body = lines.slice(-Math.max(1, viewport.bodyRows))
+  return createElement(
+    Box,
+    { flexDirection: 'column', width: viewport.outerColumns, paddingX: 1, borderStyle: 'round', borderColor: inkColor(accent.border) },
+    createElement(Text, { color: inkColor(accent.title), bold: true, wrap: 'truncate-end' },
+      truncateColumns(title, viewport.contentColumns)),
+    createElement(PanelGap, { visible: viewport.gapRows > 0 }),
+    body.length === 0
+      ? createElement(Text, { color: inkColor(getPalette().dim), wrap: 'truncate-end' },
+        truncateColumns(run === undefined ? t('panel.btw.empty') : t('panel.btw.waiting'), viewport.contentColumns))
+      : createElement(StyledRows, { lines: body }),
+    view.streaming === ''
+      ? undefined
+      : createElement(StreamTail, {
+        text: view.streaming,
+        dim: false,
+        maxRows: Math.max(3, Math.floor(viewport.bodyRows / 2)),
+        prefix: '  ',
+      }),
+    createElement(PanelGap, { visible: viewport.gapRows > 0 }),
+    createElement(Text, { color: inkColor(getPalette().dim), wrap: 'truncate-end' },
+      truncateColumns(runs.length > 1 ? t('panel.btw.footerMany', { count: runs.length }) : t('panel.btw.footer'), viewport.contentColumns)),
+  )
+}
+
 function QueuePanel({ rows, busy, update, onClose }: {
   rows: readonly Extract<TranscriptEntry, { kind: 'pending' }>[]
   busy: boolean
@@ -1575,8 +1661,14 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
     return () => clearInterval(timer)
   }, [])
   // dscode: the telemetry segment carries the header and only appears once the
-  // terminal can seat it; below that the identity row keeps the model.
-  facts = { ...facts, telemetry: columns >= 48 ? dscodeFooterFor(facts.fullSessionId, stats, Math.max(1, Math.min(columns - 8, Math.max(40, Math.floor(columns * 0.8) - 4))), dscodeFooterHeader(facts, stats), getLanguage()) : '' }
+  // terminal can seat it; below that the identity row keeps the model. Its
+  // slot is padded to the width it was laid out for, so the live figures
+  // decide the text the row shows without ever changing the row's geometry.
+  const telemetryWidth = Math.max(1, Math.min(columns - 8, Math.max(40, Math.floor(columns * 0.8) - 4) + FOOTER_FIGURE_RESERVE))
+  const telemetry = columns >= 48
+    ? dscodeFooterFor(facts.fullSessionId, stats, telemetryWidth, dscodeFooterHeader(facts, stats), getLanguage())
+    : ''
+  facts = { ...facts, telemetry: telemetry === '' ? '' : padValue(telemetry, telemetryWidth) }
   // Flowing-theme busy flow: the identity cluster's live dot cycles the
   // anchor walk while a turn runs; static themes never start the timer.
   const flow = themeFlow()
@@ -1640,6 +1732,15 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
     if (key === 's2' && row.left.length > 0 && row.right.length > 0) {
       rightParts.push(createElement(Text, { key: key + 'divider', color: inkColor(getPalette().dim) }, '｜ '))
     }
+    // dscode: the cycle hint rides LEFT of the right cluster, so the
+    // right-anchored badge holds its columns whether or not the hint is
+    // painted; layoutStatusBar reserves the hint's width in both states.
+    if (row.hint) {
+      rightParts.push(createElement(Text, { key: key + 'hint', color: inkColor(getPalette().dim) }, statusCycleHint()))
+      if (row.right.length > 0) {
+        rightParts.push(createElement(Text, { key: key + 'hintSep', color: inkColor(getPalette().dim) }, STATUS_ITEM_SEPARATOR))
+      }
+    }
     row.right.forEach((span, index) => {
       if (index > 0) {
         rightParts.push(createElement(Text, { key: key + 'rs' + index, color: inkColor(getPalette().dim) }, STATUS_ITEM_SEPARATOR))
@@ -1650,9 +1751,6 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
         key === 's2' && index === 0 ? dscodeTelemetryNodes(span.text, key + 'r' + index) : span.text,
       ))
     })
-    if (row.hint) {
-      rightParts.push(createElement(Text, { key: key + 'hint', color: inkColor(getPalette().dim) }, statusCycleHint()))
-    }
     // Each row already fits the column budget; truncate-end stays as the
     // terminal-measurement backstop so a drifting cell count clips instead
     // of wrapping.
@@ -4405,7 +4503,7 @@ export function DscodeEffortPanel(props) {
 }
 
 
-function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, descriptors, skills, dispatch, steer, submitMode, cycleSubmitMode, interrupt, quit, openEmail, openLogin, openProvider, openOpenRouter, openModel, openEffort, openHelp, openMode, openPermission, openResume, openSearch, openPlugin, openUpdate, openSchedule, openJobs, openStatusline, openTheme, openLanguage, saveLanguage, openHistory, openQueue, openAgents, openSubagent, openTodos, openUsage, openDelete, openDiff, openReviewPicker, reviewChanges, deleteConfirm, confirmDelete, cancelDelete, createSession, forkSession, cancelSessionSwitch, notify, applyEditorKeys, hasNotice, dismissNotice, toggleReasoning, openVerbose, clearView, refresh, loadMentions, inspectImages, prepareImages, inspectFiles, prepareFiles, readClipboardImage, cycleMode, exportTranscript, renameTitle, copyLastResponse, recallSpace, recordLocal, recordHistory, queued, updateQueued, historyFill, historyConsumed, animations, applyAnimations, applyRainbow, rainbowBurstId, waveTier, waveStyle, maxRows, anchorRowsBelow, tabTitle, onEditorRows, onMenuRows, sessionKey }: {
+function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, descriptors, skills, dispatch, steer, submitMode, cycleSubmitMode, interrupt, quit, openEmail, openLogin, openProvider, openOpenRouter, openModel, openEffort, openHelp, openMode, openPermission, openResume, openSearch, openPlugin, openUpdate, openSchedule, openJobs, openStatusline, openTheme, openLanguage, saveLanguage, openHistory, openQueue, openBtw, openAgents, openSubagent, openTodos, openUsage, openDelete, openDiff, openReviewPicker, reviewChanges, deleteConfirm, confirmDelete, cancelDelete, createSession, forkSession, cancelSessionSwitch, notify, applyEditorKeys, hasNotice, dismissNotice, toggleReasoning, openVerbose, clearView, refresh, loadMentions, inspectImages, prepareImages, inspectFiles, prepareFiles, readClipboardImage, cycleMode, exportTranscript, renameTitle, copyLastResponse, recallSpace, recordLocal, recordHistory, queued, updateQueued, historyFill, historyConsumed, animations, applyAnimations, applyRainbow, rainbowBurstId, waveTier, waveStyle, maxRows, anchorRowsBelow, tabTitle, onEditorRows, onMenuRows, sessionKey }: {
   active: boolean
   frozen: boolean
   /** Frozen-band hint naming the surface that owns the keyboard; an empty
@@ -4455,6 +4553,7 @@ function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, de
   saveLanguage: (name: LanguageName) => void
   openHistory: () => void
   openQueue: () => void
+  openBtw: (question: string) => void
   /** Open the /agents panel (live subagent feed + transcript entry). */
   openAgents: () => void
   /** Open the /subagent model panel. */
@@ -5525,6 +5624,10 @@ function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, de
         openQueue()
         return
       }
+      if (text === '/btw' || text.startsWith('/btw ')) {
+        openBtw(text.slice('/btw'.length).trim())
+        return
+      }
       if (text === '/usage') {
         openUsage()
         return
@@ -6195,8 +6298,13 @@ export function App(props: AppProps): ReactElement {
       controller.abort()
     }
   }, [gmail, imap])
-  // A session switch never leaves the previous session's inbox open.
-  useEffect(() => { setEmailOpen(false) }, [props.sessionKey])
+  // A session switch never leaves the previous session's inbox or side
+  // questions open: the runs belong to the session that asked them.
+  useEffect(() => {
+    setEmailOpen(false)
+    setBtwOpen(false)
+    setBtwSelected(undefined)
+  }, [props.sessionKey])
   // The stores are closure-backed singletons whose methods never touch `this`,
   // but a bare method reference still detaches it from its receiver. One stable
   // wrapper per store keeps both the receiver and the reference identity the
@@ -6418,6 +6526,8 @@ export function App(props: AppProps): ReactElement {
   const budgetWarnRef = useRef<string | undefined>(undefined)
   const [verboseOpen, setVerboseOpen] = useState(false)
   const [queueOpen, setQueueOpen] = useState(false)
+  const [btwOpen, setBtwOpen] = useState(false)
+  const [btwSelected, setBtwSelected] = useState<string | undefined>(undefined)
   /**
    * How the composer delivers its next submission: `queue` waits for the next
    * turn, `steer` joins the turn already running. Tab on an empty composer
@@ -6509,6 +6619,9 @@ export function App(props: AppProps): ReactElement {
   const approvalSnapshot = useSyncExternalStore(subscribeApproval, readApprovalSnapshot)
   const questionSnapshot = useSyncExternalStore(subscribeQuestions, readQuestionSnapshot)
   const agentRows = useSyncExternalStore(subscribeSubagents, readAgentRows)
+  const subscribeBtw = useCallback((listener: () => void) => props.btw.subscribe(listener), [props.btw])
+  const readBtw = useCallback(() => props.btw.list(), [props.btw])
+  const btwRuns = useSyncExternalStore(subscribeBtw, readBtw)
   const approvalPending = approvalSnapshot.pending !== undefined
   const questionPending = questionSnapshot.pending !== undefined
   // While any modal owns the keys, the prompt box passes everything through.
@@ -6518,7 +6631,7 @@ export function App(props: AppProps): ReactElement {
   const inputActive = deleteConfirmId !== undefined
     ? !approvalPending && !questionPending
     : !emailOpen && !modelOpen && !helpOpen && !modeOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
-  const transcriptVisible = !emailOpen && !modelOpen && !helpOpen && !modeOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
+  const transcriptVisible = !btwOpen && !emailOpen && !modelOpen && !helpOpen && !modeOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
 
   // Human questions outrank local inspectors. Close the lower modal instead
   // of leaving an approval/question visible but keyboard-locked behind it.
@@ -7268,6 +7381,15 @@ export function App(props: AppProps): ReactElement {
         },
       })
       : undefined,
+    btwOpen && !approvalPending && !questionPending
+      ? createElement(BtwPanel, {
+        feed: props.btw,
+        runs: btwRuns,
+        selected: btwSelected,
+        onSelect: setBtwSelected,
+        onClose: () => setBtwOpen(false),
+      })
+      : undefined,
     queueOpen && !approvalPending && !questionPending
       ? createElement(QueuePanel, {
         rows: queuedRows,
@@ -7614,6 +7736,10 @@ export function App(props: AppProps): ReactElement {
         saveLanguage: props.saveLanguage,
         openHistory: () => setHistoryOpen(true),
         openQueue: () => setQueueOpen(true),
+        openBtw: (question: string) => {
+          if (question !== '') props.startBtw(question)
+          setBtwOpen(true)
+        },
         openAgents: () => setAgentsOpen(true),
         openSubagent: () => setSubagentOpen(true),
         openTodos: () => setTodosOpen(true),

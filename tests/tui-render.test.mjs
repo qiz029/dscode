@@ -9,6 +9,7 @@ import { stripVTControlCharacters } from 'node:util';
 import { createElement } from 'react';
 import { render } from 'ink';
 import {
+  BtwPanel,
   DscodeActivityLine,
   DscodeCompactionLine,
   DscodeEffortPanel,
@@ -17,6 +18,8 @@ import {
 } from '../packages/tui/src/app.ts';
 import { visibleColumns } from '../packages/tui/src/render/markdown.ts';
 import { createTranscriptView } from '../packages/tui/src/render/projection.ts';
+import { layoutStatusBar } from '../packages/tui/src/render/status.ts';
+import { createBtwFeed } from '../packages/tui/src/btw.ts';
 import { setTheme } from '../packages/tui/src/theme.ts';
 
 // These render the vendored terminal's own components into an in-memory stream, so
@@ -149,12 +152,107 @@ test('the status line leads with the title and pins the telemetry right', async 
   }, { columns: 120 });
   try {
     assertFits(ui);
-    const text = ui.frame();
-    // Row 1 leads with the title and carries the permission badge beside it.
-    assert.match(text, /Migrating the TUI ｜ accept-edits/, text);
+    const [row1, row2] = ui.frame().split('\n');
+    // Row 1 flows from the left into the right-anchored permission badge; the
+    // idle cycle hint rides LEFT of the badge, so the badge holds its columns
+    // whether or not the hint is painted.
+    assert.match(row1, /Migrating the TUI ｜ context/, row1);
+    assert.ok(row1.trimEnd().endsWith('(shift+tab to cycle) ｜ accept-edits'), row1);
+    assert.equal(visibleColumns(row1), 120, 'row 1 fills the terminal');
     // Row 2's right edge is the telemetry: the provider: model @ effort header plus the live figures.
-    assert.match(text, /deepseek-flash @ ultra \| current: /, text);
-    assert.match(text, /cache hit:/, text);
+    assert.match(row2, /deepseek-flash @ ultra \| current: /, row2);
+    assert.match(row2, /cache hit:/, row2);
+  } finally {
+    ui.close();
+  }
+});
+
+test('the footer keeps its geometry while a turn changes the live figures', () => {
+  const facts = {
+    model: 'deepseek-official/deepseek-flash',
+    effort: 'ultra',
+    title: 'Migrating the TUI',
+    cwd: 'proj',
+    branch: 'main',
+    sessionId: 'abc123',
+    sandbox: '',
+    plan: false,
+    permission: 'accept-edits',
+    fullSessionId: 's-1',
+    telemetry: '',
+  };
+  const items = ['model', 'cwd', 'mode', 'branch', 'context', 'permission', 'turns', 'durations', 'cache', 'tokens', 'title'];
+  const base = createTranscriptView().stats;
+  const early = {
+    ...base,
+    turns: 1,
+    steps: 2,
+    llmMs: 900,
+    toolMs: 3_100,
+    ttftMs: 900,
+    ttftSteps: 1,
+    decodeMs: 12_000,
+    decodeTokens: 180,
+    lastPromptTokens: 1_200,
+    contextWindow: 1_000_000,
+    usage: { ...base.usage, uncachedInputTokens: 2_100, outputTokens: 430, cacheReadTokens: 88_000, cacheWriteTokens: 0 },
+  };
+  const late = {
+    ...early,
+    turns: 999,
+    steps: 999,
+    llmMs: 9_999_000,
+    toolMs: 9_999_000,
+    ttftMs: 9_999_000,
+    decodeMs: 9_999_000,
+    decodeTokens: 999_000,
+    lastPromptTokens: 999_000,
+    usage: { ...base.usage, uncachedInputTokens: 999_000, outputTokens: 999_000, cacheReadTokens: 9_999_999, cacheWriteTokens: 0 },
+  };
+  const durationsOf = layout => [...layout.row1.left, ...layout.row2.left]
+    .map(group => visibleColumns(group.spans.map(span => span.text).join('')));
+  const before = layoutStatusBar(facts, early, 120, { items });
+  const after = layoutStatusBar(facts, late, 120, { items });
+  // Live figures reshape inside their own fixed columns: every group keeps its
+  // width, so nothing after it reflows while a turn runs.
+  assert.deepEqual(durationsOf(after), durationsOf(before));
+  // The permission badge is the right anchor and never enters the left flow.
+  assert.equal(before.row1.right.at(-1).text, 'accept-edits');
+  assert.ok(!before.row1.left.some(group => group.spans.some(span => span.text === 'accept-edits')));
+  assert.deepEqual(after.row1.right, before.row1.right);
+  // Narrowing keeps the badge anchored: width pressure sheds left groups and
+  // the cycle hint, never the right anchor.
+  assert.equal(layoutStatusBar(facts, early, 60, { items }).row1.right.at(-1).text, 'accept-edits');
+  // Row 2's groups keep their membership: only the terminal width may drop one.
+  assert.equal(after.row2.left.length, before.row2.left.length);
+});
+
+test('the btw panel reads a side answer without touching the main transcript', async () => {
+  const feed = createBtwFeed();
+  const at = Date.now();
+  feed.begin({ id: 's-btw', question: 'why is the cache cold?', at });
+  feed.apply('s-btw', { seq: 0, type: 'user/message', time: at, data: { id: 'u1', source: { kind: 'user' }, content: [{ type: 'text', text: 'why is the cache cold?' }] } });
+  feed.apply('s-btw', { seq: 1, type: 'assistant/message', time: at, data: { turn: 1, step: 1, message: { content: [{ type: 'text', text: 'because the first turn fills it' }] }, usage: { inputTokens: 1, outputTokens: 1 } } });
+  feed.settle('s-btw', 'done');
+  const closed = [];
+  const ui = await mount(BtwPanel, {
+    feed,
+    runs: feed.list(),
+    selected: 's-btw',
+    onSelect: () => {},
+    onClose: () => closed.push(true),
+  }, { columns: 100 });
+  try {
+    assertFits(ui);
+    const text = ui.frame();
+    assert.match(text, /Side questions \(btw\)/, text);
+    assert.match(text, /answered/, text);
+    assert.match(text, /why is the cache cold\?/, text);
+    assert.match(text, /because the first turn fills it/, text);
+    assert.match(text, /esc closes/, text);
+    await ui.write('\u001b');
+    assert.deepEqual(closed, [true], 'esc closes the panel');
+    assertFits(ui);
   } finally {
     ui.close();
   }

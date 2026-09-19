@@ -532,7 +532,7 @@ export function nextEveryTarget(previousTarget: number, acceptedAt: number, ever
 }
 
 /** Plugin snapshot sources folded into token stats but never rendered as rows. */
-const HIDDEN_SNAPSHOT_PLUGINS = new Set(['time-context', 'tmux-context'])
+const HIDDEN_SNAPSHOT_PLUGINS = new Set(['time-context', 'tmux-context', 'dscode-time-marks'])
 /** Plugin prompt sources rendered as full user rows (they ARE the conversation). */
 const REMINDER_PLUGINS = new Set(['schedule'])
 

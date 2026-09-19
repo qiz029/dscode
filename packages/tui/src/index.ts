@@ -42,6 +42,7 @@ import { grokStatusSnapshot } from '../../../plugins/grok/status.mjs'
 import { compactionPreview as dscodeCompactionPreview, effectiveContextWindow as dscodeEffectiveContextWindow, pricedThresholdRatio as dscodePricedThresholdRatio } from '../../../plugins/compaction/threshold.mjs'
 import { dscodeLoadOpenRouterAccountFor, dscodeManagementKeyStatus, dscodeSaveManagementKey, type DscodeCompactionPreview } from './app.ts'
 import { buildModelSelection, applyModelSelectionToConfig, loadModelDirectory, modelSelectionLabel, pendingModelSelection, resolveEffectiveSelection, type ModelRow } from './models.ts'
+import { effortFor as dscodeEffortFor } from '../../../plugins/providers/effort.mjs'
 import {
   discoverProviderModels,
   loadProviderSettings,
@@ -58,6 +59,7 @@ import { mountQuestionProvider, type QuestionStore } from './questions.ts'
 import type {} from '@deepseek-ai/dsh-settings'
 import { createTranscriptStore, type TranscriptStore } from './store.ts'
 import { createSubagentFeed, type SubagentFeedView } from './subagents.ts'
+import { btwBrief, btwSeed, createBtwFeed, type BtwFeed } from './btw.ts'
 import { parseStatuslineItems } from './render/status.ts'
 import { historyLine, HISTORY_MAX_ENTRIES, needsCompaction, parseHistoryFile, serializeHistoryList } from './history.ts'
 import { watchSkills, type SkillsView } from './skills.ts'
@@ -727,6 +729,19 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
   // Live subagent activity (child sessions of the current root): one bounded
   // row per child, folded from the same event bus the transcript feeds on.
   const subagents: SubagentFeedView & { apply(sessionId: string, event: SessionEvent): void; reset(): void } = createSubagentFeed()
+  // Side-question runs (/btw): a seeded read-only child whose answer renders in
+  // its own panel and never in this transcript or its model context.
+  const btw: BtwFeed = createBtwFeed()
+  /** Live side-question children, disposed with the session that spawned them. */
+  const btwHandles = new Map<string, AgentHandle>()
+  /** Stop every live side question; the panel keeps the answers it already has. */
+  const disposeBtw = (): void => {
+    for (const [id, handle] of btwHandles) {
+      btw.drop(id)
+      void handle.dispose().catch(() => {})
+    }
+    btwHandles.clear()
+  }
   // Pre-session @file completion runs the official search over the launch
   // cwd (model- and session-independent); the prepare/activate paths replace
   // this with the agent-scoped instance once a session exists.
@@ -847,7 +862,14 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     // the only durable transcript truth while a running subagent remains
     // visible. Lineage comes from the child header, same field the session
     // directory uses to tag `↳` rows.
-    if (subject.header.parentSession === session.id && subject.header.origin === 'subagent') subagents.apply(subject.id, event)
+    if (subject.header.parentSession === session.id && subject.header.origin === 'subagent') {
+      subagents.apply(subject.id, event)
+      // A side question folds into its own run store and settles at turn end.
+      if (btw.store(subject.id) !== undefined) {
+        btw.apply(subject.id, event)
+        if (event.type === 'turn/end') btw.settle(subject.id, 'done')
+      }
+    }
   })
 
   // Live assistant typing (session-log v2+): durable logs are settlement-only,
@@ -856,8 +878,12 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
   // they land (always before a committed end frame); an abandoned attempt's
   // partial tail is dropped by the store on its end frame.
   ctx.on('agent/assistant-stream', ({ agent: source, frame }) => {
-    if (agent === undefined || source.id !== agent.id) return
-    store.applyStreamFrame(frame)
+    if (agent !== undefined && source.id === agent.id) {
+      store.applyStreamFrame(frame)
+      return
+    }
+    // A side question streams into its own panel transcript, never the main one.
+    btw.applyStreamFrame(source.id, frame)
   })
 
   const commands: CommandsView = watchCommands(ctx)
@@ -1134,6 +1160,7 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     // exit wait below cannot hang (upstream rolls the creation back).
     abortPendingControllers()
     quitAbort.abort()
+    disposeBtw()
     epoch += 1
     off()
     for (const dispose of offCapabilitySync) dispose()
@@ -1941,6 +1968,7 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
       } catch (error: unknown) {
         cleanupWarning = `previous session flush failed: ${error instanceof Error ? error.message : String(error)}`
       }
+      disposeBtw()
       try {
         await previous.handle.dispose()
       } catch (error: unknown) {
@@ -2062,6 +2090,65 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     })
   }
 
+  /**
+   * Run one side question beside the main conversation: a child session that
+   * inherits this log (or a bounded brief when the log is too long), runs
+   * read-only on the cheapest supported effort, and answers into the /btw
+   * panel. The exchange never enters this transcript or its model context.
+   * @param question - the typed side question.
+   */
+  const startBtw = (question: string): void => {
+    const text = question.trim()
+    if (text === '' || active === undefined || agent === undefined || session === undefined) return
+    const parent = session
+    const parentAgent = agent
+    const mode = active.mode
+    const selection = resolveEffectiveSelection(active.selection.picked, parent.requestHeader()?.config, currentDefaults())
+    const seed = btwSeed(parent.snapshotEvents())
+    const brief = seed.inherited ? '' : btwBrief(parent.snapshotEvents())
+    const id = SessionId(`session-${randomUUID()}`)
+    btw.begin({ id, question: text, at: Date.now() })
+    void (async () => {
+      try {
+        const effort = await dscodeEffortFor(ctx.get('llm'), { provider: selection.provider, model: selection.model }, 'low', quitAbort.signal)
+        const handle = await agents.create({
+          sessionId: id,
+          parentAgent,
+          meta: {
+            cwd: parent.header.cwd ?? cwd,
+            agentPreset: mode,
+            parentSession: parent.id,
+            origin: 'subagent',
+            delegationDepth: (parent.header.delegationDepth ?? 0) + 1,
+          },
+          ...(seed.inherited ? { seed: seed.events, inheritedEventCount: SessionLogOffset(seed.events.length) } : {}),
+          agentOptions: {
+            provider: selection.provider,
+            model: selection.model,
+            ...(effort === undefined ? {} : { reasoningEffort: effort }),
+          },
+          signal: quitAbort.signal,
+          setup: async (childCtx) => {
+            await presets.mount(childCtx, mode)
+          },
+        })
+        // Applied after creation, the same order the main session uses: setup
+        // composes the child's world, it never drives it.
+        if (permissionPresets !== undefined && permissionPresets.names.includes('read-only')) {
+          selectPermission(permissionPresets, handle.agent.session, 'read-only')
+        }
+        btwHandles.set(id, handle)
+        handle.agent.followup(createUserMessage({
+          content: [{ type: 'text', text: brief === '' ? text : `${brief}\n\nQuestion: ${text}` }],
+          source: { kind: 'user' },
+        }))
+      } catch (error: unknown) {
+        btwHandles.delete(id)
+        btw.settle(id, quitAbort.signal.aborted ? 'cancelled' : 'failed', error instanceof Error ? error.message : String(error))
+      }
+    })()
+  }
+
   const forkSession = (argument: string): void => {
     if (session === undefined || active === undefined) {
       bridge.notify('no session yet - submit a message to start', 'warning')
@@ -2155,6 +2242,8 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
       approval,
       questions,
       subagents,
+      btw,
+      startBtw,
       commands,
       skills,
       model,

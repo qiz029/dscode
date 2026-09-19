@@ -102,7 +102,8 @@ export class CommunicationService {
     // Identity must survive retries even when the prior native inbox insertion did not persist.
     return freezeMessage({ ...createUserMessage({ content: [{ type: 'text', text:
       `[External source: ${e.from.kind === 'session' ? `session:${e.from.sessionId}` : e.from.source}] [${e.kind}/${e.mode}]\nMessage ID: ${e.messageId}${e.inReplyTo ? `; reply to: ${e.inReplyTo}` : ''}\n${e.text}` }],
-      source: { kind: 'plugin', plugin, form: 'relay', communicationId: e.messageId, requestId: e.idempotencyKey } }), id: e.messageId });
+      source: { kind: 'plugin', plugin, form: 'relay', communicationId: e.messageId, requestId: e.idempotencyKey,
+        label: e.from.kind === 'session' ? `session:${e.from.sessionId}` : e.from.source, mode: e.mode, composedAt: e.createdAt } }), id: e.messageId });
   }
   async confirm(state) {
     const receipts = [...state.receipts];

@@ -82,7 +82,7 @@ export class SessionBridge {
     let messageId = previous?.messageId;
     if (!previous) {
       const message = createUserMessage({ content: [{ type: 'text', text: `[External source: ${source}]\n${text}` }],
-        source: { kind: 'plugin', plugin: BRIDGE_SOURCE, form: 'relay', requestId, digest, label: source } });
+        source: { kind: 'plugin', plugin: BRIDGE_SOURCE, form: 'relay', requestId, digest, label: source, mode } });
       // Explicit naming uses the native title service, including sanitization,
       // persistence, UI events and cancellation of stale automatic title work.
       // A duplicate request must never undo a newer title.

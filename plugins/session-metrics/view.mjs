@@ -81,17 +81,53 @@ function resetStamp(iso, now) {
   const date = new Date(at);
   return pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes());
 }
+
+/**
+ * Fixed figure columns for the live footer. The status line re-reads these
+ * figures every second, so a growing digit count must never move the segments
+ * after it: each figure is right-aligned inside its own columns, and only the
+ * terminal width decides which segments the drop ladder keeps.
+ */
+const FIGURE = {
+  /** `~999.9` decode rates; the average reads the same scale without the tilde. */
+  rate: 6,
+  /** `100%` context occupancy. */
+  percent: 4,
+  /** `100.0%` cache share. */
+  share: 6,
+};
+
+/**
+ * Columns {@link formatFooter} needs on top of the budget it is handed. The
+ * fixed figures above only stop moving once their columns are really reserved,
+ * so a caller that budgets the footer's width adds these columns first —
+ * otherwise the padding evicts a figure the width would have seated. Six
+ * measures the padding a live reading adds across the rate, context and cache
+ * figures at the widths the drop ladder actually decides on.
+ */
+export const FOOTER_FIGURE_RESERVE = 6;
+
+/** Right-align one figure inside its columns; a wider reading keeps its own width. */
+function figure(text, width) {
+  const padding = width - displayWidth(text);
+  return padding > 0 ? ' '.repeat(padding) + text : text;
+}
+
 export function formatFooter(metrics, context, columns = 80, rates, locale = 'en', header = '', provider = providerOfHeader(header) ?? 'deepseek-official') {
   const label = key => t(locale, key);
-  const ctx = Number.isFinite(context) ? `${Math.round(context)}%` : '--';
-  const cache = metrics.cache === null ? '--' : `${metrics.cache.toFixed(1)}%`;
+  const ctx = figure(Number.isFinite(context) ? `${Math.round(context)}%` : '--', FIGURE.percent);
+  const cache = figure(metrics.cache === null ? '--' : `${metrics.cache.toFixed(1)}%`, FIGURE.share);
   // The balance belongs to the provider the header names; only DeepSeek's official route bills by a peak window.
   const balance = balanceNow(provider);
   const spend = metrics.unknown && metrics.cost === 0 ? '--' : `$${metrics.cost.toFixed(2)}${metrics.unknown ? '+' : ''}${metrics.pending ? '…' : ''}`;
-  const dollars = provider === 'grok' ? grokFooterFact(grokSubscriptionNow(), locale) : `${spend} / ${balance === null ? '$--' : '$' + balance.toFixed(2)}${provider === 'deepseek-official' ? ' ' + peakEmoji(trustedNow()) : ''}`;
+  // The money pair is the one live figure left unpadded: its digits cross a
+  // column a handful of times per session, and reserving those columns would
+  // evict a per-second figure at the widths the footer actually runs at.
+  const dollars = provider === 'grok' ? grokFooterFact(grokSubscriptionNow(), locale)
+    : `${spend} / ${balance === null ? '$--' : '$' + balance.toFixed(2)}${provider === 'deepseek-official' ? ' ' + peakEmoji(trustedNow()) : ''}`;
   const base = rates ? [
-    `${label('footer.current')}: ${Number.isFinite(rates.current) ? '~' + rates.current.toFixed(1) : '--'} tps`,
-    `${label('footer.average')}: ${Number.isFinite(rates.average) ? rates.average.toFixed(1) : '--'} tps`,
+    `${label('footer.current')}: ${figure(Number.isFinite(rates.current) ? '~' + rates.current.toFixed(1) : '--', FIGURE.rate)} tps`,
+    `${label('footer.average')}: ${figure(Number.isFinite(rates.average) ? rates.average.toFixed(1) : '--', FIGURE.rate)} tps`,
     `${label('footer.context')}: ${ctx}`, dollars, `${label('footer.cache')}: ${cache}`,
   ] : [`${label('footer.context')}: ${ctx}`, dollars, `${label('footer.cache')}: ${cache}`];
   // Narrow terminals shed the quietest figures first: average, current, context. The

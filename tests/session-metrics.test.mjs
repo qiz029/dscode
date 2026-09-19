@@ -99,7 +99,7 @@ test('session totals weight input tokens, retain unknowns and survive replay', (
   assert.equal(summarize([...rows, { kind: 'end', id: 'broken', cost: 0, usage: { inputTokens: 'x', outputTokens: 1 } }]).cache, null, 'a malformed usage still makes the ratio unknowable');
   assert.equal(summarize([...rows, { kind: 'end', id: 'openrouter', cost: 0, usage: { inputTokens: 9000, outputTokens: 5 } }]).cache, 900 / 19000 * 100, 'a call reporting no cache reads counts as zero, not unknown');
   for (const columns of [20, 32, 48, 80, 120]) assert(formatFooter(summary, 43.2, columns).length <= columns);
-  assert.match(formatFooter(summary, 43.2), /context: 43%.*\$0\.00 \/ \$(?:--|\d+\.\d{2}).*cache hit: 9\.0%/);
+  assert.match(formatFooter(summary, 43.2), /context: {2}43%.*\$0\.00 \/ \$(?:--|\d+\.\d{2}).*cache hit: {3}9\.0%/);
 });
 test('live TPS divides by the time the window actually spans, restarts after a pause, and calibrates to settled usage', () => {
   const session = {}, other = {};
@@ -158,20 +158,35 @@ test('footer protects the money and the context, dropping the rates first', () =
   const money = "\\$0\\.00 \\/ \\$-- ";
   for (const columns of [24, 28, 36, 40, 44, 56, 80, 100]) assert(formatFooter(metrics, 43, columns, rates).length <= columns);
   assert.match(formatFooter(metrics, 43, 24, rates), /^\$0\.00 \/ \$-- /, 'a very narrow footer keeps the money alone');
-  assert.match(formatFooter(metrics, 43, 36, rates), new RegExp('^' + money + '.*\\| cache hit: 90\\.0%$'), 'the cache rate survives next to the money');
-  assert.match(formatFooter(metrics, 43, 56, rates), new RegExp('^context: 43% \\| ' + money + '.*\\| cache hit: 90\\.0%$'), 'context returns before the rates and the cache stays');
-  assert.match(formatFooter(metrics, 43, 80, rates), new RegExp('^current: ~12\\.3 tps \\| context: 43% \\| ' + money + '.*\\| cache hit: 90\\.0%$'), 'the cache rate returns last');
-  assert.match(formatFooter(metrics, 43, 100, rates), /^current: ~12\.3 tps \| average: 2\.4 tps \| context: 43% \| \$0\.00 \/ \$-- .* \| cache hit: 90\.0%$/, 'both rates fit on a wide terminal');
+  assert.match(formatFooter(metrics, 43, 36, rates), new RegExp('^' + money + '.*\\| cache hit:  90\\.0%$'), 'the cache rate survives next to the money');
+  assert.match(formatFooter(metrics, 43, 56, rates), new RegExp('^context:  43% \\| ' + money + '.*\\| cache hit:  90\\.0%$'), 'context returns before the rates and the cache stays');
+  assert.match(formatFooter(metrics, 43, 80, rates), new RegExp('^current:  ~12\\.3 tps \\| context:  43% \\| ' + money + '.*\\| cache hit:  90\\.0%$'), 'the cache rate returns last');
+  assert.match(formatFooter(metrics, 43, 100, rates), /^current: {2}~12\.3 tps \| average: {4}2\.4 tps \| context: {2}43% \| \$0\.00 \/ \$-- .* \| cache hit: {2}90\.0%$/, 'both rates fit on a wide terminal');
 });
+test('a growing live figure never moves the segment after it', () => {
+  const columns = 140;
+  const header = 'deepseek-official: deepseek-flash @ ultra';
+  const at = (rates, context, cache) => formatFooter({ cost: 0.01, unknown: false, pending: 0, cache }, context, columns, rates, 'en', header);
+  const small = at({ current: 9.9, average: 2.4 }, 1, 9);
+  const grown = at({ current: 124.5, average: 99.9 }, 100, 100);
+  assert.match(small, /current: {3}~9\.9 tps \| average: {4}2\.4 tps \| context: {3}1% \|/);
+  assert.match(grown, /current: ~124\.5 tps \| average: {3}99\.9 tps \| context: 100% \|/);
+  // Reserved columns are what keeps these two readings aligned: the separators and
+  // the segments after them sit at the same column whatever the figures say.
+  for (const segment of ['average:', 'context:', '$0.01', 'cache hit:']) {
+    assert.equal(small.indexOf(segment), grown.indexOf(segment), `${segment} keeps its column`);
+  }
+});
+
 test('the model header leads the footer and sheds the provider before the money', () => {
   const metrics = { cost: 0.003, unknown: false, pending: 0, cache: 90 };
   const rates = { current: 12.3, average: 2.4 };
   const long = 'deepseek-official: deepseek-flash @ ultra';
   const line = columns => formatFooter(metrics, 43, columns, rates, 'en', long);
-  assert(line(140).startsWith(long + ' | current: ~12.3 tps | average: 2.4 tps'), 'the full header leads a wide footer');
-  assert.match(line(92), new RegExp('^' + long.replace(/[.:]/g, '\\$&') + ' \\| context: 43% \\| \\$0\\.00'), 'the provider form fits as soon as the rates go');
-  assert.match(line(74), /^deepseek-flash @ ultra \| context: 43% \| \$0\.00/, 'the bare model returns before the money goes');
-  assert.match(line(60), /^deepseek-flash @ ultra \| \$0\.00 \/ \$-- [^|]*\| cache hit: 90\.0%$/, 'the cache outlives context at 60 columns');
+  assert(line(140).startsWith(long + ' | current:  ~12.3 tps | average:    2.4 tps'), 'the full header leads a wide footer');
+  assert.match(line(96), new RegExp('^' + long.replace(/[.:]/g, '\\$&') + ' \\| context:  43% \\| \\$0\\.00'), 'the provider form fits as soon as the rates go');
+  assert.match(line(78), /^deepseek-flash @ ultra \| context: {2}43% \| \$0\.00/, 'the bare model returns before the money goes');
+  assert.match(line(60), /^deepseek-flash @ ultra \| \$0\.00 \/ \$-- [^|]*\| cache hit: {2}90\.0%$/, 'the cache outlives context at 60 columns');
   assert.match(line(40), /^deepseek-flash @ ultra \| \$0\.00 \/ \$--/, 'a narrow footer keeps the model and the money');
   assert.match(line(20), /^\$0\.00 \/ \$--/, 'the money is the last thing standing');
 });
@@ -199,8 +214,8 @@ test('collector streaming deltas reach the live footer', async () => {
       yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 10, cacheReadTokens: 0 } };
     })) {}
     const line = footerFor('root', { contextWindow: 100 }, 100);
-    assert.match(line, /current: ~20\.0 tps \| average: 4\.0 tps/, 'ten estimated tokens over the half-second minimum span; 20 settled tokens over a five-second call');
-    assert.match(line, /context: 43%/);
+    assert.match(line, /current: {2}~20\.0 tps \| average: {4}4\.0 tps/, 'ten estimated tokens over the half-second minimum span; 20 settled tokens over a five-second call');
+    assert.match(line, /context: {2}43%/);
   } finally {
     dispose?.();
     if (old === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = old;
@@ -261,8 +276,8 @@ test('footer labels follow the interface language and wide characters count as t
   assert.equal(displayWidth('上下文: 43%'), 11);
   assert.equal(displayWidth(' | '), 3);
   const zh = formatFooter(metrics, 43, 240, rates, 'zh-CN');
-  assert.match(zh, /^当前: ~12\.3 tps | 平均: 2\.4 tps | 上下文: 43% | \$0\.00 \/ \$(?:--|\d+\.\d{2}).*缓存命中: 90\.0%$/);
-  assert.match(formatFooter(metrics, 43, 80, rates, 'ja'), /^現在: ~12\.3 tps | 平均: 2\.4 tps | コンテキスト: 43%/);
+  assert.match(zh, /^当前: {2}~12\.3 tps | 平均: {4}2\.4 tps | 上下文: {2}43% | \$0\.00 \/ \$(?:--|\d+\.\d{2}).*缓存命中: {2}90\.0%$/);
+  assert.match(formatFooter(metrics, 43, 104, rates, 'ja'), /^現在: {2}~12\.3 tps | 平均: {4}2\.4 tps | コンテキスト: {2}43%/);
   for (const columns of [20, 24, 30, 40, 60]) assert(displayWidth(formatFooter(metrics, 43, columns, rates, 'ko')) <= columns, `fits ${columns}`);
   assert.equal(formatFooter(metrics, 43, 80, rates, 'xx'), formatFooter(metrics, 43, 80, rates), 'unknown locale falls back to English');
 });

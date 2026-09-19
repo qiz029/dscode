@@ -45,6 +45,41 @@ function formatRate(n: number): string {
 }
 
 /**
+ * Fixed value columns for the footer's live figures. A running turn changes
+ * these numbers every second, so each one renders right-aligned inside its
+ * own columns: a growing value then reshapes its digits without reflowing the
+ * groups after it, and the row's geometry follows terminal width alone. The
+ * widths cover the figures a session reaches in practice (999 turns, 999K
+ * tokens, 120m0s of wall time); a value past its columns simply grows the
+ * group rather than being clipped into a wrong reading.
+ */
+const VALUE_WIDTH = {
+  /** Turn and step counters. */
+  count: 3,
+  /** `12.3K` token totals. */
+  tokens: 5,
+  /** `45.2s` / `2m42s` wall times. */
+  duration: 6,
+  /** `15.3` / `124` / `1.2K` decode rates. */
+  rate: 4,
+  /** `100%` context occupancy. */
+  percentContext: 4,
+  /** `100.0%` cache shares. */
+  percentShare: 6,
+} as const
+
+/** Right-align a figure inside its fixed value columns (wider text is left alone). */
+export function padValue(text: string, width: number): string {
+  const padding = width - visibleColumns(text)
+  return padding > 0 ? ' '.repeat(padding) + text : text
+}
+
+/** The `--` placeholder for a figure with no reading yet, in the same columns. */
+function pendingValue(width: number): string {
+  return padValue('--', width)
+}
+
+/**
  * Cache-hit share of billed prompt-side input. The denominator is the same
  * billed total the /usage panel shows (uncached input plus both cache
  * buckets), so the two readouts can never disagree.
@@ -100,14 +135,19 @@ export interface StatusRow {
   left: readonly StatusGroup[]
   /** Trailing spans pinned to the right edge, dot-separated in display order. */
   right: readonly StatusSpan[]
-  /** Whether the shift+tab cycle hint rides after the permission badge. */
+  /**
+   * Whether to paint the shift+tab cycle hint left of the right cluster. Its
+   * columns stay reserved either way, so a turn opening or closing never moves
+   * the badge or changes what the left clusters may occupy.
+   */
   hint: boolean
 }
 
 /**
  * The footer layout: two stacked physical rows. Row 1 keeps the primary
- * controls in model, cwd, mode, branch, context, permission order. Row 2
- * carries every secondary session/run figure and degrades independently.
+ * controls (model, cwd, mode, branch, context) flowing from the left while the
+ * permission badge anchors the right edge. Row 2 carries every secondary
+ * session/run figure and degrades independently.
  */
 export interface StatusLayout {
   row1: StatusRow
@@ -178,7 +218,9 @@ export type ContextReadoutMode = 'full' | 'percent' | 'none'
  * OUTSIDE the bar, so the dotted track keeps its proportional meaning no
  * matter how wide the readout is. `full` reads `12.3K/1.0M 25%`; `percent`
  * drops the absolute pair; `none` is the bare bar. The readout turns amber
- * once occupancy reaches the warning threshold.
+ * once occupancy reaches the warning threshold. Before a route advertises a
+ * window the empty track still draws and the readout is the `--` placeholder,
+ * so the group keeps its columns from the first frame on.
  */
 export function contextGroupSpans(
   usedTokens: number,
@@ -187,13 +229,20 @@ export function contextGroupSpans(
   readout: ContextReadoutMode,
 ): readonly StatusSpan[] {
   const spans: StatusSpan[] = [{ text: t('status.label.context') + ' ', tone: 'label' }]
-  spans.push(...contextBar(usedTokens, contextWindow, barWidth))
-  if (readout === 'none' || barWidth <= 0 || contextWindow <= 0) return spans
+  const track = contextWindow > 0
+    ? contextBar(usedTokens, contextWindow, barWidth)
+    : barWidth > 0 ? [{ text: '░'.repeat(barWidth), tone: 'label' as const }] : []
+  spans.push(...track)
+  if (readout === 'none' || barWidth <= 0) return spans
+  if (contextWindow <= 0) {
+    spans.push({ text: ' ', tone: 'label' }, { text: pendingValue(VALUE_WIDTH.tokens), tone: 'value' })
+    return spans
+  }
   const used = Math.max(0, usedTokens)
   const percent = Math.round(used / contextWindow * 100)
   const text = readout === 'full'
-    ? `${formatTokens(used)}/${formatTokens(contextWindow)} ${percent}%`
-    : `${percent}%`
+    ? `${padValue(formatTokens(used), VALUE_WIDTH.tokens)}/${formatTokens(contextWindow)} ${padValue(percent + '%', VALUE_WIDTH.percentContext)}`
+    : padValue(percent + '%', VALUE_WIDTH.percentContext)
   spans.push(
     { text: ' ', tone: 'label' },
     { text, tone: percent >= CONTEXT_WARN_PERCENT ? 'warn' : 'value' },
@@ -445,60 +494,70 @@ function buildCandidates(
 
 
 
-  if (stats.turns > 0 || stats.steps > 0) {
-    if (enabled.has('turns')) {
-      // Label/value pairs join through explicit dim separators.
-      const counts: StatusSpan[] = []
-      const pair = (label: string, value: string): void => {
-        if (counts.length > 0) counts.push(sep())
-        counts.push({ text: label + ' ', tone: 'label' }, { text: value, tone: 'value' })
-      }
-      pair(t('status.label.turns'), String(stats.turns))
-      pair(t('status.label.steps'), String(stats.steps))
-      row2.push({ group: { spans: counts }, rank: RANK_COUNTS, id: 'turns' })
+  if (enabled.has('turns')) {
+    // Label/value pairs join through explicit dim separators. The counters ride
+    // the footer from the first frame on, so a turn opening one never moves the
+    // row.
+    const counts: StatusSpan[] = []
+    const pair = (label: string, value: string): void => {
+      if (counts.length > 0) counts.push(sep())
+      counts.push({ text: label + ' ', tone: 'label' }, { text: value, tone: 'value' })
     }
-    if (enabled.has('durations')) {
-      // Model round-trip, first-token latency, decode rate, and tool wall
-      // time; the label keeps its one trailing space so each reads as one
-      // figure ('model 45.2s'). Named in full — no single-letter codes.
-      const durations: StatusSpan[] = []
-      const pair = (label: string, value: string): void => {
-        if (durations.length > 0) durations.push(sep())
-        durations.push({ text: label + ' ', tone: 'label' }, { text: value, tone: 'value' })
-      }
-      if (stats.llmMs > 0) pair(t('status.label.modelTime'), formatDuration(stats.llmMs))
-      if (stats.ttftSteps > 0) pair(t('status.label.latency'), formatDuration(stats.ttftMs / stats.ttftSteps))
-      if (stats.decodeMs > 0 && stats.decodeTokens > 0) {
-        if (durations.length > 0) durations.push(sep())
-        durations.push(
-          { text: formatRate(stats.decodeTokens / (stats.decodeMs / 1_000)), tone: 'value' },
-          { text: t('status.label.tokensPerSec'), tone: 'label' },
-        )
-      }
-      if (stats.toolMs > 0) pair(t('status.label.tool'), formatDuration(stats.toolMs))
-      if (durations.length > 0) {
-        row2.push({ group: { spans: durations }, rank: RANK2_DURATIONS, id: 'durations' })
-      }
+    pair(t('status.label.turns'), padValue(String(stats.turns), VALUE_WIDTH.count))
+    pair(t('status.label.steps'), padValue(String(stats.steps), VALUE_WIDTH.count))
+    row2.push({ group: { spans: counts }, rank: RANK_COUNTS, id: 'turns' })
+  }
+  if (enabled.has('durations')) {
+    // Model round-trip, first-token latency, decode rate, and tool wall
+    // time; the label keeps its one trailing space so each reads as one
+    // figure ('model 45.2s'). Named in full — no single-letter codes. A figure
+    // without a reading yet keeps its columns as `--`.
+    const durations: StatusSpan[] = []
+    const pair = (label: string, value: string): void => {
+      if (durations.length > 0) durations.push(sep())
+      durations.push({ text: label + ' ', tone: 'label' }, { text: value, tone: 'value' })
     }
+    const wall = (ms: number): string => ms > 0
+      ? padValue(formatDuration(ms), VALUE_WIDTH.duration)
+      : pendingValue(VALUE_WIDTH.duration)
+    pair(t('status.label.modelTime'), wall(stats.llmMs))
+    pair(t('status.label.latency'), stats.ttftSteps > 0 ? wall(stats.ttftMs / stats.ttftSteps) : pendingValue(VALUE_WIDTH.duration))
+    if (durations.length > 0) durations.push(sep())
+    durations.push(
+      {
+        text: stats.decodeMs > 0 && stats.decodeTokens > 0
+          ? padValue(formatRate(stats.decodeTokens / (stats.decodeMs / 1_000)), VALUE_WIDTH.rate)
+          : pendingValue(VALUE_WIDTH.rate),
+        tone: 'value',
+      },
+      { text: t('status.label.tokensPerSec'), tone: 'label' },
+    )
+    pair(t('status.label.tool'), wall(stats.toolMs))
+    row2.push({ group: { spans: durations }, rank: RANK2_DURATIONS, id: 'durations' })
   }
 
   // The cache group carries both facts about cached prompt tokens: how many
   // were read and what share of the billed prompt that was. The read count
   // lives here rather than in the tokens group so the tokens group keeps
   // meaning "what the provider billed outside the cache".
+  // An unread cache keeps its columns as the `--` placeholder.
   const cacheHit = cacheHitPercent(stats.usage)
-  if (cacheHit !== null && enabled.has('cache')) {
+  if (enabled.has('cache')) {
     const spans: StatusSpan[] = [{ text: t('status.label.cache') + ' ', tone: 'label' }]
-    if (stats.usage.cacheReadTokens > 0) {
-      spans.push({ text: formatTokens(stats.usage.cacheReadTokens), tone: 'value' }, sep())
-    }
-    spans.push({ text: cacheHit + '%', tone: 'value' })
+    spans.push({
+      text: stats.usage.cacheReadTokens > 0
+        ? padValue(formatTokens(stats.usage.cacheReadTokens), VALUE_WIDTH.tokens)
+        : pendingValue(VALUE_WIDTH.tokens),
+      tone: 'value',
+    })
+    spans.push(sep())
+    spans.push({ text: cacheHit === null ? pendingValue(VALUE_WIDTH.percentShare) : padValue(cacheHit + '%', VALUE_WIDTH.percentShare), tone: 'value' })
     row2.push({ group: { spans }, rank: RANK2_CACHE, id: 'cache' })
   }
   // Context occupancy as a purely proportional bar with the usage readout
   // riding outside it: the used total is the most recent reported prompt
   // size against the advertised route capacity.
-  if (stats.contextWindow > 0 && stats.lastPromptTokens > 0 && enabled.has('context')) {
+  if (enabled.has('context')) {
     left.push({
       group: {
         spans: contextGroupSpans(stats.lastPromptTokens, stats.contextWindow, contextWidth, 'full'),
@@ -507,14 +566,16 @@ function buildCandidates(
       id: 'context',
     })
   }
-  if ((stats.usage.uncachedInputTokens > 0 || stats.usage.outputTokens > 0) && enabled.has('tokens')) {
+  // The token totals keep their columns from the first frame on: an unread
+  // total shows its zero in the same width instead of taking the group out.
+  if (enabled.has('tokens')) {
     const tokens: StatusSpan[] = []
     const pair = (label: string, value: string): void => {
       if (tokens.length > 0) tokens.push(sep())
       tokens.push({ text: label + ' ', tone: 'label' }, { text: value, tone: 'value' })
     }
-    pair(t('status.label.in'), formatTokens(stats.usage.uncachedInputTokens))
-    pair(t('status.label.out'), formatTokens(stats.usage.outputTokens))
+    pair(t('status.label.in'), padValue(formatTokens(stats.usage.uncachedInputTokens), VALUE_WIDTH.tokens))
+    pair(t('status.label.out'), padValue(formatTokens(stats.usage.outputTokens), VALUE_WIDTH.tokens))
     row2.push({ group: { spans: tokens }, rank: RANK_TOKENS, id: 'tokens' })
   }
 
@@ -549,19 +610,18 @@ function buildCandidates(
   // any other preset (a typed /plan mid-session) stays orthogonal: the badge
   // keeps naming the preset and row 2 carries the green plan marker.
   const planStation = facts.plan && permissionTone(permission) === 'success'
-  // dscode: the permission badge rides row 1 beside the title rather than
-  // right-pinning itself on the identity row.
+  // dscode: the permission badge anchors row 1's right edge, so the left
+  // clusters (title, cwd, mode, branch, context) grow and shrink under it
+  // without ever moving it.
   if (permission !== '' && enabled.has('permission')) {
-    left.push({
-      group: {
-        spans: planStation
-          ? [{ text: 'plan on', tone: 'plan' }]
-          : [{ text: permission, tone: permissionTone(permission) }],
-      },
+    right.push({
+      span: planStation
+        ? { text: 'plan on', tone: 'plan' }
+        : { text: permission, tone: permissionTone(permission) },
       rank: RANK_BADGE,
       id: 'permission',
     })
-    badge = left.length - 1
+    badge = right.length - 1
   }
   if (facts.plan && enabled.has('plan')) {
     row2.push({ group: { spans: [{ text: '⧉ plan', tone: 'accent' }] }, rank: RANK2_PLAN, id: 'plan' })
@@ -610,9 +670,18 @@ export function layoutStatusBar(
   const orderedRight = right.slice().sort(byPosition)
   const orderedRow2 = row2.slice().sort(byPosition)
 
+  // The cycle hint keeps its columns reserved whether or not it is painted:
+  // the badge anchors the right edge, so a turn opening or closing must not
+  // change what the left clusters may occupy.
   let hint = badge >= 0 && !busy
+  let hintWidth = badge >= 0 ? visibleColumns(statusCycleHint()) : 0
   const leftKept = [...orderedLeft]
   const rightKept = [...orderedRight]
+
+  // Columns the hint reserves: its own text plus the item separator that
+  // joins it to a right cluster, so an idle and a running turn measure the
+  // row identically.
+  const hintSlot = (): number => hintWidth > 0 && rightKept.length > 0 ? hintWidth + itemSeparator : hintWidth
 
   // Context degradation state: the readout drops its absolute pair first,
   // then the bar shrinks inside its own budget, and only then is the whole
@@ -638,7 +707,7 @@ export function layoutStatusBar(
       groupSeparator,
     )
     const rightWidth = joinWidth(rightKept.map(entry => visibleColumns(entry.span.text)), itemSeparator)
-      + (hint ? visibleColumns(statusCycleHint()) : 0)
+      + hintSlot()
     return rightWidth > 0 ? leftWidth + LEFT_RIGHT_GAP + rightWidth : leftWidth
   }
 
@@ -663,11 +732,11 @@ export function layoutStatusBar(
       leftKept.splice(leftKept.findIndex(entry => entry.id === 'context'), 1)
       continue
     }
-    if (hint && rightKept.length > 0 && leftKept.length > 0) {
+    if (hintWidth > 0 && rightKept.length > 0 && leftKept.length > 0) {
       const identity = leftKept[0]
       const identityText = identity.group.spans.map(span => span.text).join('')
       const rightWidth = joinWidth(rightKept.map(entry => visibleColumns(entry.span.text)), itemSeparator)
-      const identityBudget = budget - rightWidth - LEFT_RIGHT_GAP - visibleColumns(statusCycleHint())
+      const identityBudget = budget - rightWidth - LEFT_RIGHT_GAP - hintSlot()
       if (identityBudget > 0 && visibleColumns(identityText) > identityBudget) {
         leftKept[0] = {
           ...identity,
@@ -676,8 +745,9 @@ export function layoutStatusBar(
         continue
       }
     }
-    if (hint) {
+    if (hintWidth > 0) {
       hint = false
+      hintWidth = 0
       continue
     }
     let dropLeft = -1

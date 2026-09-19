@@ -146,6 +146,7 @@ dscode update 0.7.11           # an exact version
 | `/mcp`, `/skills`, `/hooks` | Manage MCP, inspect skill sources, view or reload hooks |
 | `/plan`, `/goal` | Plans and long-running objectives |
 | `/agents` | Sub-agent tasks, status and current activity |
+| `/btw` | Ask a side question in a child session; the answer shows in its own panel and never enters the main conversation |
 | `/mailbox` | Session messages and deferred notes |
 | `/email` | Press `i` to configure IMAP and an app password; browse `[ToAgent]` mail and press Enter to steer it into the session |
 | `/compact` | Compact the conversation context |
