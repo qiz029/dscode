@@ -8,6 +8,10 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 ## [Unreleased]
 
+### Added
+
+- Prebuilt release tarballs, `dscode-<version>-darwin-arm64.tar.gz` and `-darwin-x64.tar.gz`: the source tree with the locked `node_modules` already installed for that platform. The `curl | sh` installer and `dscode update` prefer the one for this machine, so installing and upgrading reach GitHub only and need neither npm nor an npm registry - a corporate registry proxy no longer ends the install at `npm ci`. The source tarball stays as the fallback for a platform without a prebuilt package, and `DSCODE_INSTALL_SOURCE=1` selects it. `npm run dist` builds all three (`DSCODE_PREBUILT_ARCHS` narrows or skips the prebuilt ones) and the release workflow and `make attach` upload them.
+
 ### Fixed
 
 - A `.env` in the directory DSCODE was started from no longer affects the launch. Upstream read it as a project layer, so a workspace file injected its variables into the agent process, and one bootstrap-only name in it (any `DSH_*`, `NODE_OPTIONS`, a CA path) aborted the start with "only the launching environment may set". A pinned `dsh-app-boot` patch drops that layer on repository and tar installs; the installation's own `.env` is still loaded by the launcher.

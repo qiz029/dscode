@@ -5,6 +5,12 @@
 # it resolves a GitHub release, verifies the sha256 digest that release publishes,
 # unpacks it and hands over to the installer the archive itself carries, so the
 # downloaded archive and this script can never disagree about the install layout.
+#
+# A release carries two kinds of tarball. The prebuilt one (dscode-<version>-<platform>)
+# already holds the locked node_modules for that platform, so installing it needs GitHub
+# and Node only: no npm, and no registry a corporate proxy may refuse. The source one
+# leaves `npm ci` to this machine; it is the fallback for a platform without a prebuilt
+# package, and DSCODE_INSTALL_SOURCE=1 asks for it explicitly.
 set -eu
 
 REPOSITORY=${DSCODE_REPOSITORY:-qiz029/dscode}
@@ -18,7 +24,6 @@ need() {
   command -v "$1" >/dev/null 2>&1 || { printf 'DSCODE needs %s on PATH; install it and run this again.\n' "$1" >&2; exit 1; }
 }
 need node
-need npm
 need git
 node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (!(major >= 24 || (major === 22 && minor >= 19))) { console.error("Node 22.19+ (22.x), or Node 24+ required"); process.exit(1); }'
 if [ -e "$install_dir" ] || [ -L "$install_dir" ]; then
@@ -32,13 +37,31 @@ fi
 
 install_from() {
   source_dir=$1
+  entries='package.json package-lock.json .npmrc .env.example bin scripts packages plugins tests presets config README.md docs install.sh'
+  prebuilt=''
+  if [ -f "$source_dir/.dscode-prebuilt" ] && [ -d "$source_dir/node_modules" ]; then
+    # Native addons in a prebuilt tree only load on the platform they were installed for.
+    prebuilt=$(cat "$source_dir/.dscode-prebuilt")
+    platform=$(node -p 'process.platform + "-" + process.arch')
+    if [ "$prebuilt" != "$platform" ]; then
+      echo "DSCODE install: this package was built for $prebuilt, but this machine is $platform." >&2
+      exit 1
+    fi
+    entries="$entries node_modules .dscode-prebuilt"
+  else
+    need npm
+  fi
   mkdir -p "$install_dir" "$bin_dir"
-  for entry in package.json package-lock.json .npmrc .env.example bin scripts packages plugins tests presets config README.md docs install.sh; do
+  for entry in $entries; do
     cp -R "$source_dir/$entry" "$install_dir/"
   done
   cd "$install_dir"
-  npm ci --ignore-scripts --no-audit
-  npm run setup
+  if [ -n "$prebuilt" ]; then
+    node scripts/harness.mjs setup
+  else
+    npm ci --ignore-scripts --no-audit
+    npm run setup
+  fi
   chmod +x bin/dscode.mjs
   ln -s "$install_dir/bin/dscode.mjs" "$bin_dir/dscode"
   printf '\nInstalled: %s/dscode\n' "$bin_dir"
@@ -59,7 +82,7 @@ bootstrap_release() {
   need tar
   work=$(mktemp -d "${TMPDIR:-/tmp}/dscode-install.XXXXXX")
   trap 'rm -rf "$work"' EXIT
-  version=$(DSCODE_RELEASES_API="$RELEASES_API" DSCODE_WANTED="$wanted" DSCODE_WORK="$work" node --input-type=module -e '
+  version=$(DSCODE_RELEASES_API="$RELEASES_API" DSCODE_WANTED="$wanted" DSCODE_WORK="$work" DSCODE_INSTALL_SOURCE="${DSCODE_INSTALL_SOURCE:-}" node --input-type=module -e '
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -76,9 +99,15 @@ const body = await listing.json();
 const version = String(body.tag_name ?? "").replace(/^v/, "");
 if (body.draft || body.prerelease || !exact.test(version)) fail("the release on GitHub is not a published DSCODE release.");
 if (wanted !== "latest" && version !== wanted) fail("GitHub published " + version + " for the requested tag; refusing to install another version.");
-const name = "dscode-" + version + ".tar.gz";
-const asset = (Array.isArray(body.assets) ? body.assets : []).find(candidate => candidate?.name === name);
-if (!asset?.browser_download_url) fail("release " + version + " carries no " + name + ".");
+const assets = Array.isArray(body.assets) ? body.assets : [];
+const named = wantedName => assets.find(candidate => candidate?.name === wantedName && candidate.browser_download_url);
+const platform = process.platform + "-" + process.arch;
+const source = "dscode-" + version + ".tar.gz";
+const prebuilt = ["1", "true", "yes"].includes(String(process.env.DSCODE_INSTALL_SOURCE).toLowerCase()) ? undefined : named("dscode-" + version + "-" + platform + ".tar.gz");
+const asset = prebuilt ?? named(source);
+if (!asset) fail("release " + version + " carries no " + source + ".");
+if (!prebuilt) console.error("No prebuilt package for " + platform + " is being used; installing from source, which downloads dependencies with npm.");
+const name = asset.name;
 const digest = typeof asset.digest === "string" && asset.digest.startsWith("sha256:") ? asset.digest.slice("sha256:".length) : "";
 if (!digest) fail("release " + version + " publishes no sha256 digest; refusing an unverified download.");
 console.error("Downloading DSCODE " + version + " (" + asset.browser_download_url + ")");
@@ -86,7 +115,7 @@ const download = await fetch(asset.browser_download_url, { headers: { "user-agen
 if (!download.ok) fail("downloading " + name + " failed (HTTP " + download.status + ").");
 const bytes = Buffer.from(await download.arrayBuffer());
 if (createHash("sha256").update(bytes).digest("hex") !== digest) fail("the downloaded tarball does not match the release digest; nothing was installed.");
-writeFileSync(join(work, name), bytes, { mode: 0o600 });
+writeFileSync(join(work, "dscode-" + version + ".tar.gz"), bytes, { mode: 0o600 });
 console.log(version);
 ')
   # The version lands in a filename below, so refuse anything that is not plainly one.

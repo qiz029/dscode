@@ -61,10 +61,10 @@ Every other install path reaches the same pinned harness:
 |---|---|
 | npm / Hub | the command above; the launcher installs the pinned profile from [DSH Plugin Hub](https://dshpluginhub.ai) |
 | GitHub release, one line | `curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh \| sh` |
-| Release tarball | download `dscode-<version>.tar.gz` from [Releases](https://github.com/qiz029/dscode/releases), unpack it and run `sh dscode-install/install.sh` |
+| Release tarball | download `dscode-<version>-darwin-arm64.tar.gz` (or `-darwin-x64`) from [Releases](https://github.com/qiz029/dscode/releases), unpack it and run `sh dscode-install/install.sh` |
 | Source checkout | `git clone https://github.com/qiz029/dscode.git && cd dscode && npm ci --ignore-scripts && npm run setup` |
 
-The one-line installer resolves the newest release, verifies the sha256 digest GitHub publishes for its tarball and then runs the installation the tarball carries; `sh -s -- <version>` pins an exact release instead of tracking the latest. Every path needs Node, npm and Git—the release tarball installs its own lockfile with `npm ci`, and the npm path installs the pinned profile from the Hub.
+The one-line installer resolves the newest release, verifies the sha256 digest GitHub publishes for its tarball and then runs the installation the tarball carries; `sh -s -- <version>` pins an exact release instead of tracking the latest. Every path needs Node and Git. The GitHub release paths need nothing else: the prebuilt tarball (`dscode-<version>-darwin-arm64.tar.gz` or `-darwin-x64`) already carries the locked `node_modules`, so it installs without npm and without reaching an npm registry—the one to use behind a corporate registry proxy. The plain `dscode-<version>.tar.gz` is the source tarball, which installs its lockfile with `npm ci`; the installer falls back to it on a platform without a prebuilt package, and `DSCODE_INSTALL_SOURCE=1` asks for it. The npm path installs the pinned profile from the Hub.
 
 The first launch installs the pinned complete preset from [DSH Plugin Hub](https://dshpluginhub.ai)—no manual plugin assembly, no global pnpm. Then enter `/login` and paste your DeepSeek API key into the hidden input: it is stored locally in `~/.dscode/credentials.yaml` with `0600` permissions, shared across projects and installed versions, and never sent to the agent. A `DEEPSEEK_API_KEY` environment variable takes precedence. To use OpenRouter, enter `/provider openrouter`: DSCODE asks for your OpenRouter key (stored the same way, or taken from `OPENROUTER_API_KEY`) and switches the session to the DeepSeek model you were on; every model in OpenRouter's live listing that can call tools is then listed in `/model`, where typing searches. DeepSeek, GLM, Kimi and Qwen models are tuned and tested; other models work on a best-effort basis. `/provider deepseek` switches back, and `/login openrouter` replaces the key. Use `/model` to pick a model or another provider, and `/effort` to adjust reasoning effort; the default route is `deepseek-official/deepseek-flash`. The TUI checks npm for a newer release at startup and `/update` upgrades the whole installation after you exit.
 
@@ -103,11 +103,11 @@ curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh
 curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.14
 ```
 
-**From a tar package** — download `dscode-0.7.11.tar.gz` from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
+**From a tar package** — download the prebuilt `dscode-<version>-darwin-arm64.tar.gz` (Apple silicon) or `dscode-<version>-darwin-x64.tar.gz` (Intel) from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.11.tar.gz -C dscode-install
+tar -xzf dscode-<version>-darwin-arm64.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -119,7 +119,7 @@ The command lands in `~/.local/bin/dscode` by default—make sure that directory
 npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.11.tgz
 ```
 
-**Upgrade** — `dscode update [exact-version]` updates the whole installation in one step, and requires no running DSCODE sessions. On the npm/Hub install it replaces the launcher binary with npm and then upgrades the installed profile to the same version. On a tar install it downloads the release tarball, verifies it against the release's sha256 digest, swaps the installation directory in place and migrates `.runtime`, `.env` and local `config/`; the previous installation is kept as a sibling backup directory. A source checkout updates itself the same way: `git pull --ff-only` on the branch it tracks, then `npm ci --ignore-scripts` and `npm run setup`; uncommitted changes in tracked files refuse before anything runs, so a failed update never half-applies.
+**Upgrade** — `dscode update [exact-version]` updates the whole installation in one step, and requires no running DSCODE sessions. On the npm/Hub install it replaces the launcher binary with npm and then upgrades the installed profile to the same version. On a tar install it downloads the release tarball (the prebuilt one for this platform when the release has it, so the update needs no npm either), verifies it against the release's sha256 digest, swaps the installation directory in place and migrates `.runtime`, `.env` and local `config/`; the previous installation is kept as a sibling backup directory. A source checkout updates itself the same way: `git pull --ff-only` on the branch it tracks, then `npm ci --ignore-scripts` and `npm run setup`; uncommitted changes in tracked files refuse before anything runs, so a failed update never half-applies.
 
 ```sh
 dscode update                  # latest release

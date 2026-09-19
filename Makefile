@@ -19,6 +19,8 @@ SHELL := /bin/sh
 VERSION := $(shell node -p "require('./package.json').version" 2>/dev/null)
 REPOSITORY ?= https://github.com/qiz029/dscode
 TAG ?= v$(VERSION)
+# The source tarball plus one prebuilt tarball per platform (scripts/distribute.mjs).
+TARBALLS := artifacts/dscode-$(VERSION).tar.gz artifacts/dscode-$(VERSION)-darwin-arm64.tar.gz artifacts/dscode-$(VERSION)-darwin-x64.tar.gz
 
 .PHONY: help install check version-check build verify candidates unpack release credentials publish publish-bundle publish-profile publish-launcher attach
 
@@ -37,7 +39,7 @@ help:
 	@echo '  make publish-bundle     publish the bundle to npm'
 	@echo '  make publish-profile    sync the Hub to npm, then publish the dscode profile'
 	@echo '  make publish-launcher   publish the launcher to npm'
-	@echo '  make attach             attach artifacts/dscode-$(VERSION).tar.gz to the GitHub release'
+	@echo '  make attach             attach the source and prebuilt tarballs to the GitHub release'
 
 # The workflow installs with --ignore-scripts: the exact dependency set the release is
 # verified against.
@@ -64,7 +66,7 @@ verify:
 
 # One tarball keeps the exact layout the publish job restores, artifacts/ prefix included.
 candidates:
-	tar -czf release-candidates.tar.gz artifacts/npm artifacts/local/hub-verification.json artifacts/dscode-$(VERSION).tar.gz
+	tar -czf release-candidates.tar.gz artifacts/npm artifacts/local/hub-verification.json $(TARBALLS)
 
 # The publish job restores the candidates it downloaded and refuses an incomplete archive;
 # locally this is also how a candidate tarball from another machine enters the tree.
@@ -96,9 +98,10 @@ publish-launcher:
 	npm run publish:hub -- launcher
 
 # The tag always comes from the manifest version — the build job refuses a tag that does not
-# name it — and the curl installer and the README fetch this asset.
+# name it — and the curl installer, `dscode update` and the README fetch these assets: the
+# prebuilt tarballs install without npm, the source one is the fallback.
 attach:
-	@test -f "artifacts/dscode-$(VERSION).tar.gz" || { echo "artifacts/dscode-$(VERSION).tar.gz is missing; run make build" >&2; exit 1; }
-	@version=$(VERSION); if gh release view "v$$version" >/dev/null 2>&1; then gh release upload "v$$version" "artifacts/dscode-$$version.tar.gz" --clobber; else test -f "docs/releases/$$version.md" || { echo "docs/releases/$$version.md is missing; write the release notes first" >&2; exit 1; }; gh release create "v$$version" "artifacts/dscode-$$version.tar.gz" --title "DSCODE $$version" --notes-file "docs/releases/$$version.md"; fi
+	@for tarball in $(TARBALLS); do test -f "$$tarball" || { echo "$$tarball is missing; run make build" >&2; exit 1; }; done
+	@version=$(VERSION); if gh release view "v$$version" >/dev/null 2>&1; then gh release upload "v$$version" $(TARBALLS) --clobber; else test -f "docs/releases/$$version.md" || { echo "docs/releases/$$version.md is missing; write the release notes first" >&2; exit 1; }; gh release create "v$$version" $(TARBALLS) --title "DSCODE $$version" --notes-file "docs/releases/$$version.md"; fi
 
 publish: credentials publish-bundle publish-profile publish-launcher attach

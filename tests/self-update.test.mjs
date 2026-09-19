@@ -22,11 +22,19 @@ test('update args accept only an exact version', () => {
 test('releaseAsset picks the matching tarball and its sha256 digest', () => {
   const body = { tag_name: 'v0.7.9', draft: false, prerelease: false,
     assets: [{ name: 'dscode-0.7.9.tar.gz', browser_download_url: 'https://example/dscode-0.7.9.tar.gz', digest: 'sha256:abc123', size: 10 }] };
-  assert.deepEqual(releaseAsset(body, undefined), { version: '0.7.9', url: 'https://example/dscode-0.7.9.tar.gz', digest: 'abc123', size: 10 });
+  assert.deepEqual(releaseAsset(body, undefined), { version: '0.7.9', url: 'https://example/dscode-0.7.9.tar.gz', digest: 'abc123', size: 10, prebuilt: false });
   assert.equal(releaseAsset(body, '0.7.8'), undefined, 'a tagged release must match the requested version');
   assert.equal(releaseAsset({ ...body, prerelease: true }, undefined), undefined);
   assert.equal(releaseAsset({ ...body, assets: [{ name: 'other.tgz', browser_download_url: 'x' }] }, undefined), undefined);
   assert.equal(releaseAsset({ tag_name: 'v0.7.9', assets: [{ name: 'dscode-0.7.9.tar.gz', browser_download_url: 'x' }] }, undefined).digest, undefined);
+});
+
+test('releaseAsset prefers the prebuilt tarball for this platform and falls back to source', () => {
+  const asset = name => ({ name, browser_download_url: 'https://example/' + name, digest: 'sha256:abc123', size: 10 });
+  const body = { tag_name: 'v0.7.9', draft: false, prerelease: false, assets: [asset('dscode-0.7.9.tar.gz'), asset('dscode-0.7.9-darwin-arm64.tar.gz')] };
+  assert.deepEqual(releaseAsset(body, undefined, 'darwin-arm64'), { version: '0.7.9', url: 'https://example/dscode-0.7.9-darwin-arm64.tar.gz', digest: 'abc123', size: 10, prebuilt: true });
+  assert.equal(releaseAsset(body, undefined, 'darwin-x64').url, 'https://example/dscode-0.7.9.tar.gz', 'another platform installs from source');
+  assert.equal(releaseAsset(body, undefined, 'darwin-x64').prebuilt, false);
 });
 
 test('verifyDigest accepts a missing digest and rejects a mismatch', () => {
@@ -178,6 +186,32 @@ test('selfUpdate stages, verifies, migrates and swaps the installation directory
   assert.ok(calls.some(line => line.startsWith('npm ci --ignore-scripts')), 'dependencies install in the staged tree');
   assert.ok(calls.includes('npm run setup'), 'setup reprovisions the staged profile');
   assert.ok(!existsSync(join(result.backup, '.runtime')), '.runtime moved into the new installation');
+});
+
+test('selfUpdate installs a prebuilt tree without npm, and distrusts a marker for another platform', async t => {
+  const digest = createHash('sha256').update(TAR_GZ).digest('hex');
+  const body = releaseBody('0.7.9', digest);
+  body.assets.push({ ...body.assets[0], name: 'dscode-0.7.9-darwin-arm64.tar.gz', browser_download_url: 'https://example/prebuilt' });
+  const prebuiltExec = marker => {
+    const { exec, calls } = fakeExec('0.7.9');
+    return { calls, exec: (argv, options = {}) => {
+      if (argv[0] === process.execPath) { calls.push(['node', ...argv.slice(1)].join(' ')); return ''; }
+      const output = exec(argv, options);
+      if (argv[0] === 'tar') { mkdirSync(join(options.cwd, 'node_modules')); writeFileSync(join(options.cwd, '.dscode-prebuilt'), marker + '\n'); }
+      return output;
+    } };
+  };
+  const first = installFixture(t, '0.7.8');
+  const fetched = fakeFetch(body, TAR_GZ);
+  const matching = prebuiltExec('darwin-arm64');
+  await selfUpdate([], { installDir: first.installDir, fetchImpl: fetched.fetchImpl, exec: matching.exec, platform: 'darwin-arm64' });
+  assert.equal(fetched.calls[1], 'https://example/prebuilt', 'the prebuilt asset is the one downloaded');
+  assert.ok(matching.calls.includes('node scripts/harness.mjs setup'), 'setup runs through node itself');
+  assert.ok(!matching.calls.some(line => line.startsWith('npm')), 'a prebuilt update never starts npm');
+  const second = installFixture(t, '0.7.8');
+  const foreign = prebuiltExec('darwin-x64');
+  await selfUpdate([], { installDir: second.installDir, fetchImpl: fakeFetch(body, TAR_GZ).fetchImpl, exec: foreign.exec, platform: 'darwin-arm64' });
+  assert.ok(foreign.calls.some(line => line.startsWith('npm ci --ignore-scripts')), 'a tree marked for another platform reinstalls from the lockfile');
 });
 
 test('selfUpdate re-checks for sessions right before the swap and changes nothing', async t => {

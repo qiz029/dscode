@@ -111,18 +111,20 @@ jobs:
         env:
           NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
         run: npm run publish:hub -- launcher
-      # The curl installer and the README both fetch this tarball from the release,
-      # so it is only complete once that asset is there beside the npm and Hub ones.
-      - name: Attach the source tarball to the GitHub release
+      # The curl installer, `dscode update` and the README all fetch these tarballs from
+      # the release: the prebuilt ones install without npm, the source one is the fallback.
+      - name: Attach the release tarballs to the GitHub release
         if: github.ref_type == 'tag' || inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(node -p "require('./package.json').version")
-          tarball="artifacts/dscode-$version.tar.gz"
-          test -f "$tarball" || { echo "::error::missing $tarball"; exit 1; }
+          set -- "artifacts/dscode-$version.tar.gz" "artifacts/dscode-$version-darwin-arm64.tar.gz" "artifacts/dscode-$version-darwin-x64.tar.gz"
+          for tarball in "$@"; do
+            test -f "$tarball" || { echo "::error::missing $tarball"; exit 1; }
+          done
           if gh release view "v$version" >/dev/null 2>&1; then
-            gh release upload "v$version" "$tarball" --clobber
+            gh release upload "v$version" "$@" --clobber
           else
-            gh release create "v$version" "$tarball" --title "DSCODE $version" --notes-file "docs/releases/$version.md"
+            gh release create "v$version" "$@" --title "DSCODE $version" --notes-file "docs/releases/$version.md"
           fi

@@ -13,6 +13,8 @@ import { spawnSync } from 'node:child_process';
 export const REPOSITORY = 'qiz029/dscode';
 export const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/;
 const RUNTIME_GUARD = /\/dscode(\.mjs)? update/;
+/** Marks a tree whose node_modules came with the release; its content is the platform it was installed for. */
+export const PREBUILT_MARKER = '.dscode-prebuilt';
 
 export function parseUpdateArgs(argv = []) {
   if (argv.length > 1 || argv[0] && argv[0].startsWith('-')) throw Error('Usage: dscode update [exact-version]');
@@ -23,14 +25,21 @@ export function parseUpdateArgs(argv = []) {
   return { version: argv[0] };
 }
 
-/** The release's tarball asset, or undefined when the release does not carry exactly one for `wanted`. */
-export function releaseAsset(body, wanted) {
+/**
+ * The release's tarball asset, or undefined when the release does not carry one for `wanted`.
+ * With a `platform` the prebuilt tarball for it wins: it already holds node_modules, so the
+ * update never reaches an npm registry. The source tarball remains the fallback.
+ */
+export function releaseAsset(body, wanted, platform) {
   const version = String(body?.tag_name ?? '').replace(/^v/, '');
   if (body?.draft || body?.prerelease || !VERSION_PATTERN.test(version) || wanted !== undefined && version !== wanted) return undefined;
-  const asset = (Array.isArray(body?.assets) ? body.assets : []).find(candidate => candidate?.name === `dscode-${version}.tar.gz`);
-  if (!asset?.browser_download_url) return undefined;
+  const assets = Array.isArray(body?.assets) ? body.assets : [];
+  const named = name => assets.find(candidate => candidate?.name === name && candidate.browser_download_url);
+  const prebuilt = platform === undefined ? undefined : named(`dscode-${version}-${platform}.tar.gz`);
+  const asset = prebuilt ?? named(`dscode-${version}.tar.gz`);
+  if (!asset) return undefined;
   const digest = typeof asset.digest === 'string' && asset.digest.startsWith('sha256:') ? asset.digest.slice('sha256:'.length) : undefined;
-  return { version, url: asset.browser_download_url, digest, size: asset.size };
+  return { version, url: asset.browser_download_url, digest, size: asset.size, prebuilt: prebuilt !== undefined };
 }
 
 export function verifyDigest(buffer, digest) {
@@ -105,7 +114,8 @@ export async function selfUpdate(argv = [], options = {}) {
   const endpoint = wanted === undefined ? `https://api.github.com/repos/${REPOSITORY}/releases/latest` : `https://api.github.com/repos/${REPOSITORY}/releases/tags/v${wanted}`;
   const response = await fetchImpl(endpoint, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'dscode-self-update' } });
   if (!response.ok) throw Error(wanted === undefined ? `Could not read the latest DSCODE release (HTTP ${response.status}).` : `DSCODE ${wanted} has no GitHub release (HTTP ${response.status}).`);
-  const asset = releaseAsset(await response.json(), wanted);
+  const platform = options.platform ?? `${process.platform}-${process.arch}`;
+  const asset = releaseAsset(await response.json(), wanted, platform);
   if (!asset) throw Error(`Release ${wanted ?? 'latest'} carries no dscode tarball.`);
   if (asset.version === current) return { status: 'current', version: current };
   if (!asset.digest) throw Error('The release tarball has no sha256 digest; refusing an unverified download.');
@@ -124,9 +134,17 @@ export async function selfUpdate(argv = [], options = {}) {
     exec(['tar', '-xzf', archive], { cwd: staged });
     if (!existsSync(join(staged, 'package.json'))) throw Error('The release tarball has an unexpected layout.');
     migrateState(installDir, staged);
-    console.log('Installing dependencies and reprovisioning the profile…');
-    exec(['npm', 'ci', '--ignore-scripts', '--no-audit'], { cwd: staged });
-    exec(['npm', 'run', 'setup'], { cwd: staged });
+    // A prebuilt tree needs neither npm nor a registry; trust the marker only with the
+    // dependencies beside it and for this platform, and install from the lockfile otherwise.
+    const marker = join(staged, PREBUILT_MARKER);
+    if (existsSync(marker) && existsSync(join(staged, 'node_modules')) && readFileSync(marker, 'utf8').trim() === platform) {
+      console.log('Reprovisioning the profile…');
+      exec([process.execPath, 'scripts/harness.mjs', 'setup'], { cwd: staged });
+    } else {
+      console.log('Installing dependencies and reprovisioning the profile…');
+      exec(['npm', 'ci', '--ignore-scripts', '--no-audit'], { cwd: staged });
+      exec(['npm', 'run', 'setup'], { cwd: staged });
+    }
     // The command path never changes, so existing `dscode` links serve the new tree as soon as this rename lands.
     // The session check runs again at the swap itself; a session started during the
     // minutes of npm ci otherwise has its state directory renamed underneath it.

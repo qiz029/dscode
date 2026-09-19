@@ -61,10 +61,10 @@ dscode
 |---|---|
 | npm / Hub | 上面的命令；launcher 会从 [DSH Plugin Hub](https://dshpluginhub.ai) 安装固定版本的 profile |
 | GitHub release，一行命令 | `curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh \| sh` |
-| release tar 包 | 从 [Releases](https://github.com/qiz029/dscode/releases) 下载 `dscode-<version>.tar.gz`，解包后执行 `sh dscode-install/install.sh` |
+| release tar 包 | 从 [Releases](https://github.com/qiz029/dscode/releases) 下载 `dscode-<version>-darwin-arm64.tar.gz`（或 `-darwin-x64`），解包后执行 `sh dscode-install/install.sh` |
 | 源码 checkout | `git clone https://github.com/qiz029/dscode.git && cd dscode && npm ci --ignore-scripts && npm run setup` |
 
-一行安装器会解析最新 release、校验 GitHub 为其 tarball 公布的 sha256 摘要，然后执行该 tar 包自带的安装流程；`sh -s -- <版本号>` 可固定精确版本而不跟随最新版。所有方式都需要 Node、npm 和 Git——tar 包用 `npm ci` 安装自己的 lockfile，npm 方式则从 Hub 安装固定版本的 profile。
+一行安装器会解析最新 release、校验 GitHub 为其 tarball 公布的 sha256 摘要，然后执行该 tar 包自带的安装流程；`sh -s -- <版本号>` 可固定精确版本而不跟随最新版。所有方式都需要 Node 和 Git。GitHub release 的两种方式不再需要别的：预构建 tar 包（`dscode-<version>-darwin-arm64.tar.gz` 或 `-darwin-x64`）已经带上锁定版本的 `node_modules`，安装时不需要 npm，也不访问任何 npm registry——公司 registry 代理拦截 npm 时就用它。不带平台后缀的 `dscode-<version>.tar.gz` 是源码 tar 包，用 `npm ci` 安装自己的 lockfile；当前平台没有预构建包时安装器会回退到它，也可用 `DSCODE_INSTALL_SOURCE=1` 显式指定。npm 方式则从 Hub 安装固定版本的 profile。
 
 首次启动会从 [DSH Plugin Hub](https://dshpluginhub.ai) 安装固定版本的完整 preset——无需手动拼装插件，也不需要全局安装 pnpm。之后输入 `/login`，在隐藏输入框中粘贴 DeepSeek API key：密钥以 `0600` 权限保存在本机 `~/.dscode/credentials.yaml`，不同项目和安装版本共用，不会发送给 agent。已设置的 `DEEPSEEK_API_KEY` 环境变量优先。想使用 OpenRouter，输入 `/provider openrouter`：DSCODE 会提示输入 OpenRouter key（同样保存在本机，或读取 `OPENROUTER_API_KEY`），并把当前会话切到对应的 DeepSeek 模型；OpenRouter 实时模型列表里支持工具调用的模型随后都会出现在 `/model` 中，直接输入即可搜索。DeepSeek、GLM、Kimi 和 Qwen 经过适配和测试，其他模型尽力可用。`/provider deepseek` 切回，`/login openrouter` 可更换 key。用 `/model` 选择模型或配置其他提供方，用 `/effort` 调整推理强度；默认路由是 `deepseek-official/deepseek-flash`。 TUI 启动时会检查 npm 上的新版本，`/update` 可在退出后自动完成整个安装的升级。
 
@@ -105,11 +105,11 @@ curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh
 curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.14
 ```
 
-**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载 `dscode-0.7.11.tar.gz`，然后执行：
+**tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载预构建的 `dscode-<version>-darwin-arm64.tar.gz`（Apple 芯片）或 `dscode-<version>-darwin-x64.tar.gz`（Intel），然后执行：
 
 ```sh
 mkdir dscode-install
-tar -xzf dscode-0.7.11.tar.gz -C dscode-install
+tar -xzf dscode-<version>-darwin-arm64.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
@@ -121,7 +121,7 @@ sh dscode-install/install.sh
 npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.11.tgz
 ```
 
-**升级** —— `dscode update [精确版本号]` 一步完成整个安装的更新，且要求没有正在运行的 DSCODE 会话。npm/Hub 安装会先用 npm 替换 launcher 本体，再把已安装的 profile 升到同一版本；tar 安装会下载 release tar 包、按发布方 sha256 校验、原位换目录并迁移 `.runtime`、`.env` 和本地 `config/`，旧安装保留为同级备份目录。源码检出同样一条命令更新：先对它跟踪的分支执行 `git pull --ff-only`，再跑 `npm ci --ignore-scripts` 和 `npm run setup`；工作区中有未提交的改动时会先拒绝，避免更新只做一半。
+**升级** —— `dscode update [精确版本号]` 一步完成整个安装的更新，且要求没有正在运行的 DSCODE 会话。npm/Hub 安装会先用 npm 替换 launcher 本体，再把已安装的 profile 升到同一版本；tar 安装会下载 release tar 包（release 带有当前平台的预构建包时取它，升级同样不需要 npm）、按发布方 sha256 校验、原位换目录并迁移 `.runtime`、`.env` 和本地 `config/`，旧安装保留为同级备份目录。源码检出同样一条命令更新：先对它跟踪的分支执行 `git pull --ff-only`，再跑 `npm ci --ignore-scripts` 和 `npm run setup`；工作区中有未提交的改动时会先拒绝，避免更新只做一半。
 
 ```sh
 dscode update                  # 最新版本

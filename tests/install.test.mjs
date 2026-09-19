@@ -131,8 +131,30 @@ test('a digest mismatch and a missing digest both refuse before the handover', a
   assert.equal(existsSync(binDir), false);
 });
 
-test('the script still installs a local tree, and its guards run before anything is touched', async t => {
-  const work = scratch(t, 'local');
+test('the piped installer prefers the prebuilt package for this platform, and DSCODE_INSTALL_SOURCE opts out', async t => {
+  const work = scratch(t, 'prebuilt');
+  const bytes = releaseTarball(work, '9.9.9');
+  const digest = createHash('sha256').update(bytes).digest('hex');
+  const platform = process.platform + '-' + process.arch;
+  const prebuilt = 'dscode-9.9.9-' + platform + '.tar.gz';
+  const api = await serve(t, (request, response, base) => {
+    if (request.url !== '/releases/latest') return response.writeHead(200, { 'content-type': 'application/gzip' }).end(bytes);
+    const body = release('v9.9.9', base, 'dscode-9.9.9.tar.gz', digest);
+    body.assets.push({ name: prebuilt, browser_download_url: base + '/asset/' + prebuilt, digest: 'sha256:' + digest });
+    return listing(response, body);
+  });
+  const result = await install({ base: api.base, installDir: join(work, 'install'), binDir: join(work, 'bin'), cwd: work });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(api.requests, ['/releases/latest', '/asset/' + prebuilt]);
+  assert.doesNotMatch(result.stderr, /installing from source/);
+  const source = await install({ base: api.base, installDir: join(work, 'install-source'), binDir: join(work, 'bin-source'), cwd: work, extraEnv: { DSCODE_INSTALL_SOURCE: '1' } });
+  assert.equal(source.status, 0, source.stderr);
+  assert.deepEqual(api.requests.slice(2), ['/releases/latest', '/asset/dscode-9.9.9.tar.gz']);
+  assert.match(source.stderr, /installing from source, which downloads dependencies with npm/);
+});
+
+/** A local tree the installer accepts; `scripts/harness.mjs` records its arguments instead of provisioning. */
+function localTree(work) {
   const tree = join(work, 'tree');
   for (const entry of ['bin', 'scripts', 'packages', 'plugins', 'tests', 'presets', 'config', 'docs']) mkdirSync(join(tree, entry), { recursive: true });
   writeFileSync(join(tree, 'package.json'), '{"name":"fake-harness","version":"1.2.3"}\n');
@@ -140,9 +162,41 @@ test('the script still installs a local tree, and its guards run before anything
   writeFileSync(join(tree, '.npmrc'), '');
   writeFileSync(join(tree, '.env.example'), '');
   writeFileSync(join(tree, 'README.md'), '# fixture\n');
-  writeFileSync(join(tree, 'scripts/harness.mjs'), 'export {};\n');
+  writeFileSync(join(tree, 'scripts/harness.mjs'), "import { writeFileSync } from 'node:fs';\nwriteFileSync('harness.log', process.argv.slice(2).join(' ') + '\\n');\n");
   writeFileSync(join(tree, 'bin/dscode.mjs'), '#!/usr/bin/env node\n');
   writeFileSync(join(tree, 'install.sh'), installer);
+  return tree;
+}
+
+test('a prebuilt tree installs without npm, and only on the platform it was built for', async t => {
+  const work = scratch(t, 'prebuilt-local');
+  const tree = localTree(work);
+  mkdirSync(join(tree, 'node_modules/some-dependency'), { recursive: true });
+  writeFileSync(join(tree, '.dscode-prebuilt'), process.platform + '-' + process.arch + '\n');
+  // A PATH with node and the coreutils but no npm: the prebuilt path must not look for it.
+  const path = join(work, 'path');
+  mkdirSync(path);
+  for (const tool of ['node', 'git', 'sh', 'cat', 'cp', 'mkdir', 'chmod', 'ln', 'dirname']) {
+    const found = spawnSync('sh', ['-c', 'command -v ' + tool], { encoding: 'utf8' }).stdout.trim();
+    writeFileSync(join(path, tool), '#!/bin/sh\nexec "' + found + '" "$@"\n');
+    chmodSync(join(path, tool), 0o755);
+  }
+  const installDir = join(work, 'install'), binDir = join(work, 'bin');
+  const run = await install({ base: 'http://127.0.0.1:1', installDir, binDir, args: [join(tree, 'install.sh')], cwd: work, path });
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(readFileSync(join(installDir, 'harness.log'), 'utf8'), 'setup\n');
+  assert.ok(existsSync(join(installDir, 'node_modules/some-dependency')), 'the shipped dependencies are installed as they came');
+  assert.equal(readlinkSync(join(binDir, 'dscode')), join(installDir, 'bin/dscode.mjs'));
+  writeFileSync(join(tree, '.dscode-prebuilt'), 'plan9-mips\n');
+  const foreign = await install({ base: 'http://127.0.0.1:1', installDir: join(work, 'other'), binDir: join(work, 'other-bin'), args: [join(tree, 'install.sh')], cwd: work, path });
+  assert.equal(foreign.status, 1);
+  assert.match(foreign.stderr, /built for plan9-mips, but this machine is/);
+  assert.equal(existsSync(join(work, 'other')), false, 'a foreign package must not install anything');
+});
+
+test('the script still installs a local tree, and its guards run before anything is touched', async t => {
+  const work = scratch(t, 'local');
+  const tree = localTree(work);
   const stub = join(work, 'stubbin');
   mkdirSync(stub, { recursive: true });
   const log = join(work, 'npm.log');
