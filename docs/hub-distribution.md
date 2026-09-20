@@ -2,7 +2,7 @@
 
 ## Packages and responsibilities
 
-- `@toddzheng024/dscode`: the global `dscode` command; the first launch applies the Hub's `dscode` profile and later runs the installed version directly. It contains a private install-tool shim; in the same environment as `npm exec` it installs DSH and pnpm 10.15.1 explicitly, so a rewritten PATH cannot pick up a system version by mistake.
+- `@toddzheng024/dscode`: the global `dscode` command; the first launch applies the Hub's `dscode` profile and later runs the installed version directly. It ships its own install-tool shims on `PATH`: `pnpm` is pinned to 10.15.1 for the profile install, and the `npx` shim pins DSH together with pnpm for a Hub release that still spawns a pinned-DSH `npx` command. Hub CLI 0.5.0 prepares and verifies the pinned DSH runtime itself — an exact-version `npm install` into `$DSCODE_HOME/.hub/runtimes/<version>`, then launch with the current Node — so a rewritten `PATH` cannot pick up a system version by mistake.
 - `@toddzheng024/dscode-bundle`: the complete Cordis composition, including the base layer, Computer Use, the modified TUI/runtime modules and this repository's plugins. Modified modules are generated at build time, and no third-party file is changed at install time.
 - Hub profile `dscode`: the exact versions and integrity hashes of the bundle and the DSH runtime.
 

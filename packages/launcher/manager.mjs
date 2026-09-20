@@ -78,6 +78,43 @@ export function warnCompatibility(profile, release, metadata, warn = console.err
   if (differences.length) warn(`[DSCODE warning] This installation differs from the recommended version combination:\n${differences.map(line => `  ${line}`).join('\n')}\nContinuing without confirmation. Compatibility has not been verified for this combination.\n`);
   return differences;
 }
+
+/** The message chain, causes included, so a failure keeps the reason it came from. */
+export function describeError(error) {
+  const seen = new Set();
+  const parts = [];
+  for (let current = error; current && !seen.has(current); current = current.cause) {
+    seen.add(current);
+    const reason = current instanceof Error ? current.message : current?.message ?? current?.code ?? current;
+    const message = typeof reason === 'string' ? reason : String(reason ?? '');
+    if (!message) continue;
+    parts.push(typeof current?.code === 'string' && !message.includes(current.code) ? `${message} (${current.code})` : message);
+    if (parts.length === 5) { parts.push('…'); break; }
+  }
+  return parts.join(' <- ') || 'Unknown error';
+}
+
+/**
+ * What to check when the Hub or npm step cannot finish. A corporate network usually
+ * reaches the internet through a proxy that Node's fetch ignores, while the prebuilt
+ * GitHub release arrives without the Hub and without an npm registry.
+ */
+export function hubFailureHint(home, env = process.env) {
+  const proxied = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy'].some(name => env[name]);
+  return [
+    'That step reaches api.dshpluginhub.ai and an npm registry.',
+    ...(proxied ? ['HTTP(S)_PROXY is set, but the Hub API call does not use it.'] : []),
+    `For an internal Hub mirror, add DSH_HUB_API_URL to ${join(home, '.env')}.`,
+    'A TLS-inspecting proxy needs its root CA in NODE_EXTRA_CA_CERTS.',
+    'Without Hub access, install the prebuilt GitHub release: https://github.com/qiz029/dscode/releases',
+  ];
+}
+/** What a failed command prints: the chain once, then the Hub hints when the failing step carried them. */
+export function formatFailure(error) {
+  const hint = error?.hubHint?.length ? `\nIf that failure was a network one, the usual causes on a managed network are:\n${error.hubHint.map(line => `  - ${line}`).join('\n')}` : '';
+  return `${describeError(error)}${hint}`;
+}
+
 const LAUNCHER_PACKAGE = '@toddzheng024/dscode';
 /** Semver-shaped comparison: numeric core, then a prerelease below its release. */
 export function compareVersion(left, right) {
@@ -132,6 +169,9 @@ export function installLauncher(version, { spawnImpl = spawn, log = console.erro
   });
 }
 
+/** Single quotes for a shell command; a literal quote becomes '\''. */
+const shellQuote = value => `'${value.replaceAll("'", "'\\''")}'`;
+
 export async function run(args, release) {
   const home = stateHome();
   const envFile = join(home, '.env');
@@ -154,6 +194,8 @@ export async function run(args, release) {
     const { code, signal } = await spawnRun(entry, argv, { cwd, lease, started, stdout });
     if (code !== 0) throw Error(`DSCODE process exited: ${signal ?? code}`);
   };
+  // A Hub failure carries its network hints to the single top-level reporter, so the chain is not printed twice.
+  const hubFailure = error => Object.assign(error, { hubHint: hubFailureHint(home) });
   if (args[0] === 'doctor') {
     const mode = commandPlan(args, release, true).doctor;
     const profile = join(home, 'profiles/dscode');
@@ -184,7 +226,12 @@ export async function run(args, release) {
     const profile = join(home, 'profiles/dscode');
     const state = join(home, '.hub/installations/dscode/current.json');
     const installed = existsSync(state) && existsSync(join(profile, 'package.json'));
-    if (!installed && existsSync(profile)) throw Error('Existing unmanaged/incomplete dscode profile; inspect ' + profile);
+    if (!installed && existsSync(profile)) {
+      // This check runs before the command is dispatched, so every command refuses while the directory is here.
+      throw Error(`The dscode profile at ${profile} is not managed by this launcher, and it will not be replaced automatically.
+Move it aside to install a managed profile, for example:
+  mv ${shellQuote(profile)} ${shellQuote(profile + '.unmanaged')}`);
+    }
     const launcherVersion = args[0] === 'update' ? await launcherUpdateVersion(args[1], release) : undefined;
     const plan = commandPlan(args, release, installed, launcherVersion);
     const running = await activeRuns(home);
@@ -196,13 +243,19 @@ export async function run(args, release) {
       // `dscode update <version>` skips the npm pass and finishes the profile upgrade.
       try { return await exec(hub, plan.hub, process.cwd(), releaseLock); }
       catch (error) {
-        throw Error(`The launcher itself was updated to ${plan.launcherUpdate}, but the profile upgrade failed: ${error.message}. Run "dscode update ${plan.launcherUpdate}" again to finish it.`, { cause: error });
+        throw hubFailure(Error(`The launcher itself was updated to ${plan.launcherUpdate}, but the profile upgrade failed; run "dscode update ${plan.launcherUpdate}" again to finish it.`, { cause: error }));
       }
     }
-    if (plan.hub) return await exec(hub, plan.hub, process.cwd(), releaseLock);
+    if (plan.hub) {
+      try { return await exec(hub, plan.hub, process.cwd(), releaseLock); }
+      catch (error) { throw hubFailure(error); }
+    }
     if (plan.install) {
       (execOptions ? console.error : console.log)(`Installing DSCODE ${release.version} from dshpluginhub.ai…`);
-      await exec(hub, ['profile','apply',release.slug,'--version',release.version,'--profile','dscode'], process.cwd(), releaseLock, undefined, execOptions ? 'stderr' : 'inherit');
+      (execOptions ? console.error : console.log)('This downloads the pinned Harness runtime and plugins with npm; on a slow registry it can take several minutes.');
+      try {
+        await exec(hub, ['profile','apply',release.slug,'--version',release.version,'--profile','dscode'], process.cwd(), releaseLock, undefined, execOptions ? 'stderr' : 'inherit');
+      } catch (error) { throw hubFailure(error); }
     }
     const metadata = JSON.parse(readFileSync(join(profile,'node_modules',release.bundle,'package.json'),'utf8'));
     if (metadata.name !== release.bundle) throw Error('Unexpected DSCODE bundle');

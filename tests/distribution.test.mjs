@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { commandPlan, acquireLock, stateHome, warnCompatibility } from '../packages/launcher/manager.mjs';
+import { commandPlan, acquireLock, stateHome, warnCompatibility, describeError, formatFailure, hubFailureHint } from '../packages/launcher/manager.mjs';
 const release={slug:'dscode',version:'0.1.0'};
 test('launcher routes management separately, pins install version and preserves existing profile',()=>{
  assert.deepEqual(commandPlan([],release,false),{launch:[],install:true});
@@ -120,4 +120,52 @@ test('the dscode entry answers --version with the DSCODE version, not the DSH ru
   assert.equal(result.stdout.trim(),version);
   assert.doesNotMatch(result.stdout,/rc\.1/,`${flag} must not fall through to the DSH runtime version`);
  }
+});
+
+test('a failed launcher step keeps its cause chain and names the network ways out',()=>{
+ const cause=Object.assign(Error('fetch failed'),{code:'ENOTFOUND'});
+ assert.equal(describeError(new Error('Hub step failed',{cause})),'Hub step failed <- fetch failed (ENOTFOUND)');
+ assert.equal(describeError(Object.assign(Error('ENOTFOUND: flock failed'),{code:'ENOTFOUND'})),'ENOTFOUND: flock failed');
+ assert.equal(describeError({code:'ENOENT'}),'ENOENT','a thrown plain object still reports its code');
+ assert.equal(describeError(undefined),'Unknown error');
+ const hinted=formatFailure(Object.assign(Error('Hub step failed'),{hubHint:['line one']}));
+ assert.equal(hinted.split('Hub step failed').length-1,1,'the failure is reported once, not by both the step and the top level');
+ assert.equal(hinted.split('- line one').length-1,1);
+ assert(hinted.indexOf('- line one')>hinted.indexOf('Hub step failed'),'the hint follows the message');
+ assert.equal(formatFailure(Error('plain')),'plain','a failure without hints stays a single line');
+ let deep=Error('cause-6'); for(const name of [5,4,3,2,1,0]) deep=Error('cause-'+name,{cause:deep});
+ assert(describeError(deep).includes('cause-4')&&describeError(deep).endsWith('…'),'a deep chain is truncated with a marker');
+ assert(!describeError(deep).includes('cause-5'));
+ const plain=hubFailureHint('/state',{});
+ assert(plain.some(line=>line.includes('/state/.env')),'the internal-mirror hint names the state .env');
+ assert(!plain.some(line=>line.includes('HTTP(S)_PROXY is set')));
+ const proxied=hubFailureHint('/state',{HTTPS_PROXY:'http://user:secret@corp.example:8080'});
+ assert(proxied.some(line=>line.includes('HTTP(S)_PROXY is set, but the Hub API call does not use it')));
+ assert(!proxied.join(' ').includes('secret'),'a proxy credential is never echoed back');
+});
+
+test('an unmanaged profile directory names the way out instead of refusing bare',()=>{
+ const home=mkdtempSync(join(tmpdir(),'dscode-unmanaged-'));
+ try {
+  mkdirSync(join(home,'profiles/dscode'),{recursive:true});
+  const manager=new URL('../packages/launcher/manager.mjs',import.meta.url).href;
+  const program=`import { run, describeError } from ${JSON.stringify(manager)}; try { await run([], {slug:'dscode',version:'0.0.0'}); } catch (error) { console.error(describeError(error)); process.exitCode=1; }`;
+  const result=spawnSync(process.execPath,['--input-type=module','-e',program],{encoding:'utf8',env:{...process.env,DSCODE_HOME:home},timeout:10000});
+  assert.equal(result.status,1,result.stderr);
+  assert.match(result.stderr,/is not managed by this launcher/);
+  assert(result.stderr.includes("mv '" + join(home, 'profiles/dscode') + "' '" + join(home, 'profiles/dscode.unmanaged') + "'"), 'the move that unblocks every command is named');
+ } finally {rmSync(home,{recursive:true,force:true});}
+});
+
+test('a profile path with a quote stays one shell argument in the printed command',()=>{
+ const home=mkdtempSync(join(tmpdir(),"dscode-quote-'"));
+ try {
+  mkdirSync(join(home,'profiles/dscode'),{recursive:true});
+  const manager=new URL('../packages/launcher/manager.mjs',import.meta.url).href;
+  const program='import { run, formatFailure } from '+JSON.stringify(manager)+'; try { await run([], {slug:"dscode",version:"0.0.0"}); } catch (error) { console.error(formatFailure(error)); process.exitCode=1; }';
+  const result=spawnSync(process.execPath,['--input-type=module','-e',program],{encoding:'utf8',env:{...process.env,DSCODE_HOME:home},timeout:10000});
+  assert.equal(result.status,1,result.stderr);
+  const backslash=String.fromCharCode(92);
+  assert(result.stderr.includes("'" + backslash + "''"),'a quote in the path is escaped for the shell, not left to close the argument');
+ } finally {rmSync(home,{recursive:true,force:true});}
 });

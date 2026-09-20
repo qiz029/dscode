@@ -55,9 +55,9 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
-**0.7.21** — TUI 底栏的几何现在只随终端宽度变化：权限徽章锚定行右缘，`shift+tab` 提示的列位常驻，所有活跃数字在各自固定列内右对齐，不再随自己的位数移动。`dscode-time-marks` 为到达的消息与结束的回合补上隐藏的时钟读数（终端不渲染的上下文），`/btw <问题>` 在继承主会话、只读的子会话里回答旁支问题，不碰主线对话。
+**0.7.22** — Hub 客户端升到 `@dsh-plugin-hub/cli` 0.5.0：固定版 DSH 运行时改由 Hub 自己准备并校验（把精确版本的 `npm install` 装进 `$DSCODE_HOME/.hub/runtimes/<版本>`，再用当前 Node 启动），不再为每个 bundle 起一次 `npm exec`。失败的 `dscode` 命令现在打印完整因果链，Hub 或 npm 步骤失败时给出要排查的原因——代理、内网镜像、公司 CA，或用 GitHub 预构建 tar 包；遗留的未托管 profile 会打印解除阻塞的 `mv` 命令。
 
-每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.21 更新说明](docs/releases/0.7.21.md)。
+每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.22 更新说明](docs/releases/0.7.22.md)。
 
 ## 🚀 快速开始
 
@@ -116,7 +116,7 @@ npm start -- --cwd /path/to/project
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh
-curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.21
+curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.22
 ```
 
 **tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载预构建的 `dscode-<version>-darwin-arm64.tar.gz`（Apple 芯片）或 `dscode-<version>-darwin-x64.tar.gz`（Intel），然后执行：
@@ -132,14 +132,14 @@ sh dscode-install/install.sh
 **若 npm 包名查询暂时返回 404**，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.21.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.22.tgz
 ```
 
 **升级** —— `dscode update [精确版本号]` 一步完成整个安装的更新，且要求没有正在运行的 DSCODE 会话。npm/Hub 安装会先用 npm 替换 launcher 本体，再把已安装的 profile 升到同一版本；tar 安装会下载 release tar 包（release 带有当前平台的预构建包时取它，升级同样不需要 npm）、按发布方 sha256 校验、原位换目录并迁移 `.runtime`、`.env` 和本地 `config/`，旧安装保留为同级备份目录。源码检出同样一条命令更新：先对它跟踪的分支执行 `git pull --ff-only`，再跑 `npm ci --ignore-scripts` 和 `npm run setup`；工作区中有未提交的改动时会先拒绝，避免更新只做一半。
 
 ```sh
 dscode update                  # 最新版本
-dscode update 0.7.21           # 指定版本
+dscode update 0.7.22           # 指定版本
 ```
 
 `dscode history` 查看保留的版本记录，`dscode rollback` 回到上个 preset 版本（npm/Hub 安装）。带 `dscode update` 之前的旧 tar 安装，请把新 tar 包装到新目录并手动迁移一次状态。源码、tar 与 npm/Hub 使用不同的数据目录，会话和凭据不会互相迁移。详见 [tar 分发说明](docs/distribution.md) 与 [npm + Hub 分发指南](docs/hub-distribution.md)。

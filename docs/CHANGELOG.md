@@ -6,6 +6,18 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes under Unreleased. -->
 
+## [0.7.22] - 2026-09-19
+
+### Changed
+
+- The Hub client moves to `@dsh-plugin-hub/cli` 0.5.0 (`@dsh-plugin-hub/schemas` 0.5.0 too). The pinned DSH runtime is now prepared and verified by the Hub CLI itself - an exact-version `npm install` into `$DSCODE_HOME/.hub/runtimes/<version>`, identity-checked and then launched with the current Node - instead of the launcher's per-bundle `npm exec`/`npx` wrapper, so an install no longer pays a registry round trip per bundle. The launcher still supplies its pinned `pnpm` 10.15.1 for the profile install and keeps its `npx` shim as the PATH guard. imapflow 2.0.5, mailparser 3.9.28, nodemailer 10.0.10, fflate 0.8.3, `@modelcontextprotocol/sdk` 1.30.0, yaml 2.9.1 and eslint 10.11.0.
+
+### Fixed
+
+- A failed launcher command printed only the last message, so a network failure under a managed network read as a bare `fetch failed`; it now prints the whole chain (`reason <- cause (CODE)`), once, truncated with `…` beyond five links and reported as `Unknown error` when no link carries a message.
+- A Hub, update or install step that fails now names the causes to check on a managed network: the Hub call does not use `HTTP(S)_PROXY`, an internal mirror goes in `DSH_HUB_API_URL`, a TLS-inspecting proxy needs `NODE_EXTRA_CA_CERTS`, and the prebuilt GitHub release installs without the Hub. The proxy value itself is never echoed. First launch also states that the step downloads the pinned runtime and plugins with npm, which can take several minutes on a slow registry.
+- An existing but unmanaged `dscode` profile no longer dead-ends in `inspect <path>`: the error names the directory, says that every command refuses while it is there, and prints a shell-quoted `mv` that unblocks the launcher.
+
 ## [0.7.21] - 2026-09-19
 
 ### Added
