@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 export const name = 'dscode-execution-policy';
 export const inject = ['systemPrompt', 'tools', 'agents', 'commands', 'terminals'];
 export const SHELL_POLICY = `Use bash as the persistent shell for reading, searching and modifying files. Prefer rg/rg --files, sed and standard CLI tools. Use apply_patch with a standard unified diff on stdin (git apply format, a/ and b/ paths); apply_patch --check validates before writing. It is not the *** Begin Patch format. Quote heredoc delimiters to avoid shell interpolation.
@@ -23,8 +25,16 @@ export const CHILD_NAME = /^[A-Za-z](?:[A-Za-z0-9_]{0,8}[A-Za-z])?$/;
 export const CHILD_NAME_RULE = 'name must be 1-10 characters of letters, digits or underscores, starting and ending with a letter';
 const DELEGATION_TOOLS = ['subagent', 'subagent_fork', 'workflow', 'ralph'];
 
+// Where the version-matched user guides live. Source and tar installs ship docs/ next
+// to the plugins; the npm/Hub bundle does not, so the section falls back to the public
+// repository there instead of pointing at a path that does not exist.
+const DOCS_DIR = fileURLToPath(new URL('../../docs/', import.meta.url));
+const DOCS_REPO = 'https://github.com/qiz029/dscode/blob/main/docs/';
+export const DOCS_SECTION = `To answer questions about DSCODE itself - what it supports, how a feature is configured, what a command does - treat the bundled user guides as the source of truth instead of guessing: ${existsSync(DOCS_DIR) ? `${DOCS_DIR} plus the repository root README.md (session-bridge.md, session-communication.md, session-cards.md, memory.md, exec.md, email.md, skills.md, tui-commands.md, session-metrics.md, dscode-ultra.md, auto-review.md, demo.md)` : `the repository documentation at ${DOCS_REPO} plus the root README.md (session-bridge.md, session-communication.md, session-cards.md, memory.md, exec.md, email.md, skills.md, tui-commands.md, session-metrics.md, dscode-ultra.md, auto-review.md, demo.md)`}. Read the relevant guide before answering rather than relying on memory of an earlier session. docs/CONTEXT-HANDOFF.md, docs/session-messaging-design.md, docs/cloud-webapp-host.md and docs/verification.md are internal development records, not user documentation: never quote them to a user or treat them as a specification. When the guides do not cover something, describe only what the running installation actually does and say plainly that it is not documented.`;
+
 export function apply(ctx) {
   ctx.systemPrompt.section({ name: 'dscode:shell-policy', order: 1050, text: SHELL_POLICY });
+  ctx.systemPrompt.section({ name: 'dscode:docs', order: 1052, text: DOCS_SECTION });
   ctx.systemPrompt.section({ name: 'dscode:code-discipline', order: 1053, text: CODE_DISCIPLINE });
   ctx.systemPrompt.section({ name: 'dscode:working-discipline', order: 1054, text: WORKING_DISCIPLINE });
   ctx.systemPrompt.section({ name: 'dscode:child-policy', order: 1051, text: ({ scope }) => scope?.session?.header?.origin === 'subagent' && scope.session.header.agentPreset === 'dscode'

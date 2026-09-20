@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 const fixture = createTestRuntime({ runtime: true });
 const root = fixture.root;
 after(fixture.close);
-import { apply, CHILD_NAME, SHELL_POLICY } from '../plugins/dscode/index.mjs';
+import { apply, CHILD_NAME, DOCS_SECTION, SHELL_POLICY } from '../plugins/dscode/index.mjs';
 
 
 const { DeepSeekAdapter, resolveAdapterOptions } = await import(pathToFileURL(`${root}/node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js`));
@@ -89,6 +89,19 @@ test('dscode workers do not see delegation tools or delegation prompt sections',
   const root = { scope: { session: { header: { agentPreset: 'dscode' } } } };
   assert.equal(await assemble(base, root, async () => base), base);
 });
+test('the documentation section names the user guides and refuses internal records', () => {
+  assert.match(DOCS_SECTION, /source of truth instead of guessing/);
+  assert.match(DOCS_SECTION, /session-communication\.md/);
+  assert.match(DOCS_SECTION, /internal development records, not user documentation/);
+  assert.match(DOCS_SECTION, /never quote them to a user/);
+  for (const internal of ['CONTEXT-HANDOFF.md', 'session-messaging-design.md', 'cloud-webapp-host.md', 'verification.md']) assert.ok(DOCS_SECTION.includes(internal), internal + ' must be named as internal');
+  const sections = [];
+  apply({ systemPrompt: { section: value => sections.push(value) }, on: () => {}, commands: { register() {} }, agents: { list: () => [], get: () => undefined } });
+  const registered = sections.find(section => section.name === 'dscode:docs');
+  assert.equal(typeof registered.text, 'string');
+  assert.equal(registered.text, DOCS_SECTION);
+});
+
 test('the macOS stdin inspector is patched, reported unchanged, or refused loudly', t => {
   const missing = mkdtempSync(join(tmpdir(), 'dscode-mac-stdin-'));
   t.after(() => rmSync(missing, { recursive: true, force: true }));
