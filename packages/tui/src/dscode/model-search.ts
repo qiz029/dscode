@@ -10,38 +10,49 @@
  * @module dsh-code/dscode/model-search
  */
 
+/**
+ * The fields the filter reads. A structural floor, not a closed shape: the model
+ * directory's own row type (with modalities and reasoning) satisfies it, and the
+ * filter hands that richer row back untouched.
+ */
 export interface DscodeModelRow {
   provider?: string
   providerName?: string
   model?: string
   modelName?: string
-  [key: string]: unknown
 }
 
-export function dscodeFilterModels(rows, query, provider) {
+/** One row's BM25 document: token weights plus the row's own weight. */
+interface ModelDoc<T> {
+  readonly row: T
+  readonly counts: ReadonlyMap<string, number>
+  readonly length: number
+}
+
+export function dscodeFilterModels<T extends DscodeModelRow>(rows: readonly T[], query: unknown, provider: string | undefined): T[] {
   // One provider at a time: the picker lists the routes the session can actually select.
   const directory = provider === void 0 ? rows : rows.filter(row => row.provider === provider);
-  const label = row => String(row.modelName ?? row.model ?? "");
+  const label = (row: DscodeModelRow): string => String(row.modelName ?? row.model ?? "");
   // Display order is the label itself, so the list reads alphabetically and digits inside a
   // name compare naturally ("GLM 5.2" before "GLM 5.3"); searching narrows rows, never re-ranks them.
-  const byLabel = (left, right) => label(left).localeCompare(label(right), void 0, {
+  const byLabel = (left: DscodeModelRow, right: DscodeModelRow): number => label(left).localeCompare(label(right), void 0, {
     numeric: true,
     sensitivity: "base"
   }) || String(left.model ?? "").localeCompare(String(right.model ?? "")) || String(left.provider ?? "").localeCompare(String(right.provider ?? ""));
-  const tokenize = text => String(text ?? '').normalize('NFKC').toLowerCase().match(/[a-z]+|[0-9]+|[^\s\x00-\x7f]+/g) ?? [];
+  const tokenize = (text: unknown): readonly string[] => String(text ?? '').normalize('NFKC').toLowerCase().match(/[a-z]+|[0-9]+|[^\s\x00-\x7f]+/g) ?? [];
   const raw = String(query ?? '');
   const words = tokenize(raw);
   if (words.length === 0) return [...directory].sort(byLabel);
   const typing = /\s$/.test(raw) ? -1 : words.length - 1;
-  const fields = [['modelName', 3], ['model', 2], ['providerName', 1], ['provider', 1]];
-  const docs = directory.map(row => {
-    const counts = new Map();
+  const fields: readonly (readonly [keyof DscodeModelRow, number])[] = [['modelName', 3], ['model', 2], ['providerName', 1], ['provider', 1]];
+  const docs: ModelDoc<T>[] = directory.map(row => {
+    const counts = new Map<string, number>();
     let length = 0;
     for (const [field, weight] of fields) for (const token of tokenize(row[field])) { counts.set(token, (counts.get(token) ?? 0) + weight); length += weight; }
     return { row, counts, length };
   });
   const average = docs.reduce((sum, doc) => sum + doc.length, 0) / Math.max(1, docs.length);
-  const frequency = (doc, word, prefix) => {
+  const frequency = (doc: ModelDoc<T>, word: string, prefix: boolean): number => {
     if (!prefix) return doc.counts.get(word) ?? 0;
     let sum = 0;
     for (const [token, count] of doc.counts) if (token.startsWith(word)) sum += token === word ? count : count * 0.8;

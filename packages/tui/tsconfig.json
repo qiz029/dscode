@@ -1,0 +1,27 @@
+{
+  // Node runs packages/tui/src through type stripping, which erases types without
+  // reading them, and scripts/build-tui.mjs transpiles with ts.transpileModule, which
+  // reports syntax only. This config is the only thing that checks the fork's types:
+  // `npm run typecheck` runs it and `npm run check` gates on it. Keep it green.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    // Node's type stripping keeps the explicit `.ts` specifiers the source uses.
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    // strictNullChecks is what makes the fork's result unions narrow at all
+    // (`{ok:true;value} | {ok:false;reason}`): without it the compiler widens the
+    // literal discriminants and reports the failure branch as an error instead.
+    "strict": false,
+    "strictNullChecks": true,
+    // Implicit `any` stays allowed: switching it on today reports ~420 errors across
+    // the vendored lines, mostly props flowing from untyped ink/react (no @types are
+    // installed). The remaining debt is recorded in docs/maintainability.md.
+    "noImplicitAny": false
+  },
+  "include": ["src/**/*.ts"]
+}

@@ -915,7 +915,7 @@ export function StatuslinePanel({ enabled, change, close }: {
     if (input === ' ') {
       const item = order[cursor]
       if (item === undefined) return
-      const next = new Set(on)
+      const next = new Set<StatusItemId>(on)
       if (next.has(item)) next.delete(item)
       else next.add(item)
       commit(order, next)

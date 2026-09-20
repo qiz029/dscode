@@ -4,15 +4,16 @@ Run `npm run check` for the maintained regression gate:
 
 | Command | Scope |
 |---|---|
-| `npm test` / `npm run test:unit` | Unit and component contracts, including real launcher processes, mailbox transactions, communication orchestration and fresh upstream patches |
+| `npm test` / `npm run test:unit` | Unit and component contracts, including real launcher processes, mailbox transactions, communication orchestration, fresh upstream patches, and the terminal's rendered frames at four widths in dark and light |
 | `npm run test:coverage` | The same tests with a full first-party source inventory; unloaded files count as zero; line coverage must remain at least 75% |
+| `npm run typecheck` | The vendored terminal's TypeScript under `packages/tui/tsconfig.json`; run time and build time both erase those types unread, so this is the only static check of them |
 | `npm run test:integration` | Six deterministic native Harness probes: bridge, messaging, ownership/input boundaries, cards, memory and login |
-| `npm run test:ui` | Actual Ink login interactions and dark/light rendering at four terminal widths |
 | `npm run test:package` | Build and unpack both npm tarballs; verify integrity, exported files, JS syntax, native lock dependency and absence of local state/build paths |
+| `npm run test:e2e` | The whole gate inside a Linux container, plus the installed-bundle Hub lifecycle; needs a Docker daemon, so it is outside `npm run check` (see below) |
 
 Tests use exact upstream archives verified against package-lock integrity, not already-patched developer dependencies. Cached npm content is read without mutation; cache misses fetch the exact locked tarball. Runtime patches are applied only in per-test temporary directories. The unit runner checks that the developer runtime files remain unchanged. Integration, UI and package checks also use disposable checkouts with local overlays and secrets excluded.
 
-Coverage artifacts are `artifacts/local/coverage/summary.json` and `lcov.info`. The denominator contains first-party `.mjs` runtime, launcher, build and patch files; probe/check fixtures are excluded. Coverage printed by Node itself only measures loaded files and has a different denominator. Generated vendor modules are exercised by behavior and patch contracts, not included as first-party source.
+Coverage artifacts are `artifacts/local/coverage/summary.json` and `lcov.info`. The denominator contains first-party `.mjs` runtime, launcher, build and patch files; probe/check fixtures are excluded. Coverage printed by Node itself only measures loaded files and has a different denominator. Generated vendor modules are exercised by behavior and patch contracts, not included as first-party source. The vendored terminal's TypeScript sources are also outside that denominator: `summary.json` reports them under `unmeasured`, and `npm run typecheck` reads them instead (see [maintainability.md](maintainability.md)).
 
 The GitHub Actions workflow runs the gate on macOS with Node 22.19 and 24. Adding the workflow is not evidence of a remote CI pass. Local Unix socket and native flock access are required. No remote inference is performed. Package checks do not replace the separately requested clean npm/Hub install, upgrade/rollback and public-release verification below.
 
@@ -35,6 +36,33 @@ node plugins/tui-tools/sandbox-runner.mjs --ro-bind / / --dev /dev --unshare-pid
 which must print `PTY_OK` and refuse the home write. The runner is an operator assertion — configuring it skips the provider's functional probes — so its profile stays the built-in one plus the single PTY grant, with no other relaxation. A non-zero exit whose stderr matches the configured signature is reported as a sandbox failure rather than a failed command, so the signature names only the runner fatal: lines and the inheriting notice deliberately cannot match it.
 
 Everything that does not spawn a nested confined harness still runs inside a session: `npm run check` (lint, coverage, integration probes, package checks and eval), `npm run test:unit`, `npm run test:coverage`, `npm run test:integration`, `npm run test:package` and `npm run test:eval`. To publish from here, push the `v<version>` tag — the release workflow carries the npm and Hub credentials (for 0.7.15 it built, verified and published from `v0.7.15`).
+
+## The Linux container
+
+`npm run test:e2e` builds `docker/e2e.Dockerfile` and runs seven steps inside it: the
+provisioned runtime, the unit suite, the native Harness probes, the packaged tarballs, the
+publishable bundle, the Hub release metadata, and `verify:hub` (install the bundle into a
+profile, boot it, fail an upgrade, roll back). The `Linux e2e` workflow runs the same image on every
+pull request and on pushes to `main`, with a weekly run as a backstop; `main` is protected
+with that job required alongside `Checks`. The first Linux run found four real things: the
+unit suite read `/private/tmp` and assumed a Seatbelt runner (both fixed to be
+platform-correct), the installed profile asserted a Computer Use consumer that only macOS
+mounts, and the exec probe — whose terminal-blocking branch is skipped inside a session —
+settles a command that only terminal input could finish in about 93 s on Linux, because the
+stdin inspector that settles it immediately is macOS-only. The probe records that
+difference as `EXEC_PROBE_NOTE` instead of asserting the macOS text, while it still fails
+if the turn never ends.
+
+It exists because two things the macOS gate cannot reach matter. `verify:hub` needs a
+nested sandbox the session refuses, so it only ever ran on a developer machine or the
+macOS CI runner; and nothing exercised Linux at all. The first Linux run found four real
+things: the unit suite read `/private/tmp` and assumed a Seatbelt runner (both fixed to be
+platform-correct), and the exec probe — whose terminal-blocking branch is skipped inside a
+session — settles a command that only terminal input could finish in about 93 s on Linux,
+because the stdin inspector that settles it immediately is macOS-only. The probe now
+records that difference as `EXEC_PROBE_NOTE` instead of asserting the macOS text, while it
+still fails if the turn never ends. Computer Use and the Seatbelt runner stay
+macOS-only by construction and the probes say so rather than failing.
 
 ## Historical verification records
 

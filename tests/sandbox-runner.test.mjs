@@ -56,7 +56,9 @@ test('a configured runner applies the profile it built and passes the command th
   }
 });
 
-test('inside an existing profile the runner inherits instead of nesting a second one', () => {
+// The runner translates a macOS Seatbelt profile; other platforms confine through the
+// Linux backend instead, so this behaviour has nothing to assert there.
+test('inside an existing profile the runner inherits instead of nesting a second one', { skip: process.platform === 'darwin' ? false : 'Seatbelt is macOS-only' }, () => {
   const directory = mkdtempSync(join(tmpdir(), 'dscode-runner-nested-'));
   try {
     const applies = seatbeltApplies();

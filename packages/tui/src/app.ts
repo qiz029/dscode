@@ -85,6 +85,7 @@ import {
   emailPrompt as dscodeEmailPrompt,
   emailText as dscodeEmailText,
 } from '../../../plugins/email/inbox.mjs'
+import type { Email as DscodeEmail } from '../../../plugins/email/inbox.mjs'
 import { createGmailConnector as dscodeCreateGmailConnector } from '../../../plugins/email/gmail.mjs'
 import { createImapConnector as dscodeCreateImapConnector } from '../../../plugins/email/imap.mjs'
 import {
@@ -261,7 +262,7 @@ import {
   type StatusSpan,
   type StatusTone,
 } from './render/status.ts'
-import { displayTail, displayText, singleLineText, truncateColumns } from './render/text.ts'
+import { displayTail, displayText, formatTokens, singleLineText, truncateColumns, wrapText } from './render/text.ts'
 import {
   isVsCodeTerminalEnv,
   normalizeKeyboardChunk,
@@ -634,9 +635,10 @@ function useFrames(intervalMs: number, active = true): number {
  * Ink re-subscribes its input effect whenever the handler identity changes.
  * Keep terminal input ownership stable while a local surface updates cursor,
  * scroll, or draft state; otherwise every key toggles raw mode and can make
- * Ink repeatedly repaint the live region.
+ * Ink repeatedly repaint the live region. `active` defaults to true: a panel
+ * that only mounts while it owns the keyboard omits the argument.
  */
-function useStableInput(handler: (input: string, key: Key) => void, active: boolean): void {
+function useStableInput(handler: (input: string, key: Key) => void, active = true): void {
   const handlerRef = useRef(handler)
   handlerRef.current = handler
   const stableHandler = useCallback((input: string, key: Key): void => {
@@ -807,7 +809,7 @@ export function DscodeCompactionLine({ since, rows, animated = true }: { since: 
   const clock = runClock(since > 0 ? Math.max(0, Date.now() - since) : 0)
   const room = Math.max(1, columns - 8 - DSCODE_TETRIS_WIDTH * 2)
   const wall = (key: string): ReactElement => createElement(Text, { key, color: inkColor(palette.dim) }, '|')
-  const label = (labelText: string, color: readonly number[]): ReactElement =>
+  const label = (labelText: string, color: RgbTriple): ReactElement =>
     createElement(Text, { key: 'label', color: inkColor(color), wrap: 'truncate-end' }, '  ' + truncateColumns(labelText, room))
   if (columns < DSCODE_TETRIS_WIDTH * 2 + 12) {
     return createElement(
@@ -1143,7 +1145,7 @@ export function Header({ cwd = '', model = '', effort = '', animated = false }: 
   const tones = [palette.brandDeep, palette.brand, palette.brandBright].sort((left, right) => luminance(left) - luminance(right))
   // Ripple: the bright band moves core → ring → tips, then rests one frame in the base tones.
   const rippleBand: Record<number, number> = { 1: 2, 2: 1, 3: 0 }
-  const tone = (level: number): readonly number[] => ripplePhase < 3
+  const tone = (level: number): RgbTriple => ripplePhase < 3
     ? (rippleBand[level] === ripplePhase ? tones[2]! : level === 3 ? tones[1]! : tones[0]!)
     : tones[level - 1]!
   if (!full) {
@@ -2351,7 +2353,15 @@ function QuestionBar({ store, snapshot, locked }: { store: QuestionStore; snapsh
 
 /** The /model panel: a scrolling list over the advisory model directory. */
 
-export function ModelPanel({ directory, error, current, onSelect, onProviders, onRetry, onClose }) {
+export function ModelPanel({ directory, error, current, onSelect, onProviders, onRetry, onClose }: {
+  directory: ModelDirectory | undefined
+  error: string | undefined
+  current: string
+  onSelect: (row: ModelRow) => void
+  onProviders?: () => void
+  onRetry: () => void
+  onClose: () => void
+}) {
   const [cursor, setCursor] = useState(0);
   const [dscodeQuery, setDscodeQuery] = useState("");
   const [dscodeFocused, setDscodeFocused] = useState(true);
@@ -2696,16 +2706,16 @@ interface EffortDonor {
 }
 
 export function DscodeEmailPanel({ columns, rows, pick, close, gmail, imap }) {
-  const [snapshot, setSnapshot] = useState({ emails: [], rejected: 0 });
+  const [snapshot, setSnapshot] = useState<{ emails: DscodeEmail[]; rejected: number }>({ emails: [], rejected: 0 });
   const [error, setError] = useState('');
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [preview, setPreview] = useState(false);
   const [gmailStatus, setGmailStatus] = useState(() => gmail.status());
   const [imapStatus, setImapStatus] = useState(() => imap.status());
   const [setup, setSetup] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const operation = useRef(null);
+  const operation = useRef<AbortController | null>(null);
   useEffect(() => () => operation.current?.abort(), []);
   const inbox = useMemo(() => dscodeCreateEmailInbox(), []);
   const refresh = () => {
@@ -2729,7 +2739,7 @@ export function DscodeEmailPanel({ columns, rows, pick, close, gmail, imap }) {
   const listWidth = wide ? Math.max(26, Math.floor(columns * 0.4)) : columns;
   const previewWidth = wide ? Math.max(1, columns - listWidth - 1) : columns;
   const clean = value => dscodeEmailText(value).replace(/\n/g, ' ');
-  const bodyLines = mail ? wrapText(dscodeEmailText(mail.body), Math.max(1, previewWidth - 2), 'wrap').split('\n') : [];
+  const bodyLines = mail ? wrapText(dscodeEmailText(mail.body), Math.max(1, previewWidth - 2)) : [];
   useStableInput((input, key) => {
     if (setup) return;
     if (key.escape || key.ctrl && input === 'c') { close(); return; }
@@ -2787,7 +2797,7 @@ export function DscodeImapSetup({ connector, back, done }) {
   const [step, setStep] = useState(0);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const operation = useRef(null);
+  const operation = useRef<AbortController | null>(null);
   useEffect(() => () => operation.current?.abort(), []);
   const names = ['Email address', 'IMAP host', 'TLS port', 'Mailbox folder', 'Application password'];
   useStableInput((input, key) => {
@@ -2828,7 +2838,7 @@ export function DscodeManagementKeyPanel({ optional, status, save, done, back })
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [state, setState] = useState(void 0);
+  const [state, setState] = useState<string | undefined>(void 0);
   const saving = useRef(false);
   useEffect(() => {
     let active = true;
@@ -2997,7 +3007,7 @@ export interface DscodeGrokSnapshot {
 }
 
 export function DscodeProviderPanel({ current, load, choose, back, grokStatus }) {
-  const [directory, setDirectory] = useState(void 0);
+  const [directory, setDirectory] = useState<ProviderSettingsDirectory | undefined>(void 0);
   const [failed, setFailed] = useState(false);
   const [cursor, setCursor] = useState(() => Math.max(0, DSCODE_PROVIDERS.findIndex(provider => provider.id === current)));
   useEffect(() => {
@@ -4505,6 +4515,10 @@ export function DscodeEffortPanel(props) {
 
 function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, descriptors, skills, dispatch, steer, submitMode, cycleSubmitMode, interrupt, quit, openEmail, openLogin, openProvider, openOpenRouter, openModel, openEffort, openHelp, openMode, openPermission, openResume, openSearch, openPlugin, openUpdate, openSchedule, openJobs, openStatusline, openTheme, openLanguage, saveLanguage, openHistory, openQueue, openBtw, openAgents, openSubagent, openTodos, openUsage, openDelete, openDiff, openReviewPicker, reviewChanges, deleteConfirm, confirmDelete, cancelDelete, createSession, forkSession, cancelSessionSwitch, notify, applyEditorKeys, hasNotice, dismissNotice, toggleReasoning, openVerbose, clearView, refresh, loadMentions, inspectImages, prepareImages, inspectFiles, prepareFiles, readClipboardImage, cycleMode, exportTranscript, renameTitle, copyLastResponse, recallSpace, recordLocal, recordHistory, queued, updateQueued, historyFill, historyConsumed, animations, applyAnimations, applyRainbow, rainbowBurstId, waveTier, waveStyle, maxRows, anchorRowsBelow, tabTitle, onEditorRows, onMenuRows, sessionKey }: {
   active: boolean
+  /** dscode: the effort bar or Ultra ripple that owns the composer band. */
+  effortSurface?: ReactElement
+  /** dscode: Ultra ripple frame counter; 0 while idle. */
+  ultraPulse: number
   frozen: boolean
   /** Frozen-band hint naming the surface that owns the keyboard; an empty
    * draft otherwise advertises typing that the composer cannot accept. */
@@ -4947,8 +4961,8 @@ function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, de
   // path-like query keeps the upstream order entirely.
   let rankedMentionRows = visibleMentionRows
   if (mentionToken !== undefined && !isPathLikeMentionQuery(mentionToken.query) && mentionToken.query !== '') {
-    const hits = rankByName(visibleMentionRows.map(row => ({ name: row.label.replace(/^@/u, ''), row })), mentionToken.query)
-      .map(entry => entry.row)
+    const mentionMatches = visibleMentionRows.map(row => ({ name: row.label.replace(/^@/u, ''), row }))
+    const hits = rankByName(mentionMatches, mentionToken.query).map(entry => entry.row)
     const hitSet = new Set(hits)
     rankedMentionRows = [...hits, ...visibleMentionRows.filter(row => !hitSet.has(row))]
   }
@@ -5276,7 +5290,7 @@ function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, de
       }
       if (liveValue.startsWith('!')) {
         // Dropping the bang shifts every character left: keep the caret on the same letter.
-        applyEdit({ value: liveValue.slice(1), cursor: Math.max(0, liveCursor - 1) })
+        applyEdit({ value: liveValue.slice(1), cursor: Math.max(0, liveCursor - 1), killed: undefined })
         return
       }
       if (hasNotice) {
@@ -6209,7 +6223,7 @@ export function computeSettledRows(
       window.unshift(record.box)
       if (record.before !== undefined) window.unshift(record.before)
     }
-    const header = createElement(Header, { key: 'header', ...headerFacts, resumed })
+    const header = createElement(Header, { key: 'header', ...headerFacts })
     const flat = droppedEntries > 0
       ? [header, settledTrimHint(droppedEntries, columns), ...window]
       : [header, ...window]
@@ -6345,6 +6359,7 @@ export function App(props: AppProps): ReactElement {
     | { kind: 'configure' | 'unset' | 'remove'; target: ProviderTargetView }
     | { kind: 'login' | 'logout'; target: ProviderTargetView; authorization: ProviderAuthorizationRow }
     | { kind: 'dscode-key'; provider: string; then?: () => void }
+    | { kind: 'dscode-grok' }
     | { kind: 'dscode-provider' }
     | { kind: 'dscode-compaction'; row: ModelRow; effortId: string | undefined; preview: DscodeCompactionPreview }
     | { kind: 'dscode-openrouter' }
@@ -6440,8 +6455,8 @@ export function App(props: AppProps): ReactElement {
     // `/latest` dist-tag endpoint, which silently suppressed this notice.
     fetch(DSCODE_REGISTRY_URL, { headers: { accept: 'application/json' }, signal: controller.signal })
       .then(response => (response.ok ? response.json() : undefined))
-      .then(data => {
-        const latest = data?.version
+      .then((data: unknown) => {
+        const latest = data !== null && typeof data === 'object' ? (data as { version?: unknown }).version : undefined
         if (typeof latest === 'string' && dscodeNewerVersion(latest, DSCODE_VERSION)) notify(t('update.available', { version: latest }), 'warning')
       })
       .catch(() => {})

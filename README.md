@@ -232,6 +232,8 @@ Design records do not repeat the guides above:
 | [Session messaging design](docs/session-messaging-design.md) | Rationale, boundaries and fixed limits behind agent-to-agent tasks |
 | [Cloud web app host](docs/cloud-webapp-host.md) | Design baseline and trust model for browser access; not implemented |
 | [Verification](docs/verification.md) | What the maintained checks cover, and what cannot run inside a session |
+| [Maintainability](docs/maintainability.md) | What checks the forked terminal, and what stays unverified |
+| [Upgrading the vendored terminal](docs/vendored-tui-upgrade.md) | Taking a new upstream dsh-code release: the merge procedure, and what only a smoke test catches |
 | [Releases](docs/releases/) | Long-form notes for every release, newest first |
 | [Context handoff](docs/CONTEXT-HANDOFF.md) | Development checkpoint for a fresh session; not user documentation |
 

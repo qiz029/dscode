@@ -1,0 +1,15 @@
+{
+  // The strict ratchet. `tsconfig.json` already turns on strictNullChecks for the whole
+  // fork, but implicit `any` stays allowed there: switching it on across the vendored
+  // lines reports ~420 errors, mostly props flowing from untyped helpers. This config
+  // turns noImplicitAny on for the code DSCODE owns — src/dscode and whatever it imports
+  // — so first-party files get real inference without pretending the rest is ready.
+  //
+  // Grow `include`, never widen it to the whole tree by accident; docs/maintainability.md
+  // records what is still outside.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noImplicitAny": true
+  },
+  "include": ["src/dscode/**/*.ts"]
+}

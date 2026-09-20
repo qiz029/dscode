@@ -420,7 +420,7 @@ export function usageLines(view: UsageView, columns: number): readonly StyledLin
     lines.push(note(t('panel.usage.noTurns')))
   } else {
     const withTurn = [
-      { label: () => t('panel.usage.colTurn'), value: (row: { turn: number }) => `#${row.turn}`, width: 7 },
+      { label: () => t('panel.usage.colTurn'), value: (row: UsageTurn) => `#${row.turn}`, width: 7 },
       ...BUCKET_COLUMNS.map(column => ({ ...column, value: (row: UsageTurn) => column.value(row.usage) })),
     ]
     lines.push(...table(withTurn, [...view.turns].reverse(), row => modelLabel(row.model), width, false))

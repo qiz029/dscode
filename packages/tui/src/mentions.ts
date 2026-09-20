@@ -185,7 +185,7 @@ export function createMentions(ctx: Context, agent: Agent | undefined, cwd: stri
           ? { path: isAbsolute(candidate.path) ? candidate.path : resolve(cwd, candidate.path) }
           : {},
       }))
-      const sessionRows: MentionCandidate[] = sessions.map(candidate => ({
+      const sessionRows: MentionCandidate[] = sessions.map((candidate): MentionCandidate => ({
         label: formatSessionReferenceMention(candidate),
         description: `Session · ${candidate.cwd ?? '(no cwd)'}`,
         kind: 'session',

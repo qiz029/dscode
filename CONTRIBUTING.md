@@ -21,10 +21,18 @@ npm run doctor      # optional: boots the real profile and reports local readine
 
 ```bash
 npm run lint
-npm run check       # lint + coverage + integration + package + eval
+npm run check       # lint + typecheck + coverage + integration + package + eval
+npm run test:e2e    # optional locally, needs a Docker daemon; CI runs it for you
 ```
 
-`npm run check` is the gate CI runs. `npm run eval:compaction` runs the compaction evaluation on the offline pipeline; the live LongMemEval setup lives under `eval/`.
+`main` is protected, so a pull request merges only once two checks are green:
+
+| Check | What it runs |
+|---|---|
+| `Checks` (`checks (22.19.0)`, `checks (24)`) | `npm run check` on macOS 14, both Node versions |
+| `Linux e2e` (`linux-container`) | The same gate plus the installed-bundle Hub lifecycle inside `docker/e2e.Dockerfile`, on Linux |
+
+The Linux job is also the only place `verify:hub` runs at all: it needs a sandbox nesting a dscode session refuses. Run it locally with `npm run test:e2e` when a Docker daemon is available. `npm run eval:compaction` runs the compaction evaluation on the offline pipeline; the live LongMemEval setup lives under `eval/`.
 
 ## House rules
 

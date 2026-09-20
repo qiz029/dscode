@@ -233,6 +233,8 @@ Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第�
 | [Session 通信设计](docs/session-messaging-design.md) | Agent 间任务的取舍、边界与固定限制的依据 |
 | [云端 Web App Host](docs/cloud-webapp-host.md) | 浏览器接入的架构基线与信任模型；尚未实现 |
 | [验证说明](docs/verification.md) | 维护中的检查覆盖范围，以及哪些检查不能在 session 内运行 |
+| [可维护性](docs/maintainability.md) | 对 vendored 终端的检查范围，以及仍未验证的部分 |
+| [升级 vendored 终端](docs/vendored-tui-upgrade.md) | 合并上游 dsh-code 新版本的流程，以及只有人工冒烟测试能发现的部分 |
 | [版本说明](docs/releases/) | 每个版本的长文说明，最新在前 |
 | [上下文交接](docs/CONTEXT-HANDOFF.md) | 供新 session 接手的开发备忘，不是用户文档 |
 

@@ -1,0 +1,40 @@
+name: Linux e2e
+
+# The PR gate, alongside the macOS `Checks` workflow: this job runs the whole
+# maintained gate plus the installed-bundle Hub lifecycle on Linux. Two things the
+# macOS runner cannot reach live here. `verify:hub` needs a sandbox nesting that a
+# dscode session refuses, so it only ever ran on a developer machine or CI; and Linux
+# itself was never exercised, which is how a `/private/tmp` assumption and a
+# Seatbelt-only assertion survived in the suite. `main` is protected with this job
+# required, so a PR cannot merge until it passes.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      # Run the same command the developer runs: npm run test:e2e builds
+      # docker/e2e.Dockerfile and the image's own CMD runs scripts/e2e.mjs --inside,
+      # so the step list lives in exactly one place.
+      - name: Build the Linux end-to-end image
+        run: docker build -t dscode-e2e:local -f docker/e2e.Dockerfile .
+      # No bind mount: the container writes its own artifacts, and mounting a host
+      # directory over artifacts/local makes the packaging steps race the host's
+      # leftovers. Every assertion is in this job's log either way.
+      - name: Run the Linux end-to-end steps
+        run: docker run --rm -t dscode-e2e:local

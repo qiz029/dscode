@@ -1,0 +1,12 @@
+# The Linux end-to-end image builds its own dependency graph and artifacts: never
+# ship the host's, which are the wrong platform and would shadow the container's.
+node_modules
+artifacts
+.runtime
+packages/tui/lib
+research
+eval/private
+npm-debug.log
+
+# .git travels with the context on purpose: the suite asserts being inside a Git
+# repository (the review guidance branches on it), and the repo is tested as a checkout.

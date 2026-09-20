@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { runShell } from '../plugins/tui-tools/shell.mjs';
 import { commandPlan } from '../packages/launcher/manager.mjs';
 
@@ -9,8 +12,12 @@ test('resume supports latest, exact IDs, and remaining launch options', () => {
   assert.deepEqual(commandPlan(['resume', '--cwd', '/tmp'], {}, true).launch, ['--continue', '--cwd', '/tmp']);
 });
 test('shell executes in requested cwd, preserves syntax and reports failure', async () => {
-  const result = await runShell('pwd; printf "%s" "a b"; printf error >&2; exit 7', { cwd: '/private/tmp' });
-  assert.equal(result.kind, 'error'); assert.match(result.text, /\/private\/tmp/); assert.match(result.text, /a b/); assert.match(result.text, /error/); assert.match(result.text, /Exit 7/);
+  // A canonical directory on the platform under test: /private/tmp answers only on macOS.
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), 'dscode-shell-cwd-')));
+  try {
+    const result = await runShell('pwd; printf "%s" "a b"; printf error >&2; exit 7', { cwd: directory });
+    assert.equal(result.kind, 'error'); assert.match(result.text, new RegExp(directory.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))); assert.match(result.text, /a b/); assert.match(result.text, /error/); assert.match(result.text, /Exit 7/);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
   assert.equal((await runShell('printf ok')).kind, 'success');
   assert.equal((await runShell(' ')).kind, 'error');
 });

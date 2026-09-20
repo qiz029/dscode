@@ -75,15 +75,22 @@ export const WELCOME_ART_SMALL: readonly string[] = [
   "......................"
 ]
 
+export interface WelcomeArtSegment {
+  glyph: string
+  text: string
+  color: string
+  background: string
+}
+
 export function welcomeArtRows(
   grid: readonly string[],
   tones: Readonly<Record<string, string>>,
-): readonly (readonly { glyph: string; text: string; color: string; background: string }[])[] {
-  const rows = [];
+): readonly (readonly WelcomeArtSegment[])[] {
+  const rows: WelcomeArtSegment[][] = [];
   for (let y = 0; y < grid.length; y += 2) {
     const top = grid[y] || '';
     const bottom = grid[y + 1] || '';
-    const segments = [];
+    const segments: WelcomeArtSegment[] = [];
     for (let x = 0; x < Math.max(top.length, bottom.length); x++) {
       const upper = tones[top[x]] || '';
       const lower = tones[bottom[x]] || '';

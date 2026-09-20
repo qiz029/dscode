@@ -6,10 +6,12 @@
  * @module dsh-code/dscode/paste
  */
 
+import type { EditResult } from '../render/editor.ts'
+
 /** Pastes longer than this collapse to a marker. */
 export const LARGE_PASTE_CHARS = 200
 
-export function collapseLargePaste(text, draft, pastes) {
+export function collapseLargePaste(text: string, draft: string, pastes: Map<string, string>): string {
   const safe = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, '').replaceAll('\t', '  ');
   const count = [...safe].length;
   if (count <= LARGE_PASTE_CHARS) return safe;
@@ -22,7 +24,7 @@ export function collapseLargePaste(text, draft, pastes) {
   return marker;
 }
 
-export function expandLargePastes(value, pastes) {
+export function expandLargePastes(value: string, pastes: ReadonlyMap<string, string>): string {
   const markers = [...pastes.keys()].sort((left, right) => right.length - left.length);
   let expanded = '';
   let offset = 0;
@@ -37,13 +39,13 @@ export function expandLargePastes(value, pastes) {
       }
     }
     if (match === undefined) break;
-    expanded += value.slice(offset, found) + pastes.get(match);
+    expanded += value.slice(offset, found) + pastes.get(match)!;
     offset = found + match.length;
   }
   return expanded + value.slice(offset);
 }
 
-export function pasteAtomicEdit(before, edit, pastes) {
+export function pasteAtomicEdit(before: string, edit: EditResult, pastes: Map<string, string>): EditResult {
   let prefix = 0;
   while (prefix < before.length && prefix < edit.value.length && before[prefix] === edit.value[prefix]) prefix++;
   let suffix = 0;
@@ -69,7 +71,7 @@ export function pasteAtomicEdit(before, edit, pastes) {
   return edit;
 }
 
-export function pasteCursorEdge(value, previous, next, pastes) {
+export function pasteCursorEdge(value: string, previous: number, next: number, pastes: ReadonlyMap<string, string>): number {
   for (const marker of pastes.keys()) {
     const start = value.indexOf(marker);
     if (start < 0) continue;

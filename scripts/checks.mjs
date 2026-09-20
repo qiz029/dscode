@@ -30,7 +30,8 @@ function coverage() {
   }));
   const walk = directory => readdirSync(directory, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? walk(join(directory, entry.name)) : [join(directory, entry.name)]);
   const files = ['plugins', 'packages', 'scripts', 'bin'].flatMap(dir => walk(join(root, dir))).filter(file => file.endsWith('.mjs'))
-    .filter(file => !/\/(?:verify-[^/]+|[^/]*probe[^/]*|hook-fixture|test-runtime|checks)\.mjs$/.test(file))
+    // `checks` and `e2e` are the runners themselves, not measured source.
+    .filter(file => !/\/(?:verify-[^/]+|[^/]*probe[^/]*|hook-fixture|test-runtime|checks|e2e)\.mjs$/.test(file))
     // packages/tui/lib is compiled, gitignored build output: the vendored terminal is
     // measured through its sources or not at all, never as 24k uncovered copied lines.
     .filter(file => !relative(root, file).startsWith('packages/tui/lib/'));
@@ -45,10 +46,16 @@ function coverage() {
     return { file: relative(root, file), lines, covered: hits, loaded: !!entry };
   });
   const percent = 100 * covered / total;
-  const report = { scope: 'All first-party runtime, launcher, build and patch .mjs files; probe/check fixtures and the compiled vendored terminal (packages/tui/lib) excluded. Unloaded files count as zero.', lines: total, covered, percent, files: details };
+  // The vendored terminal is TypeScript, so this inventory never measures it: it is
+  // checked by `npm run typecheck` and the tests that render its components. Its
+  // size is reported beside the percentage so the number is never read as a
+  // statement about the whole repository.
+  const unmeasured = walk(join(root, 'packages/tui/src')).filter(file => file.endsWith('.ts'));
+  const unmeasuredLines = unmeasured.reduce((sum, file) => sum + readFileSync(file, 'utf8').replace(/\n$/, '').split('\n').length, 0);
+  const report = { scope: 'All first-party runtime, launcher, build and patch .mjs files; probe/check fixtures and the compiled vendored terminal (packages/tui/lib) excluded. Unloaded files count as zero. The vendored terminal ships TypeScript sources, reported under `unmeasured`, not counted here.', unmeasured: { scope: 'packages/tui/src TypeScript (the vendored terminal)', files: unmeasured.length, sourceLines: unmeasuredLines }, lines: total, covered, percent, files: details };
   writeFileSync(join(output, 'lcov.info'), lcov);
   writeFileSync(join(output, 'summary.json'), JSON.stringify(report, null, 2) + '\n');
-  console.log(`Complete source inventory: ${covered}/${total} lines (${percent.toFixed(2)}%); ${details.filter(f => !f.loaded).length} unloaded files counted as zero.`);
+  console.log(`Complete source inventory: ${covered}/${total} lines (${percent.toFixed(2)}%); ${details.filter(f => !f.loaded).length} unloaded files counted as zero; ${unmeasured.length} TypeScript files (${unmeasuredLines} raw source lines, a different basis from the lcov counts above) under packages/tui/src are outside this metric and are checked by typecheck.`);
   if (percent < 75) throw Error('Full-inventory line coverage fell below the 75% baseline');
 }
 

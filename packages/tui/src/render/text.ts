@@ -83,6 +83,40 @@ export function truncateColumns(text: string, columns: number): string {
   return `${result}…`
 }
 
+/**
+ * Hard-wrap display-safe text into physical rows of at most `columns` cells, except
+ * for a cluster wider than that budget, which gets a row to itself.
+ * Wrapping runs forward so a row already produced never re-flows, and the cut
+ * walks grapheme clusters so emoji and combining sequences stay whole; a single
+ * cluster wider than the budget keeps a row of its own rather than looping.
+ * Newlines in the input start a new row, so the result is the row list a panel
+ * pages through. Rows still get truncated at render time: this bounds the row
+ * count, it does not promise the terminal paints every cell.
+ * @param text - display-safe text (see {@link displayText}).
+ * @param columns - available terminal columns.
+ * @returns one string per physical row, in order.
+ */
+export function wrapText(text: string, columns: number): string[] {
+  const limit = Math.max(1, Math.floor(columns))
+  const rows: string[] = []
+  for (const line of text.split('\n')) {
+    let row = ''
+    let used = 0
+    for (const cluster of splitGraphemes(line)) {
+      const width = graphemeWidth(cluster)
+      if (used > 0 && used + width > limit) {
+        rows.push(row)
+        row = ''
+        used = 0
+      }
+      row += cluster
+      used += width
+    }
+    rows.push(row)
+  }
+  return rows
+}
+
 /** A display-safe suffix bounded by terminal rows and columns. */
 export interface DisplayTail {
   /** Sanitized suffix suitable for direct terminal rendering. */

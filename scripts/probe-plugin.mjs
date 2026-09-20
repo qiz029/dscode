@@ -14,6 +14,11 @@ import { auditStore } from '../plugins/auto-review/audit.mjs';
 export const name = 'tui-harness-probe';
 export const inject = ['agents', 'agentPresets', 'tools', 'skills', 'sessions', 'commands', 'computerUse', 'llm', 'permissionPresets'];
 
+// Computer Use drives macOS Accessibility APIs, so the skill, its execution tools and
+// their resume assertion only exist on darwin; the probe records that instead of
+// failing a Linux run over a rail that platform does not ship.
+const MACOS = process.platform === 'darwin';
+
 // Deterministic adapter tests real Agent/tool/persistence plumbing without
 // network inference or credentials. It is only mounted by the doctor overlay.
 class FixtureAdapter extends LlmAdapter {
@@ -45,7 +50,7 @@ class FixtureAdapter extends LlmAdapter {
       ['read', { file_path: this.file }],
       ['edit', { file_path: this.file, old_string: 'before', new_string: 'after' }],
       ['read', { file_path: this.file }],
-      ['skill', { name: 'computer-use' }],
+      ...MACOS ? [['skill', { name: 'computer-use' }]] : [],
       ['bash', { command: 'printf HARNESS_SHELL_OK', description: 'Verify the confined shell execution path' }],
       ['mcp__fixture__action', { scenario: 'allow' }],
       ['mcp__fixture__action', { scenario: 'deny' }],
@@ -98,7 +103,10 @@ async function probe(ctx) {
   const tools = ctx.tools.schemas(agent).map(tool => tool.name);
   const commands = ctx.commands.list(agent).map(command => command.name);
   assert(tools.includes('skill'), 'Skill tool did not mount');
-  assert(tools.includes('computer_use_activate'), 'Computer Use consumer did not mount');
+  // Computer Use drives macOS Accessibility APIs, so its consumer only mounts there;
+  // a Linux host legitimately reports the tool as absent rather than failing the probe.
+  if (process.platform === 'darwin') assert(tools.includes('computer_use_activate'), 'Computer Use consumer did not mount');
+  else console.log(`HARNESS_PROBE_NOTE: Computer Use is macOS-only, so its consumer is not mounted on ${process.platform}`);
   assert(commands.includes('compact'), 'Compact command did not mount');
   for (const name of ['status', 'doctor', 'mcp', 'skills', 'hooks']) {
     assert(commands.includes(name), `${name} command did not mount`);
@@ -117,8 +125,12 @@ async function probe(ctx) {
   assert.equal(readFileSync(fixtureFile, 'utf8'), 'harness smoke: after\n');
   const events = agent.session.snapshotEvents();
   const outcomes = events.filter(event => event.type === 'tool/result');
-  assert.equal(outcomes.length, 9, 'Expected nine real tool calls through the Agent loop');
-  const failedTools = outcomes.slice(0, 6).filter(event => event.data.message.content.some(block => block.isError === true));
+  // The baseline slice is positional: it covers write/read/edit/read[/skill]/bash, and the
+  // three MCP calls after it include the two that must fail. Dropping the skill call on
+  // non-macOS platforms shrinks both the sequence and the slice by exactly one.
+  const expectedCalls = MACOS ? 9 : 8;
+  assert.equal(outcomes.length, expectedCalls, `Expected ${expectedCalls} real tool calls through the Agent loop`);
+  const failedTools = outcomes.slice(0, MACOS ? 6 : 5).filter(event => event.data.message.content.some(block => block.isError === true));
   assert(failedTools.length === 0, 'A baseline fixture tool failed: ' + JSON.stringify(failedTools.map(event => event.data.message.content)).slice(0, 2000));
   assert.deepEqual(executed, ['allow', 'invalid'], 'Denied action must never execute');
   assert.equal(humanFallbacks, 1, 'Only malformed reviewer output should reach the human answerer');
@@ -127,7 +139,7 @@ async function probe(ctx) {
   assert(reviews.every(e => e.usage?.inputTokens === 100), 'Reviewer usage must be recorded separately');
   assert(outcomes.some(event => JSON.stringify(event.data).includes('HARNESS_SHELL_OK')), 'Shell did not execute');
   const activatedTools = ctx.tools.schemas(agent).map(tool => tool.name);
-  assert(activatedTools.includes('computer_observe'), 'Loading skill did not expose Computer Use execution tools');
+  if (MACOS) assert(activatedTools.includes('computer_observe'), 'Loading skill did not expose Computer Use execution tools');
   const compact = serviceForAgent(ctx, agent, 'compaction');
   assert(compact, 'Agent-scoped compaction provider missing');
   await ctx.sessions.flush(agent.session);
@@ -140,7 +152,7 @@ async function probe(ctx) {
   assert.equal(auditStore(join(process.env.DSH_HOME, 'auto-review')).read(resumed.agent.session.id).length, 3, 'Review audit must survive resume');
   assert(resumed.agent.session.seq >= eventCount, 'Durable session lost events');
   assert(resumed.agent.session.snapshotEvents().some(event => event.type === 'assistant/message' && JSON.stringify(event.data).includes('HARNESS_FIXTURE_COMPLETE')), 'Assistant response did not survive resume');
-  assert(ctx.tools.schemas(resumed.agent).some(tool => tool.name === 'computer_observe'), 'Computer Use skill activation did not survive resume');
+  if (MACOS) assert(ctx.tools.schemas(resumed.agent).some(tool => tool.name === 'computer_observe'), 'Computer Use skill activation did not survive resume');
   await resumed.dispose();
   ctx.llm.registerAdapter(['harness-denial-fixture'], new FixtureAdapter(fixtureFile));
   const stopped = await ctx.agents.create({
@@ -176,7 +188,7 @@ async function probe(ctx) {
     dscode,
     checkedAt: new Date().toISOString(),
     profileBoot: 'passed', presetActivation: 'passed',
-    tuiCommands: 'status-doctor-mcp-skills-hooks passed; native hook denied bash', tools, commands, computerSkillActivation: 'passed',
+    tuiCommands: 'status-doctor-mcp-skills-hooks passed; native hook denied bash', tools, commands, computerSkillActivation: MACOS ? 'passed' : 'not exercised (macOS-only)',
     compactionProvider: 'mounted', sessionResume: 'passed',
     agentLoopFixture: 'passed', fileWriteReadEdit: 'passed', shellExecution: 'passed', persistedEvents: eventCount,
     autoReview: 'allow-deny-human-fallback-usage-resume-denial-stop passed (local fixture model)',
