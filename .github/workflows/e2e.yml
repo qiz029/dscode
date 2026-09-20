@@ -19,7 +19,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: e2e-${{ github.head_ref || github.ref }}
+  # The macOS Checks workflow keys on github.ref, which is refs/pull/N/merge per PR; head_ref
+  # would let a fork branch that shares a name with another PR cancel its required check.
+  group: e2e-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
