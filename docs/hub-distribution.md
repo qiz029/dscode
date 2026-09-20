@@ -1,23 +1,23 @@
-# npm + Hub 分发
+# npm + Hub distribution
 
-## 包与职责
+## Packages and responsibilities
 
-- `@toddzheng024/dscode`：全局命令 `dscode`；首次启动应用 Hub 的 `dscode` profile，之后直接运行已安装版本。包含私有安装工具 shim；在 npm exec 的同一环境中明确安装 DSH 与 pnpm 10.15.1，避免 PATH 被改写后误用系统版本。
-- `@toddzheng024/dscode-bundle`：完整 Cordis 组合，包括基础层、Computer Use、修改后的 TUI/runtime 模块和本仓库插件。修改模块在构建阶段生成，安装时不改第三方文件。
-- Hub profile `dscode`：指定 bundle 与 DSH runtime 的确切版本和完整性哈希。
+- `@toddzheng024/dscode`: the global `dscode` command; the first launch applies the Hub's `dscode` profile and later runs the installed version directly. It contains a private install-tool shim; in the same environment as `npm exec` it installs DSH and pnpm 10.15.1 explicitly, so a rewritten PATH cannot pick up a system version by mistake.
+- `@toddzheng024/dscode-bundle`: the complete Cordis composition, including the base layer, Computer Use, the modified TUI/runtime modules and this repository's plugins. Modified modules are generated at build time, and no third-party file is changed at install time.
+- Hub profile `dscode`: the exact versions and integrity hashes of the bundle and the DSH runtime.
 
-完整 bundle 显式固定共享 DSH 依赖。不要将它与另一个 base/TUI bundle 叠加在同一 profile：Hub 顺序安装多个根 bundle 会让宽范围传递依赖先解析到另一条 rc 版本线。独立 profile 的 pnpm hoisted + autoInstallPeers=false 是验证过的安装方式。直接 `npm install` bundle 会碰到 Computer Use 的旧 peer 范围；终端用户通过 launcher 安装。
+The complete bundle pins the shared DSH dependencies explicitly. Do not stack it with another base/TUI bundle in one profile: installing several root bundles in Hub order resolves a wide transitive dependency to the other rc line first. A standalone profile's pnpm hoisted + autoInstallPeers=false is the verified installation path. A direct `npm install` of the bundle hits Computer Use's old peer range; end users install through the launcher.
 
-## 使用者
+## User
 
 ```sh
 npm install -g @toddzheng024/dscode
 dscode
 ```
 
-首次安装联网从 Hub/npm 获取代码。需要 macOS 14+、Node 22.19+（22.x）或 24+、Git、Chrome。安装依赖使用 ignore-scripts，与已验证的预编译模块路径一致，不自动执行第三方安装脚本。正常 agent shell 不强制这个 npm 选项。
+The first install fetches the code from Hub/npm over the network. It needs macOS 14+, Node 22.19+ (22.x) or 24+, Git and Chrome. Dependencies install with ignore-scripts, matching the verified precompiled-module path, so no third-party install script runs automatically. A normal agent shell does not force this npm option.
 
-DeepSeek 与 OpenRouter 密钥通过 `/login`（`/login openrouter`）在本地保存，`/provider` 在两者之间切换；其他模型密钥在 `/model` 配置，或设置 `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY`。辅助功能/录屏权限由 macOS 授予。
+DeepSeek and OpenRouter keys are stored locally through `/login` (`/login openrouter`), and `/provider` switches between them; other model keys are configured in `/model`, or set `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY`. Accessibility/Screen Recording permission is granted by macOS.
 
 ```sh
 dscode update 0.7.8
@@ -26,75 +26,108 @@ dscode rollback
 dscode doctor
 ```
 
-`dscode update` 会先用 npm 把全局 launcher 本体替换到目标版本，再把 profile 升到同一版本：指定版本号按精确版本更新两者；省略版本号时查询 npm 上的最新 launcher，有新版本就一起更新，否则 profile 只跟随当前 launcher 的推荐版本（npm 不可达时同样回退，不隐式追踪 latest）。也可以手动 `npm install -g @toddzheng024/dscode@<版本>`。同一数据目录可同时启动多个 launcher/根 session。启动与版本管理通过短期内核锁串行准入，每个运行中的 Host 单独持有版本保护锁；install/update/rollback 必须等这些 Host 退出。启动器意外退出时，runtime 或 Hub 子进程继承锁描述符，避免仍在运行时失去保护。旧版启动器仍存活时，新版会提示先退出旧版。session 写排他继续由 Harness 原生锁负责。
+`dscode update` first replaces the global launcher itself with npm at the target version, then moves the profile to the same version: an explicit version updates both to that exact version; with no version it asks npm for the latest launcher and updates both when there is a newer one, otherwise the profile only follows the current launcher's recommended version (the same fallback applies when npm is unreachable, so `latest` is never tracked implicitly). `npm install -g @toddzheng024/dscode@<version>` also works manually. One data directory can run several launchers/root sessions at once. Startup and version management serialise admission through a short-lived kernel lock, and each running Host holds its own version-protection lock; install/update/rollback has to wait for those Hosts to exit. When a launcher exits unexpectedly, the runtime or Hub child process inherits the lock descriptor so it does not lose protection while still running. A newer launcher notices an older one still alive and asks it to exit first. Session write exclusivity stays with the native Harness lock.
 
-默认状态目录是 `~/.local/share/dscode-hub`，可用 `DSCODE_HOME` 覆盖；它与现有 tar 安装及本仓库 `.runtime` 分开。会话、凭据、审核和费用记录位于数据目录，不在 npm 包内。配置位于该目录 `.env` 与 `config/`，支持 `hooks.local.json`、`mcp.local.yml`、`harness.local.yml`。Profile 位于 `profiles/dscode`。Hub 管理升级和回退目录；会话不会随 profile 回退，但跨未来不兼容的会话格式版本仍需迁移。
+The default state directory is `~/.local/share/dscode-hub`, overridable with `DSCODE_HOME`; it is separate from the existing tar installation and this repository's `.runtime`. Sessions, credentials, review and cost records live in the data directory, not inside the npm package. Configuration lives in that directory's `.env` and `config/`, supporting `hooks.local.json`, `mcp.local.yml` and `harness.local.yml`. The profile lives in `profiles/dscode`. Hub manages upgrade and rollback directories; sessions do not roll back with the profile, but crossing a future incompatible session-format version still needs a migration.
 
-已安装 dsh-hub 的用户也可直接 apply，但需使用 pnpm 10.15.1，设置独立 `DSH_HOME` 和 `DSH_AGENTS_HOME`，并在安装命令上设置 `npm_config_ignore_scripts=true`。推荐 launcher，以统一这些条件。
+A user who already has dsh-hub installed can apply directly, but must use pnpm 10.15.1, set a dedicated `DSH_HOME` and `DSH_AGENTS_HOME`, and set `npm_config_ignore_scripts=true` on the install command. The launcher is recommended because it unifies those conditions.
 
-## 发布者
+## Release checklist
+
+Cutting a release from this repository, in order. The rule that matters most: **the git tag must equal `v<package.json version>`, and that version must not already be on npm from a different build.**
+
+1. Decide the version and bump `package.json` `version`. Never re-tag a version that has already been published.
+2. Ship the release documentation in the same commit: `docs/releases/<version>.md`, `docs/CHANGELOG.md` and both READMEs (see [AGENTS.md](../AGENTS.md)).
+3. Commit, then tag and push:
+   ```sh
+   git tag v<version>
+   git push origin main --tags
+   ```
+   The `build` job fails immediately when the tag and the manifest version disagree.
+4. Watch the run:
+   ```sh
+   gh run list --workflow=release.yml --limit 3
+   gh run view <run-id>                 # job and step status
+   gh run view --job=<job-id> --log-failed
+   ```
+5. On a tag push the `publish` job runs: credential check → bundle → profile sync → launcher → attach the tarballs. **The launcher is published last on purpose**; a user's first launch fails when the launcher reaches npm before its bundle and its Hub profile. The order is enforced by the job, not by discipline.
+6. Confirm the published result rather than the green check: the credential step prints `free to publish` (or `already on npm with the tested integrity` for a re-run), and the attach step either creates or updates the GitHub release the `dscode update` assets come from.
+
+Before tagging, a dry run needs no publication: Actions → Release → Run workflow with both switches left `false` (build and verify only), or tick `verify_credentials` to check the tokens and whether the version is still free.
+
+### Known failure modes
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `publish` fails in about 30 seconds at *Check the publishing credentials* with `... is already on npm with a different build; bump the version before pushing a release tag` | That version was already published from a different build. An identical `dist.integrity` is treated as a skippable re-run; anything else is a conflict. | Bump `package.json` and cut a new tag. Do not re-tag, and do not force-push the tag. |
+| `publish` fails at `test -n "$NPM_PUBLISH_TOKEN"` / `$DSH_HUB_TOKEN` | The repository secret is missing or empty. | Add it under Settings → Secrets and variables → Actions; see the table below. |
+| A credential that is present but dead: `npm credential OK` or `Hub credential OK` never prints and the step dies inside `npm whoami` or the profile read | The token expired or lost its scope. | Regenerate the granular npm token (Read and write for both `@toddzheng024` packages, bypass 2FA) and update the secret. |
+| `build` fails in under a minute | A code or packaging problem, not credentials (0.7.14 failed this way on a missing bundle export). | Read that step's log, fix, and bump the version again if it was already published. |
+| `make release`, `make verify` or `npm run doctor` fails inside a dscode session with `sandbox-exec: sandbox_apply: Operation not permitted` | The session's own sandbox refuses to apply a nested profile. | Run them from a normal terminal, or configure `plugins/tui-tools/sandbox-runner.mjs`; see [Verification](verification.md). |
+
+A tag push is the only thing that publishes. A manual run only publishes when `publish` is ticked, so a mis-typed dispatch cannot ship a release.
+
+## Publisher
 
 ```sh
-# 将实际 GitHub 仓库写入发布元数据；不填写虚构 URL。
+# Write the real GitHub repository into the release metadata; never a fabricated URL.
 DSCODE_REPOSITORY=https://github.com/OWNER/REPO npm run build:packages
 npm run release:hub
 npm test
 npm run verify:hub
 ```
 
-同一条序列也封装为 Make target：`make release` 依次执行 version-check、`npm run check`、`build:packages`、`release:hub`、`dist`、`verify:hub` 并打包 `release-candidates.tar.gz`（对应 CI 的 build job）；`make publish` 依次执行只读凭据检查、bundle、profile、launcher 与 release 资产挂载（对应 CI 的 publish job，需要 `NPM_PUBLISH_TOKEN`、`DSH_HUB_TOKEN` 以及挂资产用的 `GH_TOKEN`）。单个阶段可用 `make publish-bundle|publish-profile|publish-launcher` 重跑，`make help` 列出全部 target；workflow 本身不调用 make。
+The same sequence is wrapped in Make targets: `make release` runs version-check, `npm run check`, `build:packages`, `release:hub`, `dist`, `verify:hub` in order and packs `release-candidates.tar.gz` (matching CI's build job); `make publish` runs the read-only credential check, then bundle, profile, launcher and release-asset upload (matching CI's publish job, requiring `NPM_PUBLISH_TOKEN`, `DSH_HUB_TOKEN` and, for attaching assets, `GH_TOKEN`). A single stage can be re-run with `make publish-bundle|publish-profile|publish-launcher`, and `make help` lists every target; the workflow itself does not call make.
 
-产物位于 `artifacts/npm/`：两个 npm tgz、Hub draft/release JSON 和 `.dshprofile`。构建只复制白名单文件，不复制用户配置、凭据或会话；发布携带原始 MIT 许可和修改说明。
+Artifacts live in `artifacts/npm/`: two npm tgz files, the Hub draft/release JSON and the `.dshprofile`. A build copies only whitelisted files, never user configuration, credentials or sessions; a release carries the original MIT licence and the modification notice.
 
-`verify:hub` 在临时目录安装真实 launcher，以 loopback npm registry 供应尚未发布的 bundle，使用真实 dsh-cli 与 Hub lifecycle 验证组合、agent loop、替换及回退。它不等同于公开 Hub 发现或 npm 正式发布。测试不请求远程模型。
+`verify:hub` installs a real launcher in a temporary directory, serves the not-yet-published bundle from a loopback npm registry, and uses the real dsh-cli and Hub lifecycle to verify the composition, the agent loop, replacement and rollback. It is not equivalent to public Hub discovery or a real npm publish. The tests request no remote model.
 
-正式发布顺序：
+The publication order:
 
-1. 通过 `dsh-hub validate artifacts/npm/bundle` 验证包元数据与真实公开源码仓库。
-2. `npm whoami` 确认是 `toddzheng024`，然后发布 bundle tgz（`npm publish ... --access public`）。
-3. 在 Hub 发布者控制台登记/认领 `@toddzheng024/dscode-bundle`，确认确切版本可解析。
-4. 保存生成的 profile draft，再发布 `dscode` 的同版本 release。
-5. 在全新 DSH_HOME 通过公开 Hub apply/doctor 验证后，发布 launcher tgz。
-6. 在另一干净目录用公开 npm 的 launcher 完成首次启动验证。
+1. Validate the package metadata and the real public source repository with `dsh-hub validate artifacts/npm/bundle`.
+2. Confirm `npm whoami` is `toddzheng024`, then publish the bundle tgz (`npm publish ... --access public`).
+3. Register/claim `@toddzheng024/dscode-bundle` in the Hub publisher console and confirm the exact version resolves.
+4. Save the generated profile draft, then publish the `dscode` release for the same version.
+5. After verifying a public Hub apply/doctor under a fresh DSH_HOME, publish the launcher tgz.
+6. Complete a first-launch verification in another clean directory using the launcher from public npm.
 
-不能在 bundle/Hub release 可用之前发布 launcher，否则用户的首次启动会失败。新的版本必须重新生成包和 release，不能复用旧完整性哈希。`build:packages` 与 `release:hub` 生成候选产物；只有发布并确认公开 registry 后才算完成发布。v0.1.0 已通过 npm + Hub 公开分发。
+Never publish the launcher before the bundle/Hub release is available, or the user's first launch fails. A new version has to regenerate packages and the release; an old integrity hash cannot be reused. `build:packages` and `release:hub` produce the candidate artifacts; a release counts as done only after it is published and confirmed on the public registry. v0.1.0 has been distributed publicly through npm + Hub.
 
-Hub 调用经过有限重试（`scripts/hub-retry.mjs`）：5xx 或传输失败默认重试 5 次、间隔 3 秒，可用 `DSCODE_HUB_RETRY_ATTEMPTS` / `DSCODE_HUB_RETRY_MS` 覆盖；4xx（token 无效、包不存在、版本不可变）立即失败。重试耗尽会抛出最后一个错误，所以 Hub 长时间不可用会让这次发布失败，而不是在没核对的情况下继续。
+Hub calls retry in a bounded way (`scripts/hub-retry.mjs`): a 5xx or transport failure retries 5 times by default, 3 seconds apart, overridable with `DSCODE_HUB_RETRY_ATTEMPTS` / `DSCODE_HUB_RETRY_MS`; a 4xx (invalid token, missing package, immutable version) fails immediately. Exhausting the retries throws the last error, so a long Hub outage fails the release rather than continuing without verification.
 
-发布脚本按阶段执行：`npm run publish:hub -- bundle`、`npm run publish:hub -- profile`、`npm run publish:hub -- launcher`。每阶段核对测试产物哈希；launcher 发布前检查公开 Hub release 的确切版本及完整性。 profile 阶段先调用 Hub 的 `sync` 接口（dsh-hub CLI 0.3.0 起提供）让 Hub 立即从 npm 拉取 bundle，不再等整点同步；同步后仍要求 Hub 已列出该精确版本。Hub 认领仍需发布者控制台操作，登录使用 `dsh-hub login`。
+The publish script runs per stage: `npm run publish:hub -- bundle`, `npm run publish:hub -- profile`, `npm run publish:hub -- launcher`. Each stage verifies the hashes of the tested artifacts; before publishing the launcher it checks the exact version and integrity of the public Hub release. The profile stage first calls the Hub's `sync` interface (available since dsh-hub CLI 0.3.0) so Hub pulls the bundle from npm immediately instead of waiting for the hourly sync; after the sync it still requires Hub to list that exact version. Claiming still needs the publisher console, and login uses `dsh-hub login`.
 
-### 免登录发布（本机）
+### Login-free publishing (local machine)
 
-账号开启了 auth-and-writes 两步验证，`npm login` 的会话 token 会过期，每次 `npm publish` 又要一次性验证码。改用一个 **granular access token**，发布脚本会自动使用它：
+The account has auth-and-writes two-factor enabled, so `npm login`'s session token expires and every `npm publish` asks for a one-time code again. Use a **granular access token** instead, which the publish script picks up automatically:
 
-1. 在 npm 网站 Access Tokens 页面生成 granular token：勾选 *Bypass two-factor authentication*，Packages and scopes 只给 `@toddzheng024/dscode` 与 `@toddzheng024/dscode-bundle` 的 Read and write，过期时间按需要选（到期后重复这一步）。granular token 目前只能在网站生成。
-2. `npm run publish:token store`，在 `security` 的密码提示处粘贴 token。它存进登录钥匙串（service `dscode-npm-publish`），不会写进 `~/.npmrc`、命令行或 shell 历史。
-3. `npm run publish:token check` 确认 token 以 `toddzheng024` 身份通过认证。
+1. Generate a granular token on npm's Access Tokens page: tick *Bypass two-factor authentication*, grant Read and write only to `@toddzheng024/dscode` and `@toddzheng024/dscode-bundle` under Packages and scopes, and pick an expiry that suits you (repeat this step when it expires). Granular tokens can currently only be created on the website.
+2. `npm run publish:token store` and paste the token at the `security` password prompt. It goes into the login keychain (service `dscode-npm-publish`) and never into `~/.npmrc`, the command line or the shell history.
+3. `npm run publish:token check` confirms the token authenticates as `toddzheng024`.
 
-之后 `npm run publish:hub -- bundle|launcher` 会从钥匙串取 token，通过一次性的临时 `--userconfig` 传给 npm，不需要登录也不需要验证码。临时环境可用 `NPM_PUBLISH_TOKEN` 覆盖；两者都没有时退回原来的交互式流程。`npm run publish:token remove` 删除钥匙串里的 token。
+After that `npm run publish:hub -- bundle|launcher` takes the token from the keychain and hands it to npm through a one-off temporary `--userconfig`, so no login and no one-time code are needed. A temporary environment can override with `NPM_PUBLISH_TOKEN`; with neither present it falls back to the original interactive flow. `npm run publish:token remove` deletes the keychain token.
 
-npm 已宣布带 bypass 2FA 的 token 直接发布将在 2027 年 1 月停用；届时本机发布需要改为在 CI 上使用 trusted publishing（OIDC）。
+npm has announced that publishing directly with a bypass-2FA token is retired in January 2027; from then local publishing has to move to trusted publishing (OIDC) in CI.
 
 ### GitHub Actions
 
-两个 workflow：
+Two workflows:
 
-- `.github/workflows/checks.yml`：每次 push/PR 在 `macos-14` 上跑 `npm run check`（Node 22.19.0 与 24 两个矩阵），上传覆盖率产物；同一 ref 的新推送会取消上一轮。
-- `.github/workflows/release.yml`：推送 `v*` tag（或手动 `workflow_dispatch`）时先跑 `build` job —— `npm run check` → `npm run build:packages` → `npm run release:hub` → `npm run verify:hub`，把 `artifacts/npm` 与 `artifacts/local/hub-verification.json` 作为 `release-candidates` 产物上传。`publish` job 依赖它，并挂在 `release` environment 上（可在仓库 Settings → Environments 里加 required reviewers 做人工放行）。
+- `.github/workflows/checks.yml`: runs `npm run check` on `macos-14` for every push/PR (a matrix of Node 22.19.0 and 24) and uploads the coverage artifacts; a newer push to the same ref cancels the previous run.
+- `.github/workflows/release.yml`: on a `v*` tag push (or a manual `workflow_dispatch`) it runs the `build` job first — `npm run check` → `npm run build:packages` → `npm run release:hub` → `npm run verify:hub` — uploading `artifacts/npm` and `artifacts/local/hub-verification.json` as the `release-candidates` artifact. The `publish` job depends on it and is attached to the `release` environment (add required reviewers under repository Settings → Environments for manual approval).
 
-发布凭据放在仓库 Secrets（Settings → Secrets and variables → Actions）：
+Publish credentials live in repository Secrets (Settings → Secrets and variables → Actions):
 
-| Secret | 用途 |
+| Secret | Purpose |
 | --- | --- |
-| `DSH_HUB_TOKEN` | Hub CI 凭据。`@dsh-plugin-hub/cli` 的 `getAccessToken()` 优先读它，因此流水线不跑设备登录、也不依赖 5 分钟有效的 WorkOS access token。 |
-| `NPM_PUBLISH_TOKEN` | npm granular token（勾选 *Bypass two-factor authentication*，只授权 `@toddzheng024/dscode` 与 `@toddzheng024/dscode-bundle` 的 Read and write）。`npm run publish:hub` 会把它写进一次性的 `--userconfig`，不落盘、不进 shell 历史。 |
+| `DSH_HUB_TOKEN` | Hub CI credential. `@dsh-plugin-hub/cli`'s `getAccessToken()` prefers it, so the pipeline runs no device login and does not depend on a 5-minute WorkOS access token. |
+| `NPM_PUBLISH_TOKEN` | npm granular token (tick *Bypass two-factor authentication*, granting Read and write only to `@toddzheng024/dscode` and `@toddzheng024/dscode-bundle`). `npm run publish:hub` writes it into a one-off `--userconfig` that never touches disk or the shell history. |
 
-发布按文档顺序分三段执行，每段都重新核对上面验过的哈希：`publish:hub -- bundle` → `publish:hub -- profile`（先让 Hub 从 npm 同步，再要求该精确版本可解析）→ `publish:hub -- launcher`。**launcher 永远在 bundle 与 public Hub release 之后**，否则用户首次启动会失败。新包在 Hub 控制台的认领（claim）仍需人工完成；tag 与 `package.json` 版本不一致时 `build` job 直接失败，不会发布。
+Publishing runs in the three documented stages, each re-verifying the hashes checked above: `publish:hub -- bundle` → `publish:hub -- profile` (sync Hub from npm first, then require that exact version to resolve) → `publish:hub -- launcher`. **The launcher always follows the bundle and the public Hub release**, or the user's first launch fails. Claiming a new package in the Hub console is still manual; when the tag and the `package.json` version disagree the `build` job fails outright and nothing is published.
 
-手动 dry run：Actions → Release → Run workflow，两个开关都保持 `false`，只构建并验证候选产物、不发布。
+Manual dry run: Actions → Release → Run workflow with both switches left at `false`, which only builds and verifies the candidate artifacts without publishing.
 
-只验凭据：Actions → Release → Run workflow，勾选 `verify_credentials`。它跑完整 `build` job 后进入 `publish` job，用 `node scripts/check-publish-credentials.mjs` 做**只读**检查——npm token 是否以 `toddzheng024` 身份通过认证、Hub token 能否读到 `dscode` profile、以及当前版本号在 npm 上是否还空着——然后停止，不发布任何东西。版本已在 npm 上时这个检查会失败，正好拦住「忘记 bump 版本就推 tag」。
+Credential check only: Actions → Release → Run workflow with `verify_credentials` ticked. It runs the full `build` job, then enters the `publish` job and uses `node scripts/check-publish-credentials.mjs` to do a **read-only** check — whether the npm token authenticates as `toddzheng024`, whether the Hub token can read the `dscode` profile, and whether the current version number is still free on npm — then stops without publishing anything. The check fails when the version is already on npm, which is exactly what blocks "push a tag after forgetting to bump the version".
 
-
-
-Hub 阶段（`profile`）用的是 `dsh-hub login` 写入 `~/.dsh/.hub/auth.json` 的 WorkOS 会话，access token 5 分钟有效、脚本会用 refresh token 自动续期；只有 refresh token 失效时才需要重新 `dsh-hub login`。
+The Hub stage (`profile`) uses the WorkOS session written by `dsh-hub login` into `~/.dsh/.hub/auth.json`; the access token lasts 5 minutes and the script refreshes it automatically with the refresh token, so `dsh-hub login` is only needed again once the refresh token expires.

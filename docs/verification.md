@@ -73,9 +73,9 @@ Run `npm run doctor` to regenerate local evidence. On this workstation the agent
 - Isolate `DSH_AGENTS_HOME`: the existing global Orca skill called `computer-use` otherwise wins discovery and prevents native DSH Computer Use activation.
 - Declare DSH-Code optional peers explicitly and override the entire runtime version family; npm initially retained mixed rc.1/rc.2 versions until clean installation.
 - No custom agent engine, browser extension, or replacement compaction transaction is introduced; DSCODE subclasses the upstream compaction engine for trigger policy, prefetch and overflow recovery only.
-# Auto review 增量验证
+# Auto review incremental verification
 
-新增独立 reviewer 插件，真实 agent 集成测试覆盖允许、拒绝、无效模型输出转人工、usage 和会话恢复。测试多注册一个仅测试用的 MCP 工具，因此 doctor 显示 58 个工具，正常安装仍是原来的 57 个。详细边界见 [auto-review.md](auto-review.md)。远程审核模型未实测。
+A separate reviewer plugin was added; a real agent integration test covers an allow, a denial, an invalid model output turning into a hand-to-human, usage and session resume. The test registers one extra MCP tool for testing only, so doctor shows 58 tools while a normal installation still has 57. The detailed boundaries are in [auto-review.md](auto-review.md). A remote review model has not been measured.
 
 ## TUI controls verification
 

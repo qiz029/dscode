@@ -219,7 +219,7 @@ A key reused for different content is rejected.
 
 ## Contact aliases
 
-Save a recipient once, then say “发给 congkai，告诉他这次修改已经完成”:
+Save a recipient once, then say "email congkai and tell him this change is done":
 
 ```sh
 dscode email alias set congkai actual-address@example.com
@@ -241,9 +241,9 @@ again. Configuring an alias does not send mail or enable automatic replies.
 
 You can also manage aliases by asking the agent directly:
 
-- “把 congkai 的邮箱设为 person@example.com” creates or updates the mapping.
-- “列出我的邮箱别名” lists contacts.
-- “删除 congkai 的邮箱别名” removes it.
+- "set congkai's email to person@example.com" creates or updates the mapping.
+- "list my email aliases" lists contacts.
+- "remove congkai's email alias" removes it.
 
 The tools are `set_email_alias`, `list_email_aliases`, and `remove_email_alias`.
 They use the same shared contact store as the CLI. The agent asks for the real

@@ -25,6 +25,18 @@
 
 DSCODE is a terminal coding agent for macOS, built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). A persistent shell reads and writes code and runs tests; the TUI, the CLI and your scripts all share one session runtime instead of each starting their own. It installs as a pinned, reproducible harness—DSH dependencies, TUI and plugins are versioned and verified together.
 
+Most coding agents work alone. DSCODE is built on the opposite assumption: sessions on your machine are **visible to each other**, so one can hand a task over, another can review the diff, and an independent reviewer decides approvals from **your instruction** rather than from a rule table.
+
+**See it in 60 seconds.** Three things most coding agents cannot do, and where to look:
+
+| In one terminal | What it shows |
+|---|---|
+| `/btw why is the cache cold on the first turn?` | A side question runs in its own read-only child session and answers in a panel; the exchange never enters the main conversation. |
+| `dscode send <session-id> --steer "review the change in parser.ts and reply"` | Work handed to another session on this machine; it can read your transcript, answer, and hand the result back. |
+| `/permission auto` · `/review-usage` | Approvals decided by an independent reviewer from your instruction, with what it allowed and what it cost. |
+
+The [90-second demo script](docs/demo.md) has the shot list, the exact commands, and how to record it.
+
 ## 🧭 Core features
 
 | Feature | What you get |
@@ -43,9 +55,9 @@ DSCODE is a terminal coding agent for macOS, built on [DeepSeek Harness](https:/
 
 ## 🆕 What's new
 
-**0.7.11** — The vendored TUI moves to `dsh-code` 1.2.0 with all 25 DSCODE patches re-anchored, on DSH `0.1.5-rc.2`. `dscode update` upgrades a whole installation, update texts exist in all seven languages, `/model` lists only the session provider alphabetically, and code review keeps a larger budget with a started-at-the-lightest reasoning level.
+**0.7.21** — The TUI footer's geometry now follows terminal width alone: the permission badge anchors the row's right edge, the cycle hint keeps its columns, and every live figure is right-aligned inside fixed columns instead of moving with its own digits. `dscode-time-marks` adds hidden clock readings for arriving messages and closed turns (context the terminal never renders), and `/btw <question>` answers a side question in a seeded, read-only child session without touching the main conversation.
 
-Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.11 notes](docs/releases/0.7.11.md) have the long version.
+Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.21 notes](docs/releases/0.7.21.md) have the long version.
 
 ## 🚀 Quick start
 
@@ -102,7 +114,7 @@ npm start -- --cwd /path/to/project
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh
-curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.14
+curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.21
 ```
 
 **From a tar package** — download the prebuilt `dscode-<version>-darwin-arm64.tar.gz` (Apple silicon) or `dscode-<version>-darwin-x64.tar.gz` (Intel) from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
@@ -118,14 +130,14 @@ The command lands in `~/.local/bin/dscode` by default—make sure that directory
 **If the npm name lookup returns 404**, install the same version straight from the official registry tarball:
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.11.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.21.tgz
 ```
 
 **Upgrade** — `dscode update [exact-version]` updates the whole installation in one step, and requires no running DSCODE sessions. On the npm/Hub install it replaces the launcher binary with npm and then upgrades the installed profile to the same version. On a tar install it downloads the release tarball (the prebuilt one for this platform when the release has it, so the update needs no npm either), verifies it against the release's sha256 digest, swaps the installation directory in place and migrates `.runtime`, `.env` and local `config/`; the previous installation is kept as a sibling backup directory. A source checkout updates itself the same way: `git pull --ff-only` on the branch it tracks, then `npm ci --ignore-scripts` and `npm run setup`; uncommitted changes in tracked files refuse before anything runs, so a failed update never half-applies.
 
 ```sh
 dscode update                  # latest release
-dscode update 0.7.11           # an exact version
+dscode update 0.7.21           # an exact version
 ```
 
 `dscode history` lists retained versions and `dscode rollback` returns to the previous preset revision (npm/Hub install). Tar installs older than the first release with `dscode update` upgrade by installing the new tarball into a fresh directory and migrating the state once. Source, tar and npm/Hub installs use different data directories, and sessions and credentials are not migrated between them. See the [tar distribution notes](docs/distribution.md) and the [npm + Hub guide](docs/hub-distribution.md).
@@ -208,9 +220,20 @@ The bundle generates its modified modules at build time and never rewrites third
 | [Skills and workspace instructions](docs/skills.md) | Discovery scopes, the ancestor mode and instruction files |
 | [TUI commands](docs/tui-commands.md) | Command reference and hooks |
 | [Session metrics](docs/session-metrics.md) | Definition of the footer TPS, context, cost and cache figures |
+| [Demo script](docs/demo.md) | The 90-second demo: shot list, exact commands, how to record it |
 | [npm + Hub distribution](docs/hub-distribution.md) | Bundle, Hub release and launcher pipeline |
 | [tar distribution](docs/distribution.md) | The standalone tar installer |
 | [Verification](docs/verification.md) | What the maintained checks cover |
+
+Design records do not repeat the guides above:
+
+| Document | Contents |
+|---|---|
+| [Session messaging design](docs/session-messaging-design.md) | Rationale, boundaries and fixed limits behind agent-to-agent tasks |
+| [Cloud web app host](docs/cloud-webapp-host.md) | Design baseline and trust model for browser access; not implemented |
+| [Verification](docs/verification.md) | What the maintained checks cover, and what cannot run inside a session |
+| [Releases](docs/releases/) | Long-form notes for every release, newest first |
+| [Context handoff](docs/CONTEXT-HANDOFF.md) | Development checkpoint for a fresh session; not user documentation |
 
 ## 🤝 Contributing
 

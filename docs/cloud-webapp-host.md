@@ -1,138 +1,138 @@
-# 云端 Web App Host：设计与信任模型
+# Cloud web app host: design and trust model
 
-面向「从任何地方用浏览器访问自己的 DSCODE」这一形态的架构设计。执行、文件与密钥始终留在用户自己的机器上；Hub（dshpluginhub.ai）在**架构上**无法读取用户内容。
+An architecture design for the shape where a user reaches their own DSCODE from a browser anywhere. Execution, files and keys always stay on the user's own machine; the Hub (dshpluginhub.ai) cannot read user content **by architecture**.
 
-状态：设计基线，尚未实现。P0 验证未开始。
+Status: design baseline, not implemented. P0 validation has not started.
 
-## 1. 目标与约束
+## 1. Goals and constraints
 
-**目标**：用户在任何设备、任何网络的浏览器里使用自己的 DSCODE host，体验对齐 `dsh-web-app` 已有的 Web 面（chat、模型与设置、会话历史、审批）。
+**Goal**: a user reaches their own DSCODE host from a browser on any device and any network, with an experience aligned to the `dsh-web-app` web surface already in place (chat, models and settings, session history, approvals).
 
-**约束（已确定）**：
+**Constraints (settled)**:
 
-1. **强制端到端加密**：Hub 永不接触明文，包括会话内容、文件内容与凭据。
-2. **多租户**：每个用户拥有独立的 host；用户的凭证不能触达其他用户的 host。
-3. **Web 面不复刻终端专属能力**：压缩 Tetris 指示器、键盘交互面板等不进入 Web。
-4. **不依赖 Tailscale 或任何第三方隧道**：隧道与中继由 Hub 侧自建（cloudflared 只可用于 P0 验证）。
-5. **本地执行**：agent 的 shell、文件系统、密钥、审批全部在本机 host 完成，Hub 无法放宽本地策略。
+1. **Mandatory end-to-end encryption**: the Hub never touches plaintext, including session content, file content and credentials.
+2. **Multi-tenant**: each user has an independent host; one user's credentials cannot reach another user's host.
+3. **The web surface does not replicate terminal-only capability**: the compaction Tetris indicator, keyboard interaction panels and the like do not enter the web.
+4. **No dependency on Tailscale or any third-party tunnel**: the tunnel and relay are built on the Hub side (cloudflared may be used only for P0 validation).
+5. **Local execution**: the agent's shell, filesystem, keys and approvals all complete on the local host, and the Hub cannot loosen local policy.
 
-## 2. 架构
+## 2. Architecture
 
 ```
-[浏览器 · 任何地方]
-     │  HTTPS（Hub 登录态 / passkey）
+[browser · anywhere]
+     │  HTTPS (Hub login state / passkey)
      ▼
-[dshpluginhub.ai]          ← 身份 · host 目录 · 盲中继 · 连接级审计 · 配额
-     ▲  WSS 出站长连接（本机主动拨出；不开放任何入站端口）
+[dshpluginhub.ai]          ← identity · host directory · blind relay · connection-level audit · quotas
+     ▲  outbound WSS long connection (the local machine dials out; no inbound port is opened)
      │
-[用户机器 · dscode host]    ← 唯一的执行处
-     └ dsh --profile web（只 bind 127.0.0.1）+ DSCODE 服务层插件
+[user machine · dscode host]    ← the only place execution happens
+     └ dsh --profile web (binds 127.0.0.1 only) + DSCODE service-layer plugins
 ```
 
-**数据流**：
+**Data flow**:
 
-1. 用户在 Hub 登录，并用 passkey 完成设备绑定（见第 5 节）。
-2. 本机 `dscode host up` 使用短期 host 凭证拨出 WSS 隧道，向 Hub 注册 `host-id` 与公钥。
-3. 浏览器打开 `dshpluginhub.ai/h/<host-id>`：Hub 认证用户 → 查目录 → 建立到该 host 的中继。
-4. 浏览器与该 host 协商 E2E 会话密钥；此后所有 API 调用与事件都在该通道内。
-5. 敏感操作（写文件、执行命令、安装依赖）仍由本机 DSCODE 的 approval / auto-review 决策，通过 E2E 通道在 Web 上征询用户确认。
+1. The user logs in to the Hub and completes device binding with a passkey (see section 5).
+2. The local `dscode host up` dials the outbound WSS tunnel with a short-lived host credential and registers its `host-id` and public key with the Hub.
+3. The browser opens `dshpluginhub.ai/h/<host-id>`: the Hub authenticates the user → looks up the directory → establishes a relay to that host.
+4. The browser and that host negotiate an E2E session key; from then on every API call and event travels inside that channel.
+5. Sensitive operations (writing files, running commands, installing dependencies) are still decided by the local DSCODE approval / auto-review, and ask the user for confirmation over the E2E channel in the web UI.
 
-**信任边界**：Hub 只在第 2–3 步参与身份与路由；第 4 步之后它转发的是密文。
+**Trust boundary**: the Hub takes part in identity and routing only in steps 2–3; after step 4 what it forwards is ciphertext.
 
-## 3. 关键决策记录
+## 3. Key decision record
 
-| 决策 | 选择 | 后果 |
+| Decision | Choice | Consequence |
 |---|---|---|
-| 加密 | **强制 E2E** | Hub 不能提供内容索引/搜索、AI 内容审核、跨租户内容共享。换取"架构上看不到" |
-| 租户 | **多租户** | 隔离落在授权与路由层（执行天然分离）。需要配额、滥用防护、每租户的 host 目录与审计 |
-| Web 能力 | **不复刻终端功能** | Web 只保留服务层插件；TUI 专属组件（tui-tools、Tetris、键盘面板）不迁移 |
-| 隧道 | **自建出站隧道** | 不引入第三方可见性；与 Hub 认证/审计/配额一体 |
-| 密钥/身份 | **passkey（WebAuthn PRF）** | 新设备免配对；依赖浏览器 PRF 支持，并放大 SPA 可信性要求（第 6 节） |
+| Encryption | **Mandatory E2E** | The Hub cannot offer content indexing/search, AI content moderation or cross-tenant content sharing. In exchange it is "architecturally unable to see" |
+| Tenancy | **Multi-tenant** | Isolation lands in the authorisation and routing layer (execution is naturally separate). It needs quotas, abuse protection, a per-tenant host directory and auditing |
+| Web capability | **No terminal replication** | The web keeps only the service-layer plugins; TUI-only components (tui-tools, Tetris, keyboard panels) do not migrate |
+| Tunnel | **Self-built outbound tunnel** | No third-party visibility is introduced; it stays one piece with Hub auth/audit/quota |
+| Keys/identity | **passkey (WebAuthn PRF)** | A new device needs no pairing; it depends on browser PRF support and raises the SPA trustworthiness requirement (section 6) |
 
-## 4. 信任设计
+## 4. Trust design
 
-| 机制 | 说明 |
+| Mechanism | Description |
 |---|---|
-| **只出不进** | host 只主动拨出隧道，不监听公网端口。`dscode host down` 即刻断开——"没有进入你电脑的通道"是结构性的 |
-| **Hub 盲中继** | 只按认证过的帧转发，不解析内容。会话、凭据、审核、费用记录留在本机（现状即 `~/.local/share/dscode-hub`） |
-| **E2E 数据面** | 浏览器与 host 之间协商会话密钥，Hub 只有公钥 |
-| **host 侧授权** | host 验证 Hub 签发的**短期** token（绑定 host-id、audience、过期），不采信"Hub 说这是谁" |
-| **最小暴露面** | 隧道只转发白名单路径（Web UI + `dsh-api-gateway`），不做文件系统或 shell 直通 |
-| **本地策略不可绕过** | approval、auto-review、platform sandbox 全在本机执行；Hub 无法放宽 |
-| **可审计可撤销** | `dscode host status` 列出在线设备、来源、令牌到期；`dscode host revoke <device>` 断开并轮换 |
-| **隐私工程沿用现有标准** | `dsh-hub` 遥测已做到事件不含账号、机器 ID、IP 字段、路径、配置与密钥，并支持 `DSH_HUB_TELEMETRY_DEBUG=1` 预览。隧道与 host 组件沿用同一标准并开源 |
+| **Outbound only** | The host only dials out; it listens on no public port. `dscode host down` disconnects immediately — "there is no channel into your computer" is structural |
+| **Hub blind relay** | It forwards authenticated frames only and parses no content. Sessions, credentials, review and cost records stay on the local machine (as today, under `~/.local/share/dscode-hub`) |
+| **E2E data plane** | The browser and the host negotiate a session key, and the Hub only has the public key |
+| **Authorization on the host side** | The host verifies the **short-lived** token the Hub issued (bound to host-id, audience and expiry) and does not take "the Hub says this is who they are" at face value |
+| **Minimal exposure** | The tunnel forwards only whitelisted paths (the web UI + `dsh-api-gateway`), with no filesystem or shell passthrough |
+| **Local policy cannot be bypassed** | Approval, auto-review and the platform sandbox all execute locally; the Hub cannot loosen them |
+| **Auditable and revocable** | `dscode host status` lists online devices, origin and token expiry; `dscode host revoke <device>` disconnects and rotates |
+| **Privacy engineering keeps the existing standard** | `dsh-hub` telemetry already keeps events free of account, machine ID, IP fields, paths, configuration and keys, and supports a `DSH_HUB_TELEMETRY_DEBUG=1` preview. The tunnel and host components keep the same standard and are open source |
 
-## 5. E2E 密钥模型（passkey）
+## 5. E2E key model (passkey)
 
-**信任根是本机 host，不是 Hub，也不是 passkey。** passkey 只是让新设备取回 host 密钥的便捷凭据。
+**The trust root is the local host, not the Hub and not the passkey.** A passkey is only a convenient credential with which a new device retrieves the host key.
 
-1. **host 密钥对**：启用远程时本机生成 `(sk_host, pk_host)`；`pk_host` 与 `host-id` 注册到 Hub。
-2. **passkey 绑定**：浏览器用 WebAuthn PRF 输出经 HKDF 派生出 `K_wrap`。PRF 输出只在浏览器本地计算，断言里不包含它，Hub 无法获得。
-3. **封装**：用户在浏览器完成一次绑定后，`sk_host` 被 `K_wrap` 封装上传 Hub（仅密文）。Hub 保存 `pk_host` 与密文。
-4. **新设备**：新浏览器 → passkey 验证 → 派生 `K_wrap` → 从 Hub 取回密文 → 解封得到 `sk_host` → 与 host 建立 E2E。
-5. **恢复**：passkey 丢失时，只要还能本地访问 host（终端或局域网），即可重新封装绑定新 passkey。**本地 host 始终是恢复锚点**。
-6. **撤销**：`dscode host revoke` 轮换 `sk_host`，使所有已发布密文失效。
+1. **Host key pair**: enabling remote access generates `(sk_host, pk_host)` locally; `pk_host` and `host-id` register with the Hub.
+2. **Passkey binding**: the browser derives `K_wrap` through HKDF from the WebAuthn PRF output. The PRF output is computed only in the browser and is not part of the assertion, so the Hub cannot obtain it.
+3. **Wrapping**: after the user completes one binding in the browser, `sk_host` is wrapped with `K_wrap` and uploaded to the Hub (ciphertext only). The Hub stores `pk_host` and the ciphertext.
+4. **New device**: a new browser → passkey verification → derive `K_wrap` → fetch the ciphertext from the Hub → unwrap to `sk_host` → establish E2E with the host.
+5. **Recovery**: when the passkey is lost, local access to the host (terminal or LAN) is enough to re-wrap and bind a new passkey. **The local host is always the recovery anchor**.
+6. **Revocation**: `dscode host revoke` rotates `sk_host`, invalidating every published ciphertext.
 
-**待验证**：浏览器/平台对 WebAuthn PRF 扩展的支持矩阵；不支持时的降级路径是设备配对（在一台已授权设备上确认新设备），该路径不引入 Hub 可见性。
+**To verify**: the browser/platform support matrix for the WebAuthn PRF extension; the fallback when it is unsupported is device pairing (confirming a new device on one already-authorised device), a path that introduces no Hub visibility.
 
-## 6. SPA 可验证性（E2E 的前提）
+## 6. SPA verifiability (the precondition for E2E)
 
-PRF 输出由**页面脚本**取得，因此"SPA 可信"是 E2E 成立的先决条件——服务端若投毒前端，就能窃取密钥。
+The PRF output is obtained by **page script**, so "the SPA is trustworthy" is a precondition for E2E: a server that poisons the front end can steal the keys.
 
-要求：
+Requirements:
 
-1. Web 前端**开源**，可复现构建；
-2. 每次发布公开构建哈希，浏览器加载后校验（SRI + 运行时自检），校验失败拒绝建立 E2E 通道；
-3. 校验逻辑尽量早于任何密钥操作执行。
+1. The web front end is **open source** and reproducibly built;
+2. Every release publishes its build hash, the browser verifies it after loading (SRI + a runtime self-check), and a failed verification refuses to establish the E2E channel;
+3. The verification logic runs as early as possible, before any key operation.
 
-不采用「SPA 由 host 经隧道提供」作为主要方案：首屏仍要过 Hub，收益有限且增加复杂度。
+"Serve the SPA from the host through the tunnel" is not adopted as the primary approach: the first paint still goes through the Hub, so the gain is limited while the complexity grows.
 
-## 7. 租户与授权模型
+## 7. Tenancy and authorisation model
 
-- **每用户独立 host**：执行分离是天然的，Hub 不需要共享执行沙箱。
-- **host 目录**：`host-id` 属于某一用户，只有该用户（及其显式授权的会话）能连接。
-- **凭证链**：Hub 登录 → 短期 host token（签名、绑定 host-id/audience/过期）→ host 校验 → 建立 E2E。
-- **配额与滥用防护**：Hub 侧按连接数、带宽、并发限制（E2E 下无法按内容计量）。
-- **审计**：连接时间、来源、持续时间、断开原因等元数据；不含内容。
+- **A separate host per user**: execution separation is natural, and the Hub needs no shared execution sandbox.
+- **Host directory**: a `host-id` belongs to one user, and only that user (and sessions they explicitly authorise) can connect.
+- **Credential chain**: Hub login → short-lived host token (signed, bound to host-id/audience/expiry) → host verification → E2E established.
+- **Quotas and abuse protection**: limited by connection count, bandwidth and concurrency on the Hub side (content cannot be metered under E2E).
+- **Audit**: metadata such as connection time, origin, duration and disconnect reason; no content.
 
-## 8. 复用与新建
+## 8. Reuse and new work
 
-**已有可复用**：
+**Already reusable**:
 
-- Hub 身份与 profile 生命周期，其中 `--profile web` 已是 `dsh-hub` 各命令的一等参数（`install` / `profile apply|share|upgrade|diff|doctor|rollback`）；
-- 本地 Web 三件套：`dsh-host-webserver`（HTTP/SPA 座位）、`dsh-web-app`（浏览器 GUI）、`dsh-api-gateway`（双端 RPC）+ `dsh-api-*-controller`；
-- `plugins/session-bridge` 的「Unix socket + auth + request/receipt」本地 RPC 模式；
-- Hub 现有隐私与遥测工程实践。
+- Hub identity and profile lifecycle, where `--profile web` is already a first-class parameter of the `dsh-hub` commands (`install` / `profile apply|share|upgrade|diff|doctor|rollback`);
+- The local web trio: `dsh-host-webserver` (the HTTP/SPA seat), `dsh-web-app` (the browser GUI), `dsh-api-gateway` (two-ended RPC) plus `dsh-api-*-controller`;
+- The local RPC pattern of `plugins/session-bridge`: Unix socket + auth + request/receipt;
+- The Hub's existing privacy and telemetry engineering practice.
 
-**需要新建**：
+**New work**:
 
-- Hub 侧 host 注册目录与中继服务、出站隧道协议；
-- host 侧 `dscode host up/down/status/revoke` 与隧道客户端；
-- passkey 绑定/封装/解封流程与恢复路径；
-- Web 下的审批呈现与人机交互；
-- **DSCODE 的 web profile**：把服务层插件在 `dsh-web-app` 宿主下跑通，跳过终端专属部分。
+- Hub-side host registry and relay service, and the outbound tunnel protocol;
+- Host-side `dscode host up/down/status/revoke` and the tunnel client;
+- The passkey bind/wrap/unwrap flow and the recovery path;
+- Presenting approvals and human interaction in the web UI;
+- **DSCODE's web profile**: getting the service-layer plugins to run under the `dsh-web-app` host while skipping the terminal-only parts.
 
-## 9. 路线
+## 9. Roadmap
 
-**P0 · 兼容性摸底（本地，零外部依赖）**
-以 `--profile web` 起本地 Web host，逐个挂载 DSCODE 自研插件，记录可用 / 报错，产出一份「web profile 必须改的清单」与最小可用 web profile 雏形。不解锁任何远程访问。
+**P0 · compatibility survey (local, zero external dependency)**
+Start a local web host with `--profile web`, mount DSCODE's own plugins one by one, record what works and what errors out, and produce a "what the web profile must change" list plus a minimal working web-profile sketch. No remote access is unlocked.
 
-**P1 · 打通可用链路**
-Hub 侧 host 目录与中继、host 侧隧道客户端、Hub 登录 + 短期 token 授权、设备列表与撤销、Web 审批交互。此阶段可以**先不做 E2E**（仅在受控环境验证链路），但必须假设 Hub 可见。
+**P1 · a usable path end to end**
+Hub-side host directory and relay, the host-side tunnel client, Hub login + short-lived token authorization, the device list and revocation, and web approval interaction. This stage may **skip E2E first** (validating the path in a controlled environment only) but must assume the Hub can see.
 
-**P2 · 达到可承诺的信任水平**
-E2E（passkey + 封装/解封）、SPA 可验证构建与哈希校验、审计面板、隐私声明与开源、配额与滥用防护。
+**P2 · a trust level worth promising**
+E2E (passkey + wrap/unwrap), verifiable SPA builds and hash checking, an audit panel, a privacy statement and open source, quotas and abuse protection.
 
-## 10. 威胁模型
+## 10. Threat model
 
-**防御**：Hub 运营方读取内容（E2E）、未授权访问、凭证重放、中间人、跨租户访问、前端投毒（依赖第 6 节措施）。
+**Defended**: the Hub operator reading content (E2E), unauthorised access, credential replay, man-in-the-middle, cross-tenant access, front-end poisoning (relying on the section 6 measures).
 
-**不防御**：用户本机已被入侵、浏览器或扩展被控、用户主动把访问链接交给他人、Hub 拒绝服务。
+**Not defended**: the user's own machine already compromised, a controlled browser or extension, the user handing the access link to someone else, denial of service against the Hub.
 
-## 11. 未决问题
+## 11. Open questions
 
-1. WebAuthn PRF 的浏览器/平台支持矩阵，以及降级体验的设计细节；
-2. 中继服务的实现选型（自建 WSS 转发 vs 引入成熟隧道内核）与自托管方案；
-3. E2E 下 Hub 的计费口径（连接/带宽）与配额策略；
-4. Web 端审批的用户体验（超时、离线、批量授权）；
-5. DSCODE 服务层插件中哪些依赖 macOS（sandbox、keychain、computer-use），在非 macOS host 上的替代方案。
+1. The browser/platform support matrix for WebAuthn PRF, and the design details of the degraded experience;
+2. The implementation choice for the relay service (a self-built WSS forwarder vs adopting a mature tunnel core) and a self-hosting plan;
+3. How the Hub meters under E2E (connection/bandwidth) and its quota policy;
+4. The approval experience in the web UI (timeout, offline, batch authorisation);
+5. Which DSCODE service-layer plugins depend on macOS (sandbox, keychain, computer-use) and what replaces them on a non-macOS host.

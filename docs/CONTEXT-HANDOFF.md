@@ -1,5 +1,7 @@
 # DSCODE handoff — 2026-09-11 session checkpoint
 
+> **Internal development note.** Not user documentation and not a maintained guide: it records one session's in-flight state and is kept for handoff between coding sessions. Behaviour that contradicts it should follow the code, the user guides under `docs/` and `CHANGELOG.md`.
+
 Compact state for a fresh session. Read this, then `git status --short` and `git diff`.
 
 ## Locked decisions (do not re-litigate)

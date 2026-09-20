@@ -1,10 +1,10 @@
 # Auto permission review
 
-本仓库和完整安装包提供 `dscode-auto-review` 插件。它为需要审批的动作调用独立 LLM 请求，返回允许、拒绝或转人工；保留工作区写入沙箱和现有联网行为。不是 Codex 自带 reviewer，也不是所有操作都经过检查的安全代理。
+The repository and the complete install package ship the `dscode-auto-review` plugin. It calls an independent LLM request for actions that need approval and answers allow, deny or hand-to-human; it keeps the workspace-write sandbox and the existing network behaviour. It is not Codex's built-in reviewer, and it is not a security proxy through which every operation passes.
 
-## 使用
+## Usage
 
-重启 `dscode` 加载插件。新会话默认 auto；已有会话和已保存的默认设置保留原值，可以显式切换：
+Restart `dscode` to load the plugin. New sessions default to auto; an existing session and a saved default keep their value, and either can be switched explicitly:
 
 ```text
 /permission auto
@@ -12,29 +12,29 @@
 /review-usage
 ```
 
-`auto` 和 `ask` 都是 `workspace-write + approval: ask`，区别是前者让插件先审核。底层 `never` 仍是拒绝审批请求，不代表自动允许。Computer Use 的应用授权和敏感动作确认始终交给用户。
+Both `auto` and `ask` are `workspace-write + approval: ask`; the difference is that the first lets the plugin review before the request. The underlying `never` still refuses approval requests and does not mean automatically allowed. Computer Use application authorisation and sensitive-action confirmation always go to the user.
 
-## 触发范围
+## What triggers a review
 
-- 工作区文件修改、普通 Shell、已有权限下的 curl/CLI 联网：不新增审批，也不调用审核模型。
-- Shell/文件工具申请额外权限：进入原生审批通道，auto 模式下由 reviewer 先判断。
-- Chrome 的明确只读工具 `list_pages`、`take_snapshot`、`get_console_message`、`list_console_messages`、`get_network_request`、`list_network_requests`、`performance_analyze_insight`：不新增审批。
-- 其他 `mcp__*` 工具：在执行前进入审批，包括 Chrome 导航、点击、脚本执行、上传、截图等。未知 MCP 工具不因为名称像只读就放行。
-- 其他插件通过原生审批接口发起的请求：如果无法绑定到实际待执行工具参数，转人工。
+- Workspace file changes, ordinary shell, and curl/CLI network access under existing permissions: no new approval and no review model call.
+- A shell/file tool asking for additional permission: enters the native approval path, and in auto mode the reviewer decides first.
+- Chrome's explicitly read-only tools `list_pages`, `take_snapshot`, `get_console_message`, `list_console_messages`, `get_network_request`, `list_network_requests`, `performance_analyze_insight`: no new approval.
+- Every other `mcp__*` tool: enters approval before execution, including Chrome navigation, clicking, script execution, upload and screenshots. An unknown MCP tool is not waved through because its name sounds read-only.
+- A request another plugin raises through the native approval interface: handed to a human when it cannot be bound to the actual tool arguments about to execute.
 
-这不是全局网络防火墙。原本允许执行的 `curl POST` 或使用已认证 CLI 的外部操作不会天然触发 auto。Shell 中脚本的实际内容也不会被 reviewer 自动读取。跨工具等价绕行由审核指令约束，不能声称有完整语义识别；完全相同的已拒绝动作在本轮没有新用户指令时会直接拒绝。
+This is not a global network firewall. A `curl POST` that was already allowed, or an external operation through an authenticated CLI, does not trigger auto by nature. The actual contents of a script inside the shell are not read by the reviewer either. Equivalent detours across tools are constrained by the review instruction, and no complete semantic recognition can be claimed; an identical action denied earlier in this turn is denied directly while there is no new user instruction.
 
-## 输入和授权
+## Input and authorisation
 
-插件在工具执行前记录待执行的不可变参数，以 agent 和 call ID 绑定审核请求。每次允许只用于该次调用，无永久授权缓存。审核模型没有执行工具，也不接收主 agent 的推理或整段工具输出。
+Before a tool executes, the plugin records the immutable arguments about to run and binds the review request to the agent and the call ID. Each allow applies to that one call; there is no permanent authorisation cache. The review model has no execution tools and does not receive the main agent's reasoning or a whole tool output.
 
-审核输入是具体工具参数、cwd、直接用户消息和最近拒绝理由。不会额外读取 `.env`、配置凭据或 secret 文件。常见凭据格式会脱敏；动作参数疑似含凭据时直接转人工，不把失真的动作交给模型批准。该检测不是完整 DLP，无法保证识别所有任意格式的秘密，参数和用户文本中不要直接粘贴凭据。
+The review input is the concrete tool arguments, the cwd, the direct user messages and the most recent denial reason. It does not additionally read `.env`, configured credentials or secret files. Common credential formats are redacted; when the action arguments look like they contain credentials the request goes to a human instead of asking a model to approve a distorted action. That detection is not complete DLP and cannot guarantee every arbitrary secret format is recognised, so do not paste credentials into arguments or user text.
 
-动作 JSON 超过 12,000 字符、全部直接用户文本超过 8,000 字符，或缺少直接用户指令时转人工，不通过截掉授权约束来强行审核。不会把 agent 自己生成的摘要当作用户授权。长会话可能因此更多地转人工，这是第一版的明确限制。
+An action JSON over 12,000 characters, all direct user text over 8,000 characters, or a missing direct user instruction is handed to a human: the authorisation constraint is never trimmed away just to force a review. A summary the agent generated itself is never taken as user authorisation. A long session may therefore hand more requests to a human, which is an explicit limit of this first version.
 
-## 模型与成本
+## Model and cost
 
-默认沿用 agent 最近实际请求的 provider/model，但使用独立、精简的审核上下文。也可以在 `config/harness.local.yml` 指定已经配置好凭据的另一个模型：
+By default it uses the provider/model the agent actually requested most recently, but with an independent, condensed review context. `config/harness.local.yml` can point at another model whose credentials are already configured:
 
 ```yaml
 - id: dscode-auto-review
@@ -46,52 +46,52 @@
     maxReviewsPerTurn: 20
 ```
 
-provider/model 必须同时设置或都留空。每次最多请求 768 输出 tokens，超时 30 秒；每个 agent 每轮最多发起 20 次审核模型调用，超过后转人工。这个次数上限不是账单金额上限，供应商/底层适配器重试、思考 token 和定价由模型配置决定。
+provider/model must be set together or both left empty. Each request asks for at most 768 output tokens with a 30-second timeout; each agent makes at most 20 review model calls per turn, and beyond that requests go to a human. This call cap is not a billing cap: provider/adapter retries, thinking tokens and pricing are decided by the model configuration.
 
-`/review-usage` 显示本会话决定数、模型尝试数、已报告的输入/输出 tokens、累计审核耗时和缺少完整 usage 的尝试。缺失 usage 不当作零费用。审核失败、截断、无效 JSON、超时均转人工；如果人工通道也不可用，原生审批服务拒绝执行。
+`/review-usage` shows this session's decision count, model attempts, reported input/output tokens, accumulated review time and the attempts missing complete usage. Missing usage is not treated as zero cost. A review that fails, is truncated, returns invalid JSON or times out goes to a human; when the human path is unavailable too, the native approval service refuses execution.
 
-连续三次拒绝会取消当前 agent 的本轮运行。显式拒绝不会自动转成另一条“人工允许”路径；agent 收到拒绝理由和禁止等价绕行的说明。用户可以用 `/permission ask` 后提供新的明确指令。
+Three denials in a row cancel the current agent's run for the turn. An explicit denial is never silently converted into another "human allow" path; the agent receives the denial reason and the instruction not to take an equivalent detour. The user can switch with `/permission ask` and then give a new explicit instruction.
 
-## 持久化与分发
+## Persistence and distribution
 
-权限选择由 DSH 原生会话事件保存；原生 approval asked/decided 继续记录实际审批结果。审核理由、动作 hash、usage 和耗时另存于 `.runtime/auto-review/<session-id-sha256>.jsonl`（文件权限 0600）。不记录原始命令、请求正文、审核提示或完整模型响应。此 sidecar 是审核器的判断记录；转人工后的最终允许/拒绝以原生会话审批日志为准。
+The permission choice is stored by native DSH session events; the native approval asked/decided records keep recording the actual outcome. The review reason, action hash, usage and elapsed time are stored separately in `.runtime/auto-review/<session-id-sha256>.jsonl` (file mode 0600). The original command, request body, review prompt and full model response are not recorded. This sidecar is the reviewer's judgement record; after a hand-to-human, the final allow/deny follows the native session approval log.
 
-rc.1 的会话读取器不接受未知事件类型，因此没有把自定义审核事件硬塞进会话日志。备份时保留整个 `.runtime`，同时保留审核记录。
+The rc.1 session reader does not accept unknown event types, so no custom review event was forced into the session log. Back up the whole `.runtime` to keep the review records too.
 
-`npm run dist` 的完整安装包包含此插件。正式 npm/Hub bundle 包含 reviewer；旧 `npm run release` 仅导出基础组合，不能代替 `npm run release:hub` 生成的完整发行版。
+The complete install package from `npm run dist` includes this plugin. The official npm/Hub bundle includes the reviewer; the older `npm run release` exported only the base composition and does not replace the complete release produced by `npm run release:hub`.
 
-## Jev 快路径（可选）
+## Jev fast path (optional)
 
-自动审核的问题本质是一次「在给定上下文里选一个答案」，不需要一个会写长文的模型。挂载 `dscode-jev` 后，审核会先问 TypeSafe Jev（经 OpenRouter 的 alpha Decisions 端点 `POST /api/alpha/decisions`），**一次请求**同时给出四个回答：
+The essence of auto review is choosing one answer inside a given context, which does not need a model that writes essays. With `dscode-jev` mounted, a review first asks TypeSafe Jev (through OpenRouter's alpha Decisions endpoint `POST /api/alpha/decisions`), which answers four things in **one request**:
 
-- `choice`：`allow` / `ask` / `deny`，附各选项概率与 `confidence`；
-- `noul authorized`：保留的指令是否覆盖这次动作（含目标与效果）。它与风险**分开评分**：指令要求的危险动作也该得高分，没人要求的危险动作得低分。指令几乎不会点名具体命令，所以问题问的是它要求的那个任务，锚点也写在问题里——直接要求该步骤 ≥0.9、完成已述任务的必要步骤 0.6–0.9、可能属于任务但可选或不明确 0.2–0.6、不覆盖 <0.2。这个分数是下面第 2 步（已授权时转交模型深审）的开关。
-- `score`：做错时有多难回滚（0–3 档，可落在档位之间）；
-- `noul credential_risk`：是否涉及凭据、令牌或其他机密。
+- `choice`: `allow` / `ask` / `deny`, with per-option probabilities and a `confidence`;
+- `authorized`: whether the retained instructions cover this action, target and effect included. It is scored **separately from risk**: a dangerous action the instructions asked for should score high, and a dangerous action nobody asked for should score low. Instructions almost never name a concrete command, so the question asks about the task they asked for and the anchor is written into the question too — a step they ask for directly ≥0.9, a necessary step of a stated task 0.6–0.9, possibly part of the task but optional or unclear 0.2–0.6, not covered <0.2. This score is the switch for step 2 below (handing an authorised action to the model for a deeper review);
+- `score`: how hard it is to roll back if it goes wrong (0–3 bands, and it may land between bands);
+- `credential_risk`: whether credentials, tokens or other secrets are involved.
 
-判定顺序在代码里，而且**放行与拒绝的门槛刻意不对称**——放行是最危险的方向，拒绝只是「请不要这么做」：
+The order of judgement is in code, and the **allow and deny thresholds are deliberately asymmetric** — allow is the dangerous direction, while a deny is only "please don't do this":
 
-1. **自动拒绝**：`deny` 且（置信度 ≥ `autoDeny`(0.95) 且 `P(deny)` ≥ `autoDenyProbability`(0.9)）**或**（置信度 ≥ `autoDenyCorroborated`(0.9) 且 `score ≥ destructiveCeiling`(2) 或凭据风险 ≥ `credentialRisk`(0.5) 至少一项已越线）。若 `authorized ≥ authorizedVeto`(0.6)——即指令看起来就是要求它做这件事——则**否决自动拒绝、改为转人工**：错杀一次拒绝的代价是用户要的活没做，而且连提示都看不到。
-2. **已授权时转交模型深审**：凭据风险 ≥ 0.5、`score ≥ 2`、`choice` 不是 `allow`、或置信度 < `autoAllow`(0.85)，这四条都只守放行方向、都不构成拒绝。若 `authorized ≥ authorizedVeto`(0.6)——指令看起来就是要它做这件事——它们不再直接找人，而是返回 `defer`，由 reviewer 模型看着完整待执行参数与保留指令决断：Jev 的分数偏粗，而本部署本来就允许常规网络访问、也允许 CLI 使用它自己保存的凭据。reviewer 自己判 `human` 时仍然会找人，`defer` 从不会被当成放行。
-3. **自动放行**：`allow` 且置信度 ≥ `autoAllow`(0.85)，且未触发第 2 步。
-4. 其余（未到 `authorizedVeto` 的 `ask`、不够自信、越线但未被拒绝）→ 转人工。
+1. **Automatic denial**: `deny` and (confidence ≥ `autoDeny`(0.95) and `P(deny)` ≥ `autoDenyProbability`(0.9)) **or** (confidence ≥ `autoDenyCorroborated`(0.9) and at least one of `score ≥ destructiveCeiling`(2) or credential risk ≥ `credentialRisk`(0.5) already over the line). If `authorized ≥ authorizedVeto`(0.6) — that is, the instructions appear to ask for it — the automatic denial is **vetoed and turned into a hand-to-human**: the cost of one wrongly denied action is work the user asked for not getting done, without even a prompt.
+2. **Hand to the deeper model review when authorized**: credential risk ≥ 0.5, `score ≥ 2`, a `choice` other than `allow`, or confidence < `autoAllow`(0.85) — all four guard only the allow direction and none of them constitutes a denial. If `authorized ≥ authorizedVeto`(0.6) — the instructions appear to ask for it — they no longer go straight to a human but return `defer`, leaving the reviewer model to decide with the full pending arguments and the retained instructions in view: Jev's scores are coarse, and this deployment already allows ordinary network access and lets a CLI use credentials it stored itself. When the reviewer itself rules `human`, a human is still consulted, and a `defer` is never treated as an allow.
+3. **Automatic allow**: `allow` with confidence ≥ `autoAllow`(0.85) and step 2 not triggered.
+4. Everything else (an `ask` below `authorizedVeto`, not confident enough, over the line but not denied) → hand to a human.
 
-一次 `defer` 在审计里留下两行：先记 Jev 自己的判定与风险分数（`decision: deferred`，带 `credentialRisk`、`destructive`、`authorized`），再记 reviewer 模型的实际裁决；只有 `allow` 会真正放行。也就是说第 2 步把凭据与不可撤销风险从「硬停」改成了「第二个模型判断 + 人工兜底」——这是刻意的取舍，代价是这两个信号不再单独一票否决，收益是用户已明确要求的提权（例如发布流程里必须出沙箱的验证）不会每次都打断人。想恢复硬停就把 `authorizedVeto` 调高于 1（或按下面的方式关掉 Jev）。
+One `defer` leaves two rows in the audit: first Jev's own verdict and risk scores (`decision: deferred`, with `credentialRisk`, `destructive`, `authorized`), then the reviewer model's actual ruling; only an `allow` really lets the action through. In other words step 2 turns credential and irreversible risk from a "hard stop" into "a second model's judgement plus a human backstop" — a deliberate trade whose cost is that those two signals no longer veto on their own, and whose benefit is that an escalation the user explicitly asked for (for example a verification that has to leave the sandbox during a release) no longer interrupts a human every time. To restore the hard stop, raise `authorizedVeto` above 1 (or switch Jev off as below).
 
-Jev 未配置（解析不到 `OPENROUTER_API_KEY`）、未启用、超时、报错或返回不可用时，一律返回「无判定」，自动审核继续走原来的 reviewer 模型——**Jev 故障只退回到旧行为，不会放宽任何权限**。
+When Jev is not configured (no `OPENROUTER_API_KEY` resolves), is disabled, times out, errors or returns something unusable, it always returns "no verdict" and auto review continues with the original reviewer model — **a Jev failure only falls back to the old behaviour and never loosens any permission**.
 
-发出去的 `state` 只有两项：待执行的调用本身，以及本会话保留的直接用户指令；两者各自截断到 8000 字符，不含凭据。
+The `state` sent out has only two items: the call about to execute, and the direct user instructions retained for this session; each is truncated to 8000 characters and neither contains credentials.
 
-配置在 `plugins/jev` 行：`enabled`（默认 true）、`model`（默认 `~typesafe/jev-latest`）、`endpoint`、`apiKeyEnv`（默认 `OPENROUTER_API_KEY`）、`timeoutMs`（默认 8000），以及阈值 `autoAllow`(0.85)、`autoDeny`(0.95)、`autoDenyProbability`(0.9)、`autoDenyCorroborated`(0.9)、`authorizedVeto`(0.6)、`credentialRisk`(0.5)、`destructiveCeiling`(2)。设为 `enabled: false` 或移除该行即回到纯模型审核。
+Configuration lives on the `plugins/jev` line: `enabled` (default true), `model` (default `~typesafe/jev-latest`), `endpoint`, `apiKeyEnv` (default `OPENROUTER_API_KEY`), `timeoutMs` (default 8000), and the thresholds `autoAllow`(0.85), `autoDeny`(0.95), `autoDenyProbability`(0.9), `autoDenyCorroborated`(0.9), `authorizedVeto`(0.6), `credentialRisk`(0.5), `destructiveCeiling`(2). Setting `enabled: false` or removing the line returns to pure model review.
 
-2026-09-17 实测两次（同四个用例，`~typesafe/jev-latest` → `typesafe/jev-1.13-20260917`，provider TypeSafe）：单次 96–813 ms、约 $0.000025（output 计费为 0）。第一次（只有门槛、没有自动拒绝）`git status --short` → allow；`git push --force origin main`（deny 0.92 / score 2.99）与 `curl --data-binary @.env …`（deny 0.98 / cred 0.94）→ 转人工；`rm -rf ~/Documents/notes`（deny 0.90 / score 1.97）→ deny。第二次（本节的非对称策略）四例依次为 allow、deny（0.98 / P(deny) 0.99）、deny（0.99 / 1.00）、deny（0.97 / 0.98）；`authorized` 在常规读取上是 0.83、在三个危险动作上是 0.03。**同一动作两次运行的置信度会漂移**（`rm -rf` 从 0.90 到 0.97），这正是要求「决定性拒绝需要两个信号一致」、并用审计记录调阈值的原因。
+Two measurements on 2026-09-17 (the same four cases, `~typesafe/jev-latest` → `typesafe/jev-1.13-20260917`, provider TypeSafe): 96–813 ms per call, about $0.000025 (output billed at 0). The first run (thresholds only, no automatic denial) gave `git status --short` → allow; `git push --force origin main` (deny 0.92 / score 2.99) and `curl --data-binary @.env …` (deny 0.98 / cred 0.94) → hand-to-human; `rm -rf ~/Documents/notes` (deny 0.90 / score 1.97) → deny. The second run (the asymmetric policy in this section) gave allow, deny (0.98 / P(deny) 0.99), deny (0.99 / 1.00) and deny (0.97 / 0.98) in order; `authorized` was 0.83 on the ordinary read and 0.03 on the three dangerous actions. **Confidence drifts between two runs of the same action** (`rm -rf` moved from 0.90 to 0.97), which is exactly why a decisive denial requires two signals to agree and why the audit record exists for tuning the thresholds.
 
-2026-09-19 用这条校准路径实测四例（`typesafe/jev-1.13-20260917`）：「提交加发布」指令 + 出沙箱跑 `make release` → `authorized` 0.68、`defer`；同一指令点名 `make release` → 0.86、`defer`；同一指令 + `rm -rf ~/Documents/notes` → 0.07、`deny`；「看一下测试覆盖」+ 同一个 `make release` → 0.11、`human`。可以这样复跑：`requestDecisions` 对 `approvalState({ action, context })` 与 `approvalQuestions()` 打一次分，再看 `approvalVerdict`。
+Four more cases were measured on this calibration path on 2026-09-19 (`typesafe/jev-1.13-20260917`): a "commit and release" instruction plus running `make release` outside the sandbox → `authorized` 0.68, `defer`; the same instruction naming `make release` → 0.86, `defer`; the same instruction plus `rm -rf ~/Documents/notes` → 0.07, `deny`; "look at the test coverage" plus the same `make release` → 0.11, `human`. To repeat it, score `approvalState({ action, context })` together with `approvalQuestions()` through `requestDecisions`, then read `approvalVerdict`.
 
-阈值注意：Jev 的概率只在**统计意义**上校准，`confidence` 不是逐次保证。建议用本插件写入的审计记录（`.runtime/auto-review/*.jsonl` 含 decision、source、choice、confidence、denyProbability、authorized、usage 与耗时）对齐阈值，而不是照搬默认值。
+A note on thresholds: Jev's probabilities are calibrated only in the **statistical** sense, and `confidence` is not a per-call guarantee. Align the thresholds with the audit records this plugin writes (`.runtime/auto-review/*.jsonl` carries decision, source, choice, confidence, denyProbability, authorized, usage and elapsed time) rather than copying the defaults.
 
-## 验证
+## Verification
 
-`npm test` 覆盖审核规则入口、参数绑定、取消、超时、无效响应、凭据拦截、模型预算、模式切换、重复拒绝和停止。`tests/jev.test.mjs` 用 mock transport 覆盖请求形态、答案解析、阈值判定、超时与失败兜底；`tests/auto-review.test.mjs` 额外覆盖「Jev 判定不花 reviewer 请求」「Jev 拒绝计入连续拒绝」「Jev 不可用时回退到模型审核」，以及「已授权时 Jev 把守卫交给 reviewer 模型、而 reviewer 自己判人工时仍会找人」。
+`npm test` covers the review rule entry points, argument binding, cancellation, timeout, invalid responses, credential interception, the model budget, mode switching, repeated denials and stopping. `tests/jev.test.mjs` uses a mock transport to cover the request shape, answer parsing, threshold judgement, timeout and failure fallback; `tests/auto-review.test.mjs` additionally covers "a Jev verdict spends no reviewer request", "a Jev denial counts towards the consecutive denials", "Jev unavailable falls back to model review", and "when authorized Jev hands the guard to the reviewer model, while a reviewer ruling of human still consults a human".
 
-`npm run doctor` 使用真实 DSH agent 和工具管线、确定性本地 LLM adapter，验证允许执行、拒绝不执行、无效响应转测试人工审批器、usage 记录及会话恢复。没有调用付费远程模型；实际模型的审核质量、延迟和费用尚待真实使用验证。模拟人工审批器只存在 doctor 的测试 overlay 中。
+`npm run doctor` uses a real DSH agent and tool pipeline plus the deterministic local LLM adapter to verify that an allow executes, a denial does not execute, an invalid response goes to the test human approver, usage is recorded and the session recovers. It calls no paid remote model; real-model review quality, latency and cost are still to be verified in real use. The simulated human approver exists only in the doctor test overlay.

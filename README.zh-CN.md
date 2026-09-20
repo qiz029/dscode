@@ -25,6 +25,18 @@
 
 DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 macOS 终端编码 agent。持久 Shell 负责读写代码和执行测试；TUI、CLI 与脚本共用同一个会话运行时，而不是各自启动一套。它以固定版本的可复现 harness 安装——DSH 依赖、TUI 与插件一起打包、一起校验。
 
+多数编码 agent 是单打独斗。DSCODE 建在相反的假设上：同一台机器上的会话**彼此可见**——一个可以把任务交出去，另一个可以审阅 diff，而放行与否由一个独立审核模型按**你的指令**判断，而不是查规则表。
+
+**60 秒看懂**——三件多数编码 agent 做不到的事，以及在哪里看：
+
+| 在一个终端里 | 说明 |
+|---|---|
+| `/btw 第一轮为什么缓存是冷的？` | 旁支问题在独立、只读的子会话里跑，答案只在面板里出现，不进入主线对话。 |
+| `dscode send <会话 id> --steer "review parser.ts 的改动并回复"` | 把活交给同一台机器上的另一个会话；它能读你的 transcript、回复、把结论交回来。 |
+| `/permission auto` · `/review-usage` | 由独立审核模型按你的指令决定放行，并留下它放行了什么、花了多少的记录。 |
+
+[90 秒演示脚本](docs/demo.md) 里有分镜、确切命令与录制方法。
+
 ## 🧭 核心能力
 
 | 能力 | 说明 |
@@ -43,9 +55,9 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
-**0.7.11** — 内置 TUI 升级到 `dsh-code` 1.2.0，25 个 DSCODE 补丁全部重新对齐，运行时固定 DSH `0.1.5-rc.2`。`dscode update` 一条命令升级整个安装，更新提示支持七种语言，`/model` 只列当前 provider 并按字母序，代码审查预算更宽裕且默认使用最低推理档。
+**0.7.21** — TUI 底栏的几何现在只随终端宽度变化：权限徽章锚定行右缘，`shift+tab` 提示的列位常驻，所有活跃数字在各自固定列内右对齐，不再随自己的位数移动。`dscode-time-marks` 为到达的消息与结束的回合补上隐藏的时钟读数（终端不渲染的上下文），`/btw <问题>` 在继承主会话、只读的子会话里回答旁支问题，不碰主线对话。
 
-每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.11 更新说明](docs/releases/0.7.11.md)。
+每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.21 更新说明](docs/releases/0.7.21.md)。
 
 ## 🚀 快速开始
 
@@ -104,7 +116,7 @@ npm start -- --cwd /path/to/project
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh
-curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.14
+curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.21
 ```
 
 **tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载预构建的 `dscode-<version>-darwin-arm64.tar.gz`（Apple 芯片）或 `dscode-<version>-darwin-x64.tar.gz`（Intel），然后执行：
@@ -120,14 +132,14 @@ sh dscode-install/install.sh
 **若 npm 包名查询暂时返回 404**，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.11.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.21.tgz
 ```
 
 **升级** —— `dscode update [精确版本号]` 一步完成整个安装的更新，且要求没有正在运行的 DSCODE 会话。npm/Hub 安装会先用 npm 替换 launcher 本体，再把已安装的 profile 升到同一版本；tar 安装会下载 release tar 包（release 带有当前平台的预构建包时取它，升级同样不需要 npm）、按发布方 sha256 校验、原位换目录并迁移 `.runtime`、`.env` 和本地 `config/`，旧安装保留为同级备份目录。源码检出同样一条命令更新：先对它跟踪的分支执行 `git pull --ff-only`，再跑 `npm ci --ignore-scripts` 和 `npm run setup`；工作区中有未提交的改动时会先拒绝，避免更新只做一半。
 
 ```sh
 dscode update                  # 最新版本
-dscode update 0.7.11           # 指定版本
+dscode update 0.7.21           # 指定版本
 ```
 
 `dscode history` 查看保留的版本记录，`dscode rollback` 回到上个 preset 版本（npm/Hub 安装）。带 `dscode update` 之前的旧 tar 安装，请把新 tar 包装到新目录并手动迁移一次状态。源码、tar 与 npm/Hub 使用不同的数据目录，会话和凭据不会互相迁移。详见 [tar 分发说明](docs/distribution.md) 与 [npm + Hub 分发指南](docs/hub-distribution.md)。
@@ -191,7 +203,7 @@ npm run dist                # 构建备用 tar 安装包
 | `@toddzheng024/dscode-bundle` | 基础层、Computer Use、自定义插件与修改后的 TUI/runtime |
 | Hub profile `dscode` | 固定 bundle/runtime 版本与完整性哈希 |
 
-Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第三方源码。DSH 依赖统一固定到 `0.1.5-rc.2`；TUI 基于 `dsh-code@1.0.6`，Computer Use 为 `0.3.2`。完整流程——先发布 bundle，再上线 Hub release，最后发布 launcher——见 [分发指南](docs/hub-distribution.md)。上下文压缩评测位于 [`eval/`](eval/README.md)，用 `npm run eval:compaction` 运行。
+Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第三方源码。DSH 依赖统一固定到 `0.1.5-rc.2`；TUI 基于 `dsh-code@1.2.0`，Computer Use 为 `0.3.2`。完整流程——先发布 bundle，再上线 Hub release，最后发布 launcher——见 [分发指南](docs/hub-distribution.md)。上下文压缩评测位于 [`eval/`](eval/README.md)，用 `npm run eval:compaction` 运行。
 
 ## 📚 文档
 
@@ -209,9 +221,20 @@ Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第�
 | [Skills 与工作区指令](docs/skills.md) | 发现范围、祖先模式与指令文件 |
 | [TUI 命令](docs/tui-commands.md) | 命令参考与 hooks |
 | [Session 指标](docs/session-metrics.md) | 底栏 TPS、context、费用与缓存的统计口径 |
+| [演示脚本](docs/demo.md) | 90 秒演示：分镜、确切命令与录制方法 |
 | [npm + Hub 分发](docs/hub-distribution.md) | bundle、Hub release 与 launcher 流程 |
 | [tar 分发](docs/distribution.md) | 独立 tar 安装器 |
 | [验证说明](docs/verification.md) | 维护中的检查覆盖范围 |
+
+设计记录不重复上面这些指南：
+
+| 文档 | 内容 |
+|---|---|
+| [Session 通信设计](docs/session-messaging-design.md) | Agent 间任务的取舍、边界与固定限制的依据 |
+| [云端 Web App Host](docs/cloud-webapp-host.md) | 浏览器接入的架构基线与信任模型；尚未实现 |
+| [验证说明](docs/verification.md) | 维护中的检查覆盖范围，以及哪些检查不能在 session 内运行 |
+| [版本说明](docs/releases/) | 每个版本的长文说明，最新在前 |
+| [上下文交接](docs/CONTEXT-HANDOFF.md) | 供新 session 接手的开发备忘，不是用户文档 |
 
 ## 🤝 参与
 

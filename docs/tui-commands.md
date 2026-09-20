@@ -90,23 +90,24 @@ The launcher applies an idempotent, version-checked patch to the pinned `dsh-cod
 
 `npm test` covers hook validation, MCP idle gating/reconnect, skill conflicts and patch drift. `npm run doctor` boots the real profile, calls the command registry, tests MCP unregister/remount, and uses a real hook subprocess to block a deterministic model's shell tool. No paid model call is used.
 
-## 输入与会话恢复
+## Input and session resume
 
-- `!命令`：在当前会话目录用 `$SHELL`（默认 `/bin/sh`）执行用户输入的命令，展示 stdout、stderr 和退出码，不启动模型回合。支持多行命令；每次启动独立 shell，`cd` 和环境变量不跨命令保留。非交互执行，120 秒超时，显示最多 64 KiB 输出；退出或切换会话会取消未完成命令。
-- `Shift+Enter`：换行；`Enter`：发送。支持 CSI-u 和 xterm modifyOtherKeys 的 Shift+Enter 序列。不发送修饰键的终端可使用 `Ctrl+J` 换行。
-- 粘贴超过 200 字符的文本时，输入框暂以 `[Pasted Content N chars]` 占位，便于继续编辑前后的文字；发送后聊天记录展开显示完整内容，模型收到的也是完整内容。占位符可作为整体删除。以 `/` 或 `!` 开头的命令文本保持可见。
-- 粘贴或拖入图片文件路径时，输入框以 `[Image 1]`、`[Image 2]` 等占位；图片作为附件发送。macOS 上按 `Ctrl+V` 可直接从系统剪贴板附加截图或复制的图片；在能将图片粘贴成临时路径的终端中，`Cmd+V` 也走文件路径入口。首次使用 `Ctrl+V` 会编译本机的图片读取小工具，需要 Xcode Command Line Tools。
-- `dscode resume`：继续最近会话；`dscode resume SESSION_ID`：恢复指定会话。可追加 `--cwd DIRECTORY`。退出并成功保存后会打印当前会话的恢复命令。
-- 主聊天区隐藏 thinking、工具参数、工具结果和已完成的工具调用；动态区域只显示正在执行的工具名。用户消息、agent 正文、用户 shell 命令结果和必要的错误/审批提示仍显示。完整记录保留在会话中，可通过历史详情或导出查看。
-- 每轮 agent 结束时，聊天区在该轮最后一条可见记录后显示一行浅色分割线；下一轮从新行开始。恢复会话时也保留轮次分隔，导出内容不包含分割线。
-- 已发送的用户消息在主聊天区使用独立的浅灰背景块；长消息换行后背景连续，深色和浅色主题分别适配。会话导出仍是纯文本。
-- 中文输入法定位：每帧渲染后将终端真实光标同步到输入框的当前字符位置（包含中文宽度、换行和输入框内部滚动），重绘前恢复渲染位置。修改后需要重启 TUI；macOS 候选框显示仍需在实际使用的终端中验证。
-- 启动时清屏；界面按终端高度显示最近的会话内容，输入栏和状态栏固定在底部。鼠标滚轮或 PageUp/PageDown 可在主聊天区浏览较早消息，滚回底部后继续自动跟随新消息；Ctrl+O 可查看完整会话记录，`/export` 可导出。终端滚屏区不再持续追加已完成消息。
-- `/effort` 和 `/model` 的 effort 步骤会在底部替代输入框。支持四档的模型显示横向 `low → high → max → ultra` bar；方向键移动，Enter 应用，Esc 取消并恢复输入框，`o` 可直接切到 off。光标移到 ultra 时，蓝色光效从中央向两侧展开；按 Enter 应用后，输入框播放短暂的中央扩散涟漪。关闭动画时不播放光效。其他模型仍显示各自提供的档位列表。
-## DSCODE 界面布局
+- `!command`: runs the user's command in the current session directory through `$SHELL` (`/bin/sh` by default), showing stdout, stderr and the exit code without starting a model turn. Multi-line commands are supported; each run is its own shell, so `cd` and environment variables do not persist between commands. It runs non-interactively with a 120-second timeout and shows at most 64 KiB of output; exiting or switching session cancels an unfinished command.
+- `Shift+Enter`: newline; `Enter`: send. The CSI-u and xterm modifyOtherKeys Shift+Enter sequences are supported. A terminal that cannot send the modifier can use `Ctrl+J` for a newline.
+- Pasting more than 200 characters shows `[Pasted Content N chars]` in the composer as a placeholder while the surrounding text stays editable; after sending, the transcript expands to the full content and the model receives that same full content. The placeholder can be deleted as one unit. Command text starting with `/` or `!` stays visible.
+- Pasting or dropping an image file path shows `[Image 1]`, `[Image 2]` and so on in the composer; the image is sent as an attachment. On macOS, `Ctrl+V` attaches a screenshot or a copied image straight from the system clipboard; in a terminal that pastes an image as a temporary path, `Cmd+V` goes through the file-path entry point too. The first `Ctrl+V` compiles a local image-reading helper and needs Xcode Command Line Tools.
+- `dscode resume`: continues the most recent session; `dscode resume SESSION_ID`: resumes the named session. `--cwd DIRECTORY` may be appended. After a successful exit and save it prints the resume command for the current session.
+- The main chat area hides thinking, tool arguments, tool results and completed tool calls; the dynamic area shows only the name of the tool currently running. User messages, agent prose, user shell command results and the necessary error/approval prompts are still shown. The complete record stays in the session and can be seen through the history detail or an export.
+- When a turn ends, the chat area draws a light separator line after that turn's last visible record; the next turn starts on a new line. Turn separators are kept when a session is resumed, and an export contains none.
+- A sent user message uses its own light-grey background block in the main chat area; the background stays continuous when a long message wraps, and the dark and light themes adapt separately. A session export is still plain text.
+- CJK input-method positioning: after each frame the terminal's real cursor is synchronised to the composer's current character position (including CJK width, line wrapping and the composer's internal scroll), and the render position is restored before the redraw. A change here needs the TUI restarted; how the macOS candidate window appears still has to be verified in the terminal actually in use.
+- The screen is cleared on startup; the interface shows the most recent session content according to the terminal height, with the composer and status bar pinned to the bottom. The mouse wheel or PageUp/PageDown browses earlier messages in the main chat area, and following new messages resumes after scrolling back to the bottom; Ctrl+O shows the complete session record and `/export` exports it. The terminal scrollback no longer keeps appending completed messages.
+- The effort step of `/effort` and `/model` replaces the composer at the bottom. A model with four bands shows a horizontal `low → high → max → ultra` bar; arrow keys move, Enter applies, Esc cancels and restores the composer, and `o` switches straight to off. As the cursor reaches ultra a blue effect spreads from the centre outwards; after Enter applies, the composer plays a short central ripple. Nothing plays while animations are off. Other models still show the band list they provide.
 
-启动头部是紧凑欢迎框，左侧十行雪花标识用蓝色冰枝和同色实心晶核构成；右侧以加粗 DSCODE 字样和细分隔线标示品牌，并列出当前模型、effort、本地版本和项目路径。窄窗口或矮终端压缩为带 ❄ 的三行布局，较长路径保留末尾目录。运行中变化的 session 标题仍显示在底部。正文保留用户和 agent 输出，thinking 与工具调用历史仍隐藏。
+## DSCODE interface layout
 
-输入区上方统一显示思考、回复或当前工具及其描述，计时为本轮总耗时。只有运行标记动画，输入区不播放波浪。子 agent 概览区分 running / idle / done，输入 `/agents` 查看任务和当前活动。
+The startup header is a compact welcome box: on the left a ten-line snowflake mark built from blue branches and a solid core of the same colour, and on the right a bold DSCODE wordmark with a thin divider that brands the box and lists the current model, effort, local version and project path. A narrow window or a short terminal compresses it to a three-line layout with ❄, keeping the last directory of a long path. A session title that changes while running still shows at the bottom. The body keeps the user and agent output, while thinking and tool-call history stay hidden.
 
-底栏默认保留模型、effort、权限、标题和必要的任务状态；ctx、费用、cache 使用弱对比色，窄窗口优先省略 cache，低于 64 列隐藏指标。`/statusline` 仍可自定义所有原有项目，已有自定义配置保持有效。
+Above the composer, thinking, the reply or the current tool and its description are shown uniformly, timed as the total for the turn. Only the running marker animates; the composer plays no wave. The sub-agent overview separates running / idle / done, and `/agents` shows the tasks and current activity.
+
+The footer keeps the model, effort, permission, title and the necessary task state by default; ctx, cost and cache use a weaker contrast, a narrow window drops cache first, and below 64 columns the metrics are hidden. `/statusline` still customises every original item, and an existing custom configuration keeps working.
