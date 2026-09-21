@@ -188,6 +188,7 @@ export const en = {
   'panel.usage.colTurns': 'turns',
   'panel.usage.unknownModel': 'unattributed',
   'panel.usage.colTurn': 'turn',
+  'panel.usage.colCost': 'cost',
   'panel.usage.colTotal': 'total',
   'panel.usage.colUncached': 'uncached',
   'panel.usage.colCacheRead': 'cache R',
@@ -265,6 +266,7 @@ export const en = {
   'status.label.out': 'out',
   'status.label.mode': '/mode',
   'status.label.context': 'context',
+  'status.label.skills': 'skills',
 
   // Frozen band
   'frozen.keysGoTo': 'keys go to {owner} · esc {action}',
@@ -286,6 +288,7 @@ export const en = {
   'notice.themeSaveFailed': 'theme save failed: {message}',
   'notice.languageSaveFailed': 'language save failed: {message}',
   'notice.alreadyActive': 'that session is already active',
+  'notice.resumedOtherFolder': 'this session belongs to {folder}; its workspace and shell follow that folder (launched in {launch})',
   'notice.queueCancelled': 'queued message cancelled',
   'notice.queueActionFailed': 'queue action failed: {message}',
   'notice.queueUnavailable': 'queued message is no longer pending',

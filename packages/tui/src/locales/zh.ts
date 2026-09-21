@@ -190,6 +190,7 @@ export const zh: MessageCatalog = {
   'panel.usage.colTurns': '回合数',
   'panel.usage.unknownModel': '未标注模型',
   'panel.usage.colTurn': '回合',
+  'panel.usage.colCost': '费用',
   'panel.usage.colTotal': '合计',
   'panel.usage.colUncached': '未命中',
   'panel.usage.colCacheRead': '缓存读',
@@ -267,6 +268,7 @@ export const zh: MessageCatalog = {
   'status.label.out': '出',
   'status.label.mode': '/mode',
   'status.label.context': '上下文',
+  'status.label.skills': '技能',
 
   // Frozen band
   'frozen.keysGoTo': '按键交给{owner} · esc {action}',
@@ -288,6 +290,7 @@ export const zh: MessageCatalog = {
   'notice.themeSaveFailed': '主题保存失败：{message}',
   'notice.languageSaveFailed': '语言保存失败：{message}',
   'notice.alreadyActive': '该会话已是当前会话',
+  'notice.resumedOtherFolder': '该会话属于 {folder}；工作区与 shell 均跟随该目录（启动目录为 {launch}）',
   'notice.queueCancelled': '已取消排队消息',
   'notice.queueActionFailed': '队列操作失败：{message}',
   'notice.queueUnavailable': '该消息已不在队列中',

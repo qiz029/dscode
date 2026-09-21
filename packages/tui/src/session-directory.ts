@@ -88,6 +88,32 @@ function samePath(left: string | undefined, right: string): boolean {
 }
 
 /**
+ * The comparison form of a project directory: canonical `realpath` when the
+ * path exists, then Unicode-normalized so two filesystems that spell the same
+ * folder differently still agree.
+ */
+function comparisonPath(value: string): string {
+  return comparablePath(value.normalize('NFC'))
+}
+
+/**
+ * Whether a resume may proceed from the directory DSCODE was launched in. A
+ * session chooses its project directory once, at creation, and the header
+ * keeps it durable; resuming from anywhere else would append to the log from
+ * a directory the session never bound to. A header without a cwd (a pre-cwd
+ * log) stays resumable anywhere. macOS and Windows keep both case and
+ * distinct Unicode normalization forms apart, so both paths take the
+ * comparison form (canonical `realpath`, then NFC) before they are compared.
+ * @param pinnedCwd - the header's project directory, when it has one.
+ * @param launchCwd - the directory DSCODE was launched in.
+ * @returns true when the folder matches, or the session has no pinned folder.
+ */
+export function sessionFolderMatches(pinnedCwd: string | undefined, launchCwd: string): boolean {
+  if (pinnedCwd === undefined || pinnedCwd === '') return true
+  return comparisonPath(pinnedCwd) === comparisonPath(launchCwd)
+}
+
+/**
  * Unique header match by exact id or unique id prefix (root and subagent
  * headers alike); the caller applies any lineage gate.
  * @param headers - the persisted headers.

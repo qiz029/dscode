@@ -68,8 +68,10 @@ test('OpenRouter key limits are tracked apart from DeepSeek and the footer drops
   assert(Math.abs(trustedNow() - Date.now() - clock) < 1000, 'only DeepSeek anchors the billing clock');
   assert.equal(await refreshBalance({ provider: 'unknown', key: 'k', fetch }), null);
   const metrics = { cost: 0.01, unknown: false, pending: 0, cache: null };
-  const line = formatFooter(metrics, 10, 200, undefined, 'en', 'openrouter: deepseek/deepseek-v4-flash @ high');
-  assert.match(line, /\$0\.01 \/ \$7\.50 \| cache hit/);
+  // The provider names the route: it picks the balance the money pairs with and
+   // whether the peak window is marked at all.
+  const line = formatFooter(metrics, 10, 200, undefined, 'en', 'openrouter');
+  assert.match(line, /\$0\.01 \/ \$7\.50 · {5}-- cache$/, 'the OpenRouter balance rides the money');
   assert(!/🔥|❄️/.test(line), 'OpenRouter bills no peak window');
-  assert.match(formatFooter(metrics, 10, 200, undefined, 'en', 'deepseek-official: deepseek-flash @ high'), /\$0\.01 \/ \$(?:--|\d+\.\d{2}) (?:🔥|❄️)/);
+  assert.match(formatFooter(metrics, 10, 200, undefined, 'en', 'deepseek-official'), /\$0\.01 \/ \$(?:--|\d+\.\d{2}) (?:🔥|❄️)/);
 });

@@ -31,7 +31,18 @@ dscode new-task SESSION_ID
 
 `--steer` and `--defer` are mutually exclusive, and queue is the default. An explicit `--title` sets the title immediately instead of waiting for a defer to be claimed; a repeated send does not overwrite a title that was changed later. Before sending, the client prints the requestId to stderr; when the receipt is lost, retry with the same `--request-id`, target, kind, mode, body and title.
 
-The TUI `/session` shows the mailbox counts; `/mailbox` lists messages and `/mailbox cancel MESSAGE_ID` cancels a request or an unclaimed message. Stopping natively also cancels pending native inbox messages; a standalone defer note has to be cancelled explicitly in the mailbox. A message that is received and enters the context still shows as a relay with its source.
+The TUI `/session` shows the mailbox counts; `/mailbox` lists messages and `/mailbox cancel MESSAGE_ID` cancels a request or an unclaimed message.
+
+## Seeing the traffic in the terminal
+
+Cross-session traffic is visible as it happens, without expanding a tool card:
+
+- While a `send_session` or `reply_session` call is running, the activity line reads `⇄ sending to <peer>`; once the call settles and the message was a `request` with no answer yet, it reads `⇄ waiting for <peer>` until a relay from that peer arrives. A `notify` never shows as waiting, and a failed send stops waiting immediately.
+- A settled send prints one notice line (`→ <peer> <kind>`, plus `— failed` when the result was an error), and an inbound relay prints `← <peer> · <bounded text>`.
+- `/tasks` lists the same history on demand as one text block, newest last, with the delivery mode and whether each send is still `awaiting reply`; it reads the session's own log, so it shows what this session sent and received and nothing about other pairs.
+
+Both surfaces use the `steered` violet and the `⇄`/`→`/`←` glyph family, never the brand blue and `•` of ordinary local notices or the plain text of a tool result, so a line about another session is recognisable at a glance. The view is folded from the root session's own log — `tool/call` and `tool/result` for the outbound side, the bridge's relayed `user/message` for the inbound side — so a resumed session rebuilds the same history and a restart announces only traffic that happened in that session, not the whole past.
+ Stopping natively also cancels pending native inbox messages; a standalone defer note has to be cancelled explicitly in the mailbox. A message that is received and enters the context still shows as a relay with its source.
 
 `/session-new-task` or `dscode new-task SESSION_ID` explicitly starts a fresh communication budget while the session is idle. Ordinary follow-ups, automatic continuation and a resume do not reset the budget. When an older request returns later or an older note is claimed, it still carries its original chain and may therefore be limited by it again.
 

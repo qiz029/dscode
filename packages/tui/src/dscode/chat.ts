@@ -58,6 +58,40 @@ function thinkingLines(reasoning: string, width: number): readonly StyledLine[] 
 }
 
 /**
+ * Memoize the live-region render by ENTRY IDENTITY. Streaming carried the whole
+ * live region into a re-render per frame (`view.entries` changes identity on
+ * every event), so the same settled-but-unflushed entries were re-wrapped from
+ * scratch ~60 times a second while only the streaming text — which lives in
+ * `view.streaming`, not in an entry — actually changed. The projection replaces
+ * an entry with a new object whenever its content changes (`{...entry}` at every
+ * mutation site), so identity is a sound cache key, and the wrap depends only on
+ * the entry, the column budget and `verbose`.
+ * @returns a `(entry, columns, verbose) => lines` function with a WeakMap cache.
+ */
+export function createChatLinesCache(): (entry: TranscriptEntry, columns: number, verbose?: boolean) => readonly StyledLine[] {
+  // Per wrap context: a width or `verbose` change re-wraps every row. Keying
+  // the maps instead of resetting one map keeps interleaved contexts (two
+  // regions rendering at different widths in one frame) from thrashing.
+  const contexts = new Map<string, WeakMap<TranscriptEntry, readonly StyledLine[]>>()
+  return (entry, columns, verbose = false) => {
+    const width = Math.max(1, Math.floor(columns))
+    const key = `${width}:${verbose ? 1 : 0}`
+    let cache = contexts.get(key)
+    if (cache === undefined) {
+      cache = new WeakMap()
+      contexts.set(key, cache)
+    }
+    const hit = cache.get(entry)
+    if (hit !== undefined) return hit
+    // The wrapped width is the same normalized value the key names, so a
+    // fractional column count cannot key one width and wrap at another.
+    const lines = dscodeChatLines(entry, width, verbose)
+    cache.set(entry, lines)
+    return lines
+  }
+}
+
+/**
  * Render one transcript entry the DSCODE way: tool rows are quiet unless verbose
  * is on, assistant rows fold their thinking above the answer, and user prompts
  * carry the background band.

@@ -13,7 +13,7 @@ Supported since DSCODE 0.2.0, session cards appear in `dscode sessions`, `dscode
 }
 ```
 
-The project comes from local Git information: the credential-free origin repository identity when one is recognisable, otherwise the path of the Git common directory. Worktrees of one repository therefore share a project, while the workspace keeps the session's original cwd. A non-Git directory has a `null` project, so the model is never asked to guess one. Reading Git information does not touch the network.
+The project comes from local Git information: the credential-free origin repository identity when one is recognisable, otherwise the path of the Git common directory. Worktrees of one repository therefore share a project, while the workspace keeps the session's original cwd: a session binds to the folder it is created in, and resuming it elsewhere still runs it in that folder. A non-Git directory has a `null` project, so the model is never asked to guess one. Reading Git information does not touch the network.
 
 A topic describes what the user asked for: at most 5 by default, ordered by most recent mention, each citing the event sequence numbers of the original user messages. The extraction prompt requires consecutive follow-ups to be merged, an explicit cancellation or replacement to be described, and a bare acknowledgement to be ignored; it forbids conclusions, results, completion states and inferred agent plans. Structural validation rejects extra fields and message references that do not exist, while the meaning of the text still depends on how well the model follows the prompt.
 

@@ -22,7 +22,7 @@ test('the ancestor chain stops at home and is empty when home is not an ancestor
   assert.deepEqual(ancestorChain({ cwd: '/elsewhere/proj', home: '/a' }), []);
 });
 
-test('skill ancestors are opt-in and skip the roots the provider already scans', () => {
+test('skill ancestors are on by default, nearest first, and skip the roots the provider already scans', () => {
   const { home, project, cleanup } = scaffold();
   try {
     const workspace = join(home, 'ws');
@@ -30,15 +30,19 @@ test('skill ancestors are opt-in and skip the roots the provider already scans',
     skill(join(project, '.claude/skills/claude-skill'));
     skill(join(workspace, '.dsh/skills/ws-skill'));
     skill(join(workspace, '.agents/skills/ws-agents-skill'));
-    assert.equal(skillAncestorsEnabled({}), false);
+    assert.equal(skillAncestorsEnabled({}), true);
+    assert.equal(skillAncestorsEnabled({ DSCODE_SKILL_ANCESTORS: '1' }), true);
+    assert.equal(skillAncestorsEnabled({ DSCODE_SKILL_ANCESTORS: '0' }), false);
+    assert.equal(skillAncestorsEnabled({ DSCODE_SKILL_ANCESTORS: 'off' }), false);
     assert.equal(skillAncestorsEnabled({ DSCODE_SKILL_ANCESTORS: 'no' }), false);
-    assert.equal(skillAncestorsEnabled({ DSCODE_SKILL_ANCESTORS: 'yes' }), true);
-    assert.deepEqual(ancestorSkillDirs({ cwd: project, home, env: {} }), []);
-    assert.deepEqual(ancestorSkillDirs({ cwd: project, home, env: { DSCODE_SKILL_ANCESTORS: '1' } }), [
+    const expected = [
       join(project, '.claude/skills'),
       join(workspace, '.dsh/skills'),
       join(workspace, '.agents/skills'),
-    ]);
+    ];
+    assert.deepEqual(ancestorSkillDirs({ cwd: project, home, env: {} }), expected);
+    assert.deepEqual(ancestorSkillDirs({ cwd: project, home, env: { DSCODE_SKILL_ANCESTORS: '1' } }), expected);
+    assert.deepEqual(ancestorSkillDirs({ cwd: project, home, env: { DSCODE_SKILL_ANCESTORS: '0' } }), []);
   } finally {
     cleanup();
   }

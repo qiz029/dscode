@@ -10,11 +10,15 @@ export const instructionFileCandidates = Object.freeze(['AGENTS.md', 'CLAUDE.md'
 export const projectRootMarkers = Object.freeze(['.git']);
 
 export const ENABLED_VALUES = Object.freeze(['1', 'true', 'on', 'yes']);
-// Fail closed: only the documented enable spellings arm a switch, so an operator
-// writing "no", "none" or "disable" cannot accidentally turn on a feature that
-// reads untrusted project content.
+// Fail closed: only the documented enable spellings read as on, so an operator
+// writing "no", "none" or "disable" cannot accidentally arm a feature that reads
+// untrusted project content.
 export const enabledFlag = (value) => ENABLED_VALUES.includes(String(value ?? '').trim().toLowerCase());
-export const skillAncestorsEnabled = (env = process.env) => enabledFlag(env.DSCODE_SKILL_ANCESTORS);
+// Ancestor skill discovery defaults to on, so its switch is the inverse: only an
+// explicit off spelling disables it and an unrecognised value keeps the default.
+export const DISABLED_VALUES = Object.freeze(['0', 'false', 'off', 'no', 'none', 'disable']);
+export const disabledFlag = (value) => DISABLED_VALUES.includes(String(value ?? '').trim().toLowerCase());
+export const skillAncestorsEnabled = (env = process.env) => !disabledFlag(env.DSCODE_SKILL_ANCESTORS);
 
 // A symlinked $HOME (or a /Volumes mount) must not break the boundary test: the
 // launcher passes an already-resolved session directory while os.homedir() returns
@@ -52,6 +56,9 @@ export function projectRootOf({ cwd, markers = projectRootMarkers }) {
   }
 }
 
+// Nearest first, which is also precedence: the provider scans `customSkillDirs` in
+// order and the first definition of a duplicate name wins. The provider's own rank
+// 100/200 roots at the project root still outrank everything registered here.
 export function ancestorSkillDirs({ cwd, home, env = process.env }) {
   if (!skillAncestorsEnabled(env)) return [];
   const projectRoot = projectRootOf({ cwd });

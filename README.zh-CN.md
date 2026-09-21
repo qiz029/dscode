@@ -55,9 +55,9 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
-**0.7.22** — Hub 客户端升到 `@dsh-plugin-hub/cli` 0.5.0：固定版 DSH 运行时改由 Hub 自己准备并校验（把精确版本的 `npm install` 装进 `$DSCODE_HOME/.hub/runtimes/<版本>`，再用当前 Node 启动），不再为每个 bundle 起一次 `npm exec`。失败的 `dscode` 命令现在打印完整因果链，Hub 或 npm 步骤失败时给出要排查的原因——代理、内网镜像、公司 CA，或用 GitHub 预构建 tar 包；遗留的未托管 profile 会打印解除阻塞的 `mv` 命令。
+**0.7.23** — session 现在固定锁在它创建时的目录：从别处恢复会在该目录中运行并打印一行同时点名两个目录的警告，`--cwd` 只决定新 session 绑定到哪里。跨 session 通信变得可见——活动行显示 `⇄ sending to` / `⇄ waiting for`，每次发出的消息和收到的中继都会以专属紫色留一行记录，`/tasks` 可列出这些消息。footer 在会话总额旁显示上一轮已完成轮次的花费，`/usage` 为每一轮定价。流式期间不再每帧重排整个活动区（16 条长文本下 3.12 → 0.001 ms），祖先 skill 发现默认开启，Ink 重绘账本不再在输入框上方留下空白带。
 
-每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.22 更新说明](docs/releases/0.7.22.md)。
+每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.23 更新说明](docs/releases/0.7.23.md)。
 
 ## 🚀 快速开始
 
@@ -86,7 +86,7 @@ dscode
 
 ```sh
 dscode --continue                 # 继续上次会话
-dscode --resume SESSION_ID        # 恢复指定会话
+dscode --resume SESSION_ID        # 恢复指定会话（仍在该会话创建时的目录中运行）
 dscode --cwd /another/project     # 在指定目录工作
 dscode doctor                     # 分析近期运行日志和 session trace
 dscode --version                  # 输出 DSCODE 版本
@@ -116,7 +116,7 @@ npm start -- --cwd /path/to/project
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh
-curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.22
+curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.23
 ```
 
 **tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载预构建的 `dscode-<version>-darwin-arm64.tar.gz`（Apple 芯片）或 `dscode-<version>-darwin-x64.tar.gz`（Intel），然后执行：
@@ -132,14 +132,14 @@ sh dscode-install/install.sh
 **若 npm 包名查询暂时返回 404**，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.22.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.23.tgz
 ```
 
 **升级** —— `dscode update [精确版本号]` 一步完成整个安装的更新，且要求没有正在运行的 DSCODE 会话。npm/Hub 安装会先用 npm 替换 launcher 本体，再把已安装的 profile 升到同一版本；tar 安装会下载 release tar 包（release 带有当前平台的预构建包时取它，升级同样不需要 npm）、按发布方 sha256 校验、原位换目录并迁移 `.runtime`、`.env` 和本地 `config/`，旧安装保留为同级备份目录。源码检出同样一条命令更新：先对它跟踪的分支执行 `git pull --ff-only`，再跑 `npm ci --ignore-scripts` 和 `npm run setup`；工作区中有未提交的改动时会先拒绝，避免更新只做一半。
 
 ```sh
 dscode update                  # 最新版本
-dscode update 0.7.22           # 指定版本
+dscode update 0.7.23           # 指定版本
 ```
 
 `dscode history` 查看保留的版本记录，`dscode rollback` 回到上个 preset 版本（npm/Hub 安装）。带 `dscode update` 之前的旧 tar 安装，请把新 tar 包装到新目录并手动迁移一次状态。源码、tar 与 npm/Hub 使用不同的数据目录，会话和凭据不会互相迁移。详见 [tar 分发说明](docs/distribution.md) 与 [npm + Hub 分发指南](docs/hub-distribution.md)。
@@ -181,7 +181,7 @@ dscode update 0.7.22           # 指定版本
 | 源码 | 仓库 `.runtime/` | 仓库 `.env` 和 `config/` |
 | tar | 安装目录 `.runtime/` | 安装目录 `.env` 和 `config/` |
 
-支持 `config/hooks.local.json`、`config/mcp.local.yml` 和 `config/harness.local.yml`；这些本地配置、密钥与会话不会打入发布包。Skills 会发现目标项目的 `.agents/skills`、`.dsh/skills`，以及隔离的用户 skill 目录；用 `/skills conflicts` 排查同名覆盖。默认会把项目的 `.codex/hooks.json`、`.dsh/hooks.json`、`.claude/settings.json` 叠加到 `config/hooks.local.json` 之上；设置 `DSCODE_PROJECT_HOOKS=0` 可只加载安装级配置。Skills 来自项目的 `.dsh/skills`、`.agents/skills` 与用户根；设置 `DSCODE_SKILL_ANCESTORS=1` 后，项目根到 home 之间每一层的 `.dsh/skills`、`.agents/skills`、`.claude/skills` 也会被发现，这些祖先目录里的 `AGENTS.md`/`CLAUDE.md` 会并入工作区指令。
+支持 `config/hooks.local.json`、`config/mcp.local.yml` 和 `config/harness.local.yml`；这些本地配置、密钥与会话不会打入发布包。Skills 会发现目标项目的 `.agents/skills`、`.dsh/skills`，以及隔离的用户 skill 目录；用 `/skills conflicts` 排查同名覆盖。默认会把项目的 `.codex/hooks.json`、`.dsh/hooks.json`、`.claude/settings.json` 叠加到 `config/hooks.local.json` 之上；设置 `DSCODE_PROJECT_HOOKS=0` 可只加载安装级配置。Skills 来自项目的 `.dsh/skills`、`.agents/skills` 与用户根；默认还会发现当前目录到 home 之间每一层的 `.dsh/skills`、`.agents/skills`、`.claude/skills`，同名以更近的目录为准；设置 `DSCODE_SKILL_ANCESTORS=0` 可只保留项目与用户根。这些祖先目录里的 `AGENTS.md`/`CLAUDE.md` 会并入工作区指令。
 
 ## 🧩 开发与发布
 

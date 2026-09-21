@@ -4,7 +4,7 @@ Restart `dscode` and create a new session. The default preset is now `dscode`; `
 
 ## Execution through a persistent shell
 
-The preset combines the pinned minimal preset's owner-scoped persistent shell with project instructions, runtime context, Skills, plan/Todo/Goal, compaction and subagents from standard. It does not copy minimal's fixed complete system prompt or its lack of compaction. Host MCP, Computer Use, hooks and auto review remain mounted. Skill and instruction discovery — including the opt-in ancestor mode — is described in [Skills](skills.md).
+The preset combines the pinned minimal preset's owner-scoped persistent shell with project instructions, runtime context, Skills, plan/Todo/Goal, compaction and subagents from standard. It does not copy minimal's fixed complete system prompt or its lack of compaction. Host MCP, Computer Use, hooks and auto review remain mounted. Skill and instruction discovery — including the ancestor mode — is described in [Skills](skills.md).
 
 The preset also registers a `review` tool and `/review` command backed by one independent, read-only model request over the selected Git diff. The main agent is guided to call it after code changes and focused checks, before its final reply. This is a diff-only review, not a tool-using subagent or a substitute for tests; it does not change Ultra delegation policy. See [TUI review usage](tui-commands.md).
 

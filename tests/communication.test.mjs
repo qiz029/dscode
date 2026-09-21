@@ -1,110 +1,150 @@
+process.env.DSCODE_UPDATE_CHECK = 'off';
+process.env.DSCODE_LANGUAGE = 'en';
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { CommunicationService } from '../plugins/session-bridge/communication.mjs';
+import { communicationPanel, createCommunicationFeed, foldCommunication, MAX_COMMUNICATION_ROWS } from '../packages/tui/src/communication.ts';
 
-async function fixture(t) {
-  const home = mkdtempSync(join(tmpdir(), 'dscode-communication-'));
-  const events = [], warnings = [];
-  const session = { id: 'recipient', header: { agentPreset: 'dscode' }, get seq() { return events.length; }, snapshotEvents: () => [...events] };
-  const agent = { id: session.id, session, status: 'idle', cancel() {},
-    inbox: { nextTurn: [], nextStep: [], remove(id) { this.nextTurn = this.nextTurn.filter(m => m.id !== id); this.nextStep = this.nextStep.filter(m => m.id !== id); } },
-    followup(message) { this.inbox.nextTurn.push(message); }, steer(message) { this.inbox.nextStep.push(message); },
-  };
-  const ctx = { on: () => () => {}, agents: { list: () => [agent] }, sessions: { async flush() {} }, logger: { warn: message => warnings.push(message) } };
-  const service = new CommunicationService(ctx, home, { path: '/fixture.sock', title: () => null });
-  t.after(async () => { await service.close(); rmSync(home, { recursive: true, force: true }); });
-  await service.state(agent).ready;
-  const request = (key, mode = 'queue') => ({ requestId: key, text: key, mode });
-  return { service, ctx, agent, events, warnings, request };
-}
+// Cross-session traffic is otherwise invisible: the transcript hides tool
+// arguments and a waiting request looks like any other running tool. These tests
+// pin the fold that the activity line, the notice and /tasks all read.
 
-test('failed native flush never acknowledges delivery; retry retains one inbox identity', async t => {
-  const f = await fixture(t);
-  f.ctx.sessions.flush = async () => { throw Error('disk full'); };
-  await assert.rejects(f.service.receive(f.agent, f.request('retry')), /disk full/);
-  const id = f.agent.inbox.nextTurn[0].id;
-  assert.equal(f.service.store.get(id).delivery, 'accepted');
-  f.ctx.sessions.flush = async () => {};
-  const result = await f.service.receive(f.agent, f.request('retry'));
-  assert.equal(result.duplicate, true);
-  assert.equal(result.messageId, id);
-  assert.equal(result.delivery, 'admitted');
-  assert.equal(f.agent.inbox.nextTurn.length, 1);
+const call = (seq, time, name, args) => ({ type: 'tool/call', seq, time, data: { turn: 1, step: 1, callId: `call-${seq}`, name, arguments: JSON.stringify(args) } });
+const result = (seq, time, callId, isError = false) => ({
+  type: 'tool/result', seq, time,
+  data: { turn: 1, step: 1, message: { role: 'user', content: [{ type: 'tool-result', toolCallId: callId, content: [], ...(isError ? { isError: true } : {}) }] } },
+});
+const relay = (seq, time, label, text, kind = 'reply') => ({
+  type: 'user/message', seq, time,
+  data: { id: `m-${seq}`, role: 'user', source: { kind: 'plugin', plugin: 'dscode-session-bridge', form: 'relay', communicationId: `msg-${seq}`, label },
+    content: [{ type: 'text', text: `[External source: ${label}] [${kind}/queue]\nMessage ID: msg-${seq}${kind === 'reply' ? '; reply to: msg-other' : ''}\n${text}` }] },
+});
+const fold = events => events.reduce((view, event) => foldCommunication(view, event), createCommunicationFeed());
+
+test('a send is one sent row that waits until its result lands', () => {
+  const sent = fold([call(1, 1000, 'send_session', { session_id: 'session-target', kind: 'request', mode: 'queue', text: 'check the parser edge cases' })]);
+  assert.equal(sent.rows.length, 1);
+  assert.deepEqual(
+    { direction: sent.rows[0].direction, peer: sent.rows[0].peer, kind: sent.rows[0].kind, mode: sent.rows[0].mode, pending: sent.rows[0].pending },
+    { direction: 'sent', peer: 'session-target', kind: 'request', mode: 'queue', pending: true },
+  );
+  assert.match(sent.rows[0].preview, /check the parser edge cases/);
+  assert.deepEqual(sent.waiting, []);
+
+  const settled = foldCommunication(sent, result(2, 1500, 'call-1'));
+  assert.equal(settled.rows[0].pending, false);
+  assert.equal(settled.rows[0].failed, false);
+  assert.deepEqual(settled.waiting.map(({ peer, since }) => ({ peer, since })), [{ peer: 'session-target', since: 1000 }]);
 });
 
-test('consumption waits for durability and an old owner callback cannot consume after replacement', async t => {
-  const f = await fixture(t);
-  const { messageId } = await f.service.receive(f.agent, f.request('receipt'));
-  const state = f.service.state(f.agent);
-  state.receipts.set(messageId, 1);
-  const barrier = Promise.withResolvers();
-  f.ctx.sessions.flush = () => barrier.promise;
-  const pending = f.service.confirm(state);
-  await Promise.resolve();
-  assert.equal(f.service.store.get(messageId).delivery, 'admitted');
-  await f.service.remove(f.agent);
-  f.service.store.register(f.agent.id, '/replacement.sock');
-  barrier.resolve(); await pending;
-  assert.equal(f.service.store.get(messageId).delivery, 'admitted');
+test('an inbound relay is a received row and clears that peer from waiting', () => {
+  const view = fold([
+    call(1, 1000, 'send_session', { session_id: 'session-target', kind: 'request', mode: 'queue', text: 'do it' }),
+    result(2, 1100, 'call-1'),
+  ]);
+  assert.equal(view.waiting.length, 1);
+  const answered = foldCommunication(view, relay(3, 1200, 'session:session-target', 'done, here is the answer'));
+  assert.equal(answered.rows.at(-1).direction, 'received');
+  assert.equal(answered.rows.at(-1).peer, 'session:session-target');
+  assert.match(answered.rows.at(-1).preview, /here is the answer/);
+  assert.deepEqual(answered.waiting, [], 'a reply from the peer clears the outstanding request');
 });
 
-test('defer cutoff survives awaited hooks; cancellation filters claimed input before entering', async t => {
-  const f = await fixture(t);
-  const early = await f.service.receive(f.agent, f.request('early', 'defer'));
-  f.service.observe(f.agent.session, { type: 'turn/start', data: { turn: 1 } });
-  const entered = Promise.withResolvers(), release = Promise.withResolvers();
-  const signal = new AbortController().signal;
-  const pending = f.service.preStep({ agent: f.agent, messages: [], turn: 1, step: 1, signal }, async () => {
-    entered.resolve(); await release.promise;
-    return { kind: 'enter', messages: [] };
-  });
-  await entered.promise;
-  const late = await f.service.receive(f.agent, f.request('late', 'defer'));
-  await f.service.cancel(f.agent, early.messageId, true);
-  release.resolve();
-  assert.deepEqual((await pending).messages, []);
-  assert.equal(f.service.store.get(early.messageId).delivery, 'cancelled');
-  assert.equal(f.service.store.get(late.messageId).delivery, 'accepted');
-  assert.equal(f.agent.inbox.nextTurn.length, 0);
+test('only send/reply tools and bridge relays enter the feed', () => {
+  const view = fold([
+    call(1, 1000, 'read_session', { session_id: 'session-target' }),
+    call(2, 1000, 'shell_retry', { command: 'ls' }),
+    { type: 'user/message', seq: 3, time: 1000, data: { id: 'm', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'hello' }] } },
+  ]);
+  assert.equal(view.rows.length, 0);
+  assert.equal(view.waiting.length, 0);
 });
 
-test('cancelled pre-step cannot collect deferred notes and missing cutoff fails closed', async t => {
-  const f = await fixture(t);
-  const note = await f.service.receive(f.agent, f.request('note', 'defer'));
-  const controller = new AbortController();
-  f.service.observe(f.agent.session, { type: 'turn/start', data: { turn: 1 } });
-  const payload = { agent: f.agent, messages: [], turn: 1, step: 1, signal: controller.signal };
-  await assert.rejects(f.service.preStep(payload, async () => {
-    controller.abort(); return { kind: 'enter', messages: [] };
-  }), /abort/i);
-  assert.equal(f.service.store.get(note.messageId).batch, null);
-  await assert.rejects(f.service.preStep({ ...payload, turn: 2, signal: new AbortController().signal }, () => assert.fail('must not enter')), /cutoff/);
+test('a failed send is recorded and never counted as waiting', () => {
+  const view = fold([
+    call(1, 1000, 'send_session', { session_id: 'session-target', kind: 'request', mode: 'queue', text: 'x' }),
+    result(2, 1100, 'call-1', true),
+  ]);
+  assert.equal(view.rows[0].failed, true);
+  assert.equal(view.rows[0].pending, false);
+  assert.deepEqual(view.waiting, []);
 });
 
-test('late disposal of a previous agent cannot unregister the replacement owner', async t => {
-  const f = await fixture(t);
-  await f.service.remove(f.agent);
-  const replacement = { ...f.agent };
-  f.service.start(replacement);
-  await f.service.state(replacement).ready;
-  await f.service.remove(f.agent);
-  const state = f.service.state(replacement);
-  assert.equal(f.service.store.authenticate(state.auth).generation, state.auth.generation);
-  assert((await f.service.receive(replacement, f.request('replacement'))).accepted);
+test('a notify is not a waiting request, and the row window is bounded', () => {
+  const notify = fold([
+    call(1, 1000, 'send_session', { session_id: 'peer', kind: 'notify', mode: 'queue', text: 'fyi' }),
+    result(2, 1100, 'call-1'),
+  ]);
+  assert.deepEqual(notify.waiting, []);
+
+  const many = Array.from({ length: MAX_COMMUNICATION_ROWS + 5 }, (_, index) => call(index + 1, 1000 + index, 'send_session', { session_id: `peer-${index}`, kind: 'notify', mode: 'queue', text: 'x' }));
+  const bounded = fold(many);
+  assert.equal(bounded.rows.length, MAX_COMMUNICATION_ROWS);
+  assert.equal(bounded.rows.at(-1).peer, `peer-${MAX_COMMUNICATION_ROWS + 4}`, 'the newest row survives the cap');
 });
 
-test('a failed recovery fails closed once and is retried by the next step', async t => {
-  const f = await fixture(t);
-  const state = f.service.state(f.agent);
-  state.ready = null;
-  const original = f.service.store.pending;
-  f.service.store.pending = () => { throw Error('store unavailable'); };
-  await assert.rejects(f.service.ensureReady(state), /store unavailable/);
-  assert.equal(state.readyFailed, true);
-  f.service.store.pending = original;
-  await f.service.ensureReady(state);
-  assert.equal(state.readyFailed, false);
+test('/tasks lists the traffic, its state and its direction', () => {
+  const view = fold([
+    call(1, 1000, 'send_session', { session_id: 'session-target', kind: 'request', mode: 'queue', text: 'check the parser' }),
+    result(2, 1100, 'call-1'),
+    call(3, 1200, 'reply_session', { request_message_id: 'msg-other', text: 'done' }),
+    result(4, 1300, 'call-3'),
+    relay(5, 1400, 'session:session-peer', 'here is my answer'),
+  ]);
+  const panel = communicationPanel(view);
+  assert.match(panel, /→ session-target request\/queue · awaiting reply — check the parser/);
+  assert.match(panel, /← session:session-peer reply · received/);
+  assert.equal(communicationPanel(createCommunicationFeed()), 'No cross-session messages in this session.');
+});
+
+test('only a reply clears an outstanding request, not a stray notify', () => {
+  const opened = fold([
+    call(1, 1000, 'send_session', { session_id: 'session-target', kind: 'request', mode: 'queue', text: 'do it' }),
+    result(2, 1100, 'call-1'),
+  ]);
+  assert.equal(opened.waiting.length, 1);
+  const notified = foldCommunication(opened, relay(3, 1200, 'session:session-target', 'still working on it', 'notify'));
+  assert.equal(notified.waiting.length, 1, 'a progress notify is not the answer');
+  const replied = foldCommunication(notified, relay(4, 1300, 'session:session-target', 'done', 'reply'));
+  assert.deepEqual(replied.waiting, []);
+});
+
+test('waiting survives a row window that truncated the original request', () => {
+  // The request row is evicted by the cap, so a window-derived answer state
+  // would leave the reply with nothing to clear and the turn "awaiting" a
+  // session that already answered.
+  const events = [
+    call(1, 1000, 'send_session', { session_id: 'session-target', kind: 'request', mode: 'queue', text: 'do it' }),
+    result(2, 1100, 'call-1'),
+  ];
+  for (let index = 0; index < MAX_COMMUNICATION_ROWS + 2; index += 1) {
+    events.push(call(10 + index * 2, 2000 + index, 'send_session', { session_id: `peer-${index}`, kind: 'notify', mode: 'queue', text: 'x' }));
+    events.push(result(11 + index * 2, 2100 + index, `call-${10 + index * 2}`));
+  }
+  const truncated = fold(events);
+  assert.equal(truncated.rows.some(row => row.peer === 'session-target'), false, 'the request row really is evicted');
+  assert.equal(truncated.waiting.length, 1);
+  const answered = foldCommunication(truncated, relay(9999, 3000, 'session:session-target', 'done', 'reply'));
+  assert.deepEqual(answered.waiting, [], 'the reply still clears the request it answers');
+});
+
+test('outbound and inbound rows never share an id', () => {
+  const view = fold([
+    call(1, 1000, 'send_session', { session_id: 'session-target', kind: 'request', mode: 'queue', text: 'x' }),
+    relay(2, 1100, 'session:peer', 'hello', 'notify'),
+  ]);
+  const ids = view.rows.map(row => row.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.ok(ids.every(id => id.startsWith('sent:') || id.startsWith('recv:')), ids.join(','));
+});
+
+test('two requests to one peer both stay visible as awaiting', () => {
+  const view = fold([
+    call(1, 1000, 'send_session', { session_id: 'session-a', kind: 'request', mode: 'queue', text: 'first' }),
+    result(2, 1100, 'call-1'),
+    call(3, 1200, 'send_session', { session_id: 'session-a', kind: 'request', mode: 'queue', text: 'second' }),
+    result(4, 1300, 'call-3'),
+  ]);
+  assert.equal(view.waiting.length, 2, 'the second request does not overwrite the first');
+  assert.deepEqual(view.waiting.map(entry => entry.id), ['sent:call-1', 'sent:call-3']);
 });

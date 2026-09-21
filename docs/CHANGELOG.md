@@ -6,6 +6,26 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 <!-- Add upcoming changes under Unreleased. -->
 
+## [Unreleased]
+
+## [0.7.23] - 2026-09-20
+
+### Added
+
+- The last completed turn's cost rides the footer's money figure (`$1.23 / $9.86 · #12 $0.04`), and `/usage` gains a `cost` column that prices every turn from the same ledger, `+` marking a turn whose settled calls were not all priceable. Attribution charges a call to the turn that was running when it started, by binary search over the turn windows, so the once-a-second footer read stays O(calls × log turns); a call in the gap between two turns is reported rather than charged to a neighbour.
+- `/tasks` lists this session's cross-session messages on demand — direction, peer, kind/mode, delivery state and a bounded body — folded from the same log the activity line reads.
+- Cross-session communication is visible in the terminal: while a `send_session`/`reply_session` call is in flight the activity line reads `⇄ sending to <peer>`, a request awaiting its answer reads `⇄ waiting for <peer>`, and a settled send or an inbound relay prints one notice line. Both the activity line and the notice paint with the `steered` violet and the `⇄`/`←`/`→` glyph family instead of the brand blue and `•` every other local notice uses, so another session's traffic never reads as this session's own shell or model output. The feed is folded from the root log (`tool/call`, `tool/result`, bridge relays), so a restarted session rebuilds its history and only new traffic is announced.
+- The status bar carries the loaded skill count by default: a `skills` figure reads the live session catalog, so it follows a skill added mid-session or a session switched to another workspace, and `/statusline` toggles and reorders it. The number is the effective catalog (model- and user-invocable entries alike) and stays `--` until the first catalog read settles.
+
+### Changed
+
+- The footer is laid out as two balanced rows instead of an empty identity row above a right-pinned metrics stretch. Row 1 now names the session and the model with its effort (`○ title · deepseek-flash @ ultra`), row 2 carries the status figures and closes with the live metrics as one left-hand cluster, and every separator is the lighter `·` (the metrics cluster used `|` and the clusters `｜` before). The figures read value first with a short qualifier — `~24.6 tps · 18.2 tps avg · 13% ctx · $0.42 · 87.3% cache` — so the labels no longer take half the cluster, and a balance the provider cannot report is dropped instead of parked as `$--`. `footer.current` is gone from the interface catalog and `footer.context` is the untranslated `ctx` abbreviation, like `tps`.
+- Ancestor skill discovery is on by default: `.dsh/skills`, `.agents/skills` and `.claude/skills` from every directory between the working directory and home register at rank 300 with no configuration, nearest first, so a shared `~/Workspace/.dsh/skills` is visible to every project below it. `DSCODE_SKILL_ANCESTORS=0` (also `off`, `false`, `no`, `none`, `disable`) turns it off; an unrecognised value now keeps the default on instead of reading as off, while the `DSCODE_PROJECT_HOOKS` switch keeps its fail-closed enable spellings.
+
+### Fixed
+
+- The Ink repaint ledger reserved the whole previous frame height after a static flush, so the live region a settled step freed stayed on screen as a band of blank rows above the composer that the next stream had to refill (28 rows in a model of one turn on a 40-row terminal). The ledger now reserves only the rows the flush did not consume — the rule its own comment stated — which drops that band to what the flush left over (2 rows in the same model) while the composer still never rides up. `scripts/patch-ink.mjs` upgrades an already v2-patched `node_modules/ink` on the next `npm run setup` or launch.
+
 ## [0.7.22] - 2026-09-19
 
 ### Changed

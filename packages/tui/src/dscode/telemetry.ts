@@ -31,7 +31,7 @@ export function dscodeCacheTone(rate: number): DscodeTelemetryTone {
 }
 
 /** Every label the cache figure can carry, across the shipped interface languages. */
-const DSCode_CACHE_LABELS = ['cache hit', '缓存命中', '快取命中', 'キャッシュヒット', '캐시 적중', 'éxitos de caché']
+const DSCode_CACHE_LABELS = ['cache', '缓存', '快取', 'キャッシュ', '캐시', 'caché']
 
 /** The ink colour for a tier, theme-aware for the two ends of the scale. */
 export function dscodeTpsInkColor(tone: DscodeTelemetryTone): ReturnType<typeof inkColor> | undefined {
@@ -56,21 +56,26 @@ export interface DscodeTelemetryPart {
  */
 export function dscodeTelemetryParts(value: string): readonly DscodeTelemetryPart[] {
   const result: DscodeTelemetryPart[] = []
-  const parts = String(value).split(' | ')
+  const parts = String(value).split(' · ')
   for (const [index, part] of parts.entries()) {
-    if (index > 0) result.push({ text: ' | ', tone: null })
-    const match = /^(.+?: )(~?(?:\d+(?:\.\d+)?|--)) tps$/.exec(part)
-    if (match) {
-      const display = match[2]
-      const rate = Number(display.startsWith('~') ? display.slice(1) : display)
-      result.push({ text: match[1], tone: null }, { text: display + ' tps', tone: display ? dscodeTpsTone(rate) : null })
+    if (index > 0) result.push({ text: ' · ', tone: null })
+    // A rate figure reserves its columns, so the padding stays outside the tinted
+    // run and only the reading carries the tier.
+    const rate = /^(\s*)(~?(?:\d+(?:\.\d+)?|--)) tps( \S+)?$/.exec(part)
+    if (rate) {
+      const display = rate[2]
+      result.push({ text: rate[1], tone: null }, { text: display + ' tps', tone: dscodeTpsTone(Number(display.startsWith('~') ? display.slice(1) : display)) })
+      // The average's trailing qualifier rides along untinted.
+      if (rate[3] !== undefined) result.push({ text: rate[3], tone: null })
       continue
     }
-    // Only a recognised cache label at the very end of the line is tinted.
-    const labelled = index === parts.length - 1 ? /^(.*?)(\d+(?:\.\d+)?)%$/.exec(part) : null
-    const cache = labelled && DSCode_CACHE_LABELS.includes(labelled[1].replace(/:\s*$/, '').trim().toLowerCase()) ? labelled : null
+    // Only a recognised cache label on the very last figure is tinted; the label
+    // itself and every separator keep the surrounding colour.
+    const labelled = index === parts.length - 1 ? /^(\s*)(\d+(?:\.\d+)?|--)%( \S+)$/.exec(part) : null
+    const cache = labelled && DSCode_CACHE_LABELS.includes(labelled[3].trim().toLowerCase()) ? labelled : null
     if (cache) {
       result.push({ text: cache[1], tone: null }, { text: cache[2] + '%', tone: dscodeCacheTone(Number(cache[2])) })
+      if (cache[3] !== undefined) result.push({ text: cache[3], tone: null })
       continue
     }
     result.push({ text: part, tone: null })

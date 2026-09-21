@@ -24,11 +24,15 @@ test('the frame ledger keeps the composer from riding up across a static flush',
     const next = staticRows + advance();
     assert(next >= row, 'the composer rode up: ' + row + ' -> ' + next);
     row = next;
+    return advance();
   };
   // Six rows, then a flush that writes one row while the frame shrinks to one: without the
   // reserved rows the block would fall from six to two and the composer would ride up.
-  step('l1\nl2\nl3\nl4\nl5\nl6');
-  step('s1', 1);
+  assert.equal(step('l1\nl2\nl3\nl4\nl5\nl6'), 6, 'six rows fill a six-row block');
+  // Only the rows a flush did NOT consume stay reserved: the row it wrote is consumed by
+  // the flush itself, so the block is one row shorter instead of parking the freed live
+  // region as a band of blank rows for the next stream to refill.
+  assert.equal(step('s1', 1), 5, 'the flushed row is consumed, not reserved a second time');
   // Streaming again inside the same flush keeps the floor.
   step('t1\nt2');
   // An ordinary shrink without a flush is still padded by the ledger.
@@ -36,4 +40,6 @@ test('the frame ledger keeps the composer from riding up across a static flush',
   // A taller frame grows the block, and the next flush keeps that height too.
   step('v1\nv2\nv3\nv4\nv5\nv6\nv7\nv8');
   step('w1', 2);
+  // A flush that carries as many rows as the frame gave up leaves no band at all.
+  assert.equal(step('y1', 5), 1, 'a covered shrink leaves no blank band above the frame');
 });

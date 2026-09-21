@@ -12,9 +12,14 @@ import {
   ModelPanel,
   StatusLine,
 } from '../packages/tui/src/app.ts';
+import { stripVTControlCharacters } from 'node:util';
+
 import { visibleColumns } from '../packages/tui/src/render/markdown.ts';
 import { createTranscriptView } from '../packages/tui/src/render/projection.ts';
-import { layoutStatusBar } from '../packages/tui/src/render/status.ts';
+import { DEFAULT_STATUSLINE_ITEMS, STATUS_ITEMS, layoutStatusBar } from '../packages/tui/src/render/status.ts';
+import { formatFooter } from '../plugins/session-metrics/view.mjs';
+import { watchSkills } from '../packages/tui/src/skills.ts';
+import { dscodeTelemetryParts } from '../packages/tui/src/dscode/telemetry.ts';
 import { createBtwFeed } from '../packages/tui/src/btw.ts';
 import { setTheme } from '../packages/tui/src/theme.ts';
 
@@ -58,7 +63,7 @@ test('the effort bar renders four detents and moves the cursor between them', as
   setTheme('dark');
 });
 
-test('the status line leads with the title and pins the telemetry right', async () => {
+test('the status line names the session and model on row 1 and closes row 2 with the live figures', async () => {
   const facts = {
     model: 'deepseek-official/deepseek-flash',
     effort: 'ultra',
@@ -70,7 +75,6 @@ test('the status line leads with the title and pins the telemetry right', async 
     plan: false,
     permission: 'accept-edits',
     fullSessionId: 's-1',
-    telemetry: 'current: ~12.3 tps | cache hit: 96.0%',
   };
   // A real stats object keeps every field the status line reads populated.
   const base = createTranscriptView().stats;
@@ -97,12 +101,15 @@ test('the status line leads with the title and pins the telemetry right', async 
     // Row 1 flows from the left into the right-anchored permission badge; the
     // idle cycle hint rides LEFT of the badge, so the badge holds its columns
     // whether or not the hint is painted.
-    assert.match(row1, /Migrating the TUI ｜ context/, row1);
-    assert.ok(row1.trimEnd().endsWith('(shift+tab to cycle) ｜ accept-edits'), row1);
+    assert.match(row1, /Migrating the TUI · deepseek-flash @ ultra · context/, row1);
+    assert.ok(row1.trimEnd().endsWith('(shift+tab to cycle) · accept-edits'), row1);
     assert.equal(visibleColumns(row1), 120, 'row 1 fills the terminal');
-    // Row 2's right edge is the telemetry: the provider: model @ effort header plus the live figures.
-    assert.match(row2, /deepseek-flash @ ultra \| current: /, row2);
-    assert.match(row2, /cache hit:/, row2);
+    // Row 2 closes with the live figures as one left-hand cluster (this fixture
+    // has no metrics ledger, so every figure reads its placeholder): no empty gap
+    // opens between the cluster and the row above, and it never stretches to the
+    // terminal width the way a right-pinned slot did.
+    assert.match(row2, /-- tps · {5}-- tps avg · {3}-- ctx · \$0\.00 (?:🔥|❄️) · {5}-- cache$/, row2);
+    assert.ok(visibleColumns(row2) < 80, 'the figures sit as one cluster, not a pinned stretch');
   } finally {
     ui.close();
   }
@@ -168,6 +175,88 @@ test('the footer keeps its geometry while a turn changes the live figures', () =
   assert.equal(after.row2.left.length, before.row2.left.length);
 });
 
+test('the telemetry tint keeps every figure and label, tinting only the readings', () => {
+  // The producer's own string is the input: the tint must be lossless, or a
+  // qualifier would silently disappear from the rendered footer.
+  const value = formatFooter({ cost: 0.42, unknown: false, pending: 0, cache: 87.3 }, 12.8, 200, { current: 24.6, average: 18.2 }, 'en', 'deepseek-official');
+  const parts = dscodeTelemetryParts(value);
+  assert.equal(parts.map(part => part.text).join(''), value, 'the tint keeps every character');
+  assert.deepEqual(parts.filter(part => part.tone !== null), [
+    { text: '~24.6 tps', tone: 'yellow' },
+    { text: '18.2 tps', tone: 'yellow' },
+    { text: '87.3%', tone: 'red' },
+  ], 'only the readings carry a tier');
+  assert.deepEqual(dscodeTelemetryParts(' 99.0% cache').filter(part => part.tone !== null), [{ text: '99.0%', tone: 'blue' }]);
+  assert.deepEqual(dscodeTelemetryParts('~260.0 tps').filter(part => part.tone !== null), [{ text: '~260.0 tps', tone: 'purple' }]);
+  assert.deepEqual(dscodeTelemetryParts('    -- tps ·     -- cache').filter(part => part.tone !== null), [], 'an unknown reading keeps the surrounding colour');
+});
+
+test('the footer reports the loaded skill count from the live catalog', () => {
+  const facts = {
+    model: 'deepseek-official/deepseek-flash',
+    effort: 'ultra',
+    title: '',
+    cwd: 'proj',
+    branch: '',
+    sessionId: 'abc123',
+    sandbox: '',
+    plan: false,
+    permission: 'accept-edits',
+    fullSessionId: 's-1',
+    telemetry: '',
+  };
+  const stats = createTranscriptView().stats;
+  const row2 = layout => layout.row2.left.map(group => group.spans.map(span => span.text).join('')).join('');
+  assert.ok(STATUS_ITEMS.some(item => item.id === 'skills' && item.side === 'left'), 'the item is selectable');
+  assert.ok(DEFAULT_STATUSLINE_ITEMS.includes('skills'), 'the item is on by default');
+  assert.match(row2(layoutStatusBar({ ...facts, skills: 32 }, stats, 120, { items: ['skills'] })), /skills\s+32/);
+  // Before the catalog read settles the figure keeps its columns as a placeholder.
+  assert.match(row2(layoutStatusBar({ ...facts, skills: undefined }, stats, 120, { items: ['skills'] })), /skills\s+--/);
+});
+
+test('the skills view exposes the catalog size and notifies on a count-only change', async () => {
+  const entry = (name, userInvocable) => ({ name, description: name, invocation: { userInvocable, modelInvocable: true } });
+  let catalog = [entry('beta', true)];
+  const ctx = { get: name => name === 'skills' ? { list: () => Promise.resolve(catalog) } : undefined, on: () => {} };
+  const view = watchSkills(ctx, '/ws');
+  const flushes = [];
+  view.subscribe(() => flushes.push(view.count));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(view.count, 1, 'the catalog size is exposed after the first read');
+  assert.deepEqual(view.rows.map(row => row.name), ['beta']);
+  catalog = [entry('beta', true), entry('alpha', false)];
+  view.setAgent({ session: { header: { cwd: '/ws' } } });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(view.count, 2, 'a model-only skill still moves the count');
+  assert.deepEqual(view.rows.map(row => row.name), ['beta'], 'user-invocable rows are unchanged');
+  assert.deepEqual(flushes, [1, 2], 'the count-only change notifies subscribers');
+});
+
+test('a failed catalog read clears the previous workspace figure even when the error repeats', async () => {
+  const entry = { name: 'beta', description: 'beta', invocation: { userInvocable: true, modelInvocable: true } };
+  let failure;
+  let change = () => {};
+  const ctx = {
+    get: name => name === 'skills' ? { list: () => failure === undefined ? Promise.resolve([entry]) : Promise.reject(failure) } : undefined,
+    on: (event, handler) => { if (event === 'skills/change') change = handler; },
+  };
+  const view = watchSkills(ctx, '/ws');
+  const flushes = [];
+  view.subscribe(() => flushes.push(view.count));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(view.count, 1);
+  failure = new Error('read failed');
+  change();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(view.count, 1, 'the last good figure survives for the same target');
+  assert.equal(view.error, 'read failed');
+  view.setAgent({ session: { header: { cwd: '/ws' } } });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(view.count, undefined, 'another workspace starts from no figure');
+  assert.deepEqual(view.rows, []);
+  assert.equal(flushes.at(-1), undefined, 'the clearing reaches subscribers');
+});
+
 test('the btw panel reads a side answer without touching the main transcript', async () => {
   const feed = createBtwFeed();
   const at = Date.now();
@@ -194,6 +283,36 @@ test('the btw panel reads a side answer without touching the main transcript', a
     await ui.write('\u001b');
     assert.deepEqual(closed, [true], 'esc closes the panel');
     assertFits(ui);
+  } finally {
+    ui.close();
+  }
+});
+
+test('the activity line reports cross-session traffic under its own glyph', async () => {
+  // A request waiting on another session blocks the turn exactly like a running
+  // tool, so it must be visible there. Ink's colour is environment-dependent
+  // (chalk quantizes by depth and a non-TTY child paints none), so the colour
+  // rule is asserted at the shared token: see the palette distinctness test.
+  const communication = {
+    rows: [{ id: 'call-1', direction: 'sent', peer: 'session-target', kind: 'request', mode: 'queue', preview: 'do it', at: 1000, pending: false, failed: false }],
+    waiting: [{ peer: 'session-target', since: 1000 }],
+  };
+  const ui = await mount(DscodeActivityLine, { entries: [], streaming: false, since: 0, animated: false, communication }, { columns: 100 });
+  try {
+    assertFits(ui);
+    const text = stripVTControlCharacters(ui.frame());
+    assert.match(text, /⇄ waiting for session-target/);
+    assert.doesNotMatch(text, /Running|Replying|Thinking/);
+  } finally {
+    ui.close();
+  }
+});
+
+test('without cross-session traffic the activity line shows no cross-session glyph', async () => {
+  const ui = await mount(DscodeActivityLine, { entries: [], streaming: false, since: 0, animated: false, communication: { rows: [], waiting: [] } }, { columns: 100 });
+  try {
+    assertFits(ui);
+    assert.doesNotMatch(stripVTControlCharacters(ui.frame()), /waiting for|sending to|⇄/);
   } finally {
     ui.close();
   }

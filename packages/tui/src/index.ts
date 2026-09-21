@@ -32,7 +32,9 @@ import type {} from '@deepseek-ai/dsh-session-title'
 // and the cmdline Context merge for the appExit host value.
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-cmdline'
-import { App, type NoticeTone, type QueueMutation } from './app.ts'
+import { App, type BudgetDecision, type NoticeTone, type QueueMutation } from './app.ts'
+import { evaluateBudget, parseBudget } from '../../../plugins/session-metrics/turns.mjs'
+import { sessionSpend, turnCostsFor } from '../../../plugins/session-metrics/view.mjs'
 import { mountApprovalAnswerer, type ApprovalStore } from './approval.ts'
 import { isSlashLine, submissionPayload, watchCommands, type CommandsView } from './commands.ts'
 import { internals, type TuiMount } from './internals.ts'
@@ -59,6 +61,7 @@ import { mountQuestionProvider, type QuestionStore } from './questions.ts'
 import type {} from '@deepseek-ai/dsh-settings'
 import { createTranscriptStore, type TranscriptStore } from './store.ts'
 import { createSubagentFeed, type SubagentFeedView } from './subagents.ts'
+import { createCommunicationFeed, foldCommunication, type CommunicationView } from './communication.ts'
 import { btwBrief, btwSeed, createBtwFeed, type BtwFeed } from './btw.ts'
 import { parseStatuslineItems } from './render/status.ts'
 import { historyLine, HISTORY_MAX_ENTRIES, needsCompaction, parseHistoryFile, serializeHistoryList } from './history.ts'
@@ -106,6 +109,7 @@ import {
   matchSessionId,
   mergeSessionTitles,
   newestRootForCwd,
+  sessionFolderMatches,
   isSessionArtifactName,
   jsonlSessionRoot,
   planSessionDeletion,
@@ -518,6 +522,20 @@ export class StartupInputGate {
 }
 
 /**
+ * The warning for a resume that leaves the launch folder, or undefined when
+ * it stays. A session binds to one folder when it is created, and the
+ * workspace, the shell and the durable log all follow that header cwd — so a
+ * cross-folder resume works, but the user must be told the window moved.
+ * @param pinnedCwd - the header's project directory, when it has one.
+ * @param launchCwd - the directory DSCODE was launched in.
+ * @returns the warning text, or undefined when the folders already agree.
+ */
+export function resumeFolderWarning(pinnedCwd: string | undefined, launchCwd: string): string | undefined {
+  if (sessionFolderMatches(pinnedCwd, launchCwd)) return undefined
+  return t('notice.resumedOtherFolder', { folder: pinnedCwd!, launch: launchCwd })
+}
+
+/**
  * Resolve the invocation's target session against the persisted headers.
  * @param startup - the parsed startup flags.
  * @param persistence - the persistence service; required for resume/latest.
@@ -580,6 +598,12 @@ function approvalCommandPreview(events: readonly { kind: string }[], callId: str
 interface AppBridge {
   /** Post one local notice line (feedback the transcript does not carry). */
   notify: (text: string, tone?: NoticeTone) => void
+  /**
+   * Park a submission on the budget confirmation panel instead of delivering
+   * it. The runner owns delivery, so it passes the line back once the user
+   * confirms; `undefined` clears the panel.
+   */
+  confirmBudget: (pending: { decision: BudgetDecision; text: string; images: readonly ContentBlock[]; mode: 'followup' | 'steer' } | undefined) => void
 }
 
 /**
@@ -626,6 +650,12 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     selection: { picked?: ModelSelection }
     resumed: boolean
     /**
+     * Set when this session is bound to a folder other than the launch
+     * directory: the workspace follows the header, and the user is told once
+     * through a notice when the session reaches the screen.
+     */
+    folderWarning?: string
+    /**
      * Root-log `subagent/catalog` facts (resume path): constructor seeds
      * never fire on the live bus, so activation replays them into the
      * subagent feed after its reset — a resumed session's children stay
@@ -670,6 +700,16 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     const seedOptions = pendingSelection === undefined
       ? { provider: currentDefaults().provider, model: currentDefaults().model }
       : { provider: pendingSelection.provider, model: pendingSelection.model }
+    let folderWarning: string | undefined
+    if (next.resume) {
+      // The header is the only durable folder binding; the resumed session
+      // works in that folder whichever entry point got here — the CLI
+      // --resume flag, the /resume picker, /search or a queued switch. Only
+      // the notice differs, so it is prepared here and displayed once the
+      // session is actually on screen.
+      const pinned = (await persistence?.list())?.find(record => record.header.id === next.sessionId)?.header.cwd
+      folderWarning = resumeFolderWarning(pinned, cwd)
+    }
     const handle = next.resume
       ? await agents.resume({
         resumeSessionId: SessionId(next.sessionId),
@@ -718,6 +758,7 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
       mode: mode ?? 'standard',
       selection: selectionState,
       resumed: next.resume,
+      ...(folderWarning === undefined ? {} : { folderWarning }),
       catalogSeed: subagentCatalogSeed(seedEvents),
     }
   }
@@ -729,6 +770,62 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
   // Live subagent activity (child sessions of the current root): one bounded
   // row per child, folded from the same event bus the transcript feeds on.
   const subagents: SubagentFeedView & { apply(sessionId: string, event: SessionEvent): void; reset(): void } = createSubagentFeed()
+  // The bridge the React app registers on mount: local notices from the
+  // process side (unknown commands, switch confirmations, cancels).
+  const bridge: AppBridge = { notify: () => {}, confirmBudget: () => {} }
+  /**
+   * Notices emitted before the App mounted and registered its bridge; the
+   * first registration flushes them in order. Nothing else can drop a startup
+   * notice: the stub above is running before any React effect has committed.
+   */
+  const pendingNotices: { text: string; tone?: NoticeTone }[] = []
+  /** True from the FIRST bridge registration: a startup notice must land on it,
+   * never on the instance a later session switch is about to replace. */
+  let bridgeReady = false
+  /**
+   * The session whose over-budget submission the user already approved. The
+   * gate asks once per session: a second prompt in the same session does not
+   * re-ask, and a new session starts with the question unanswered again.
+   */
+  let budgetAcknowledgedFor: string | undefined
+
+  // dscode: live cross-session communication of the CURRENT root session. The
+  // feed is advisory display state rebuilt from the root log, so a resumed
+  // session re-derives its history instead of replaying stale notices.
+  let communication: CommunicationView = createCommunicationFeed()
+  /** Row ids already reported through a notice, so a re-fold never repeats one. */
+  const communicationNoticed = new Set<string>()
+
+  /**
+   * A peer's readable label: a bridge relay labels its source `session:<id>`,
+   * which is shortened to the tail the session directory shows.
+   */
+  const dscodePeerLabel = (peer: string): string =>
+    peer.startsWith('session:') ? `session ${peer.slice('session:'.length).slice(-12)}` : peer
+
+  /**
+   * Fold one root event into the cross-session feed and announce what is new.
+   * The activity line reads the view; a notice is the durable, scrollable
+   * record. Both use the relay tone and the ⇄ family, so this traffic never
+   * reads as the session's own shell or model output.
+   */
+  const observeCommunication = (event: SessionEvent): void => {
+    const previous = communication
+    const next = foldCommunication(previous, event)
+    if (next === previous) return
+    communication = next
+    for (const row of next.rows) {
+      if (row.pending || communicationNoticed.has(row.id)) continue
+      communicationNoticed.add(row.id)
+      if (row.direction === 'received') {
+        bridge.notify(`← ${dscodePeerLabel(row.peer)}${row.preview === '' ? '' : ` · ${row.preview}`}`, 'relay')
+        continue
+      }
+      const kind = row.kind === undefined ? '' : ` ${row.kind}`
+      const status = row.failed ? ' — failed' : ''
+      bridge.notify(`→ ${dscodePeerLabel(row.peer)}${kind}${status}`, 'relay')
+    }
+  }
   // Side-question runs (/btw): a seeded read-only child whose answer renders in
   // its own panel and never in this transcript or its model context.
   const btw: BtwFeed = createBtwFeed()
@@ -827,9 +924,12 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     return turn
   }
 
+  /** The initial session's folder warning, held until the App can show it. */
+  let startupFolderWarning: string | undefined
   if (!lazy) {
     const target = await resolveTarget(startup, persistence, cwd)
     const prepared = await prepare(target)
+    startupFolderWarning = prepared.folderWarning
     active = prepared
     agent = prepared.agent
     session = prepared.session
@@ -838,6 +938,13 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     // Replayed catalog facts rebuild the resumed session's child rows before
     // the first render (the live handler only folds events from now on).
     for (const event of prepared.catalogSeed) subagents.apply(event.data.childId, event)
+  }
+
+  // The resumed root's own cross-session history is folded here, but its rows
+  // are marked seen: a restart reports new traffic, never the whole past.
+  if (session !== undefined) {
+    communication = session.snapshotEvents().reduce((view, event) => foldCommunication(view, event), createCommunicationFeed())
+    for (const row of communication.rows) communicationNoticed.add(row.id)
   }
 
   // Seed the transcript from the full session log: constructor seeds never
@@ -855,6 +962,7 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
       // The parent-owned subagent catalog rides the ROOT log (0.1.5); each
       // fact describes one child, so it feeds that child's live row.
       if (event.type === 'subagent/catalog' && event.data.childId !== '') subagents.apply(event.data.childId, event)
+      observeCommunication(event)
       return
     }
     // Child sessions (subagent conversations this root spawned) fold into
@@ -938,10 +1046,6 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     ctx,
     candidate => agent !== undefined && candidate.id === agent.id,
   )
-
-  // The bridge the React app registers on mount: local notices from the
-  // process side (unknown commands, switch confirmations, cancels).
-  const bridge: AppBridge = { notify: () => {} }
 
   // Same-id capability inheritance. Catalog capabilities flow by route key,
   // not model id, so a hand-declared relay model without an explicit
@@ -1451,6 +1555,21 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
       ensureSession()
       return
     }
+    // dscode: the budget gate stops exactly one submission per session when the
+    // recorded spend has reached `DSCODE_SESSION_BUDGET_USD`. The user decides;
+    // an approval is remembered for the rest of the session, and a session with
+    // no limit (or an unparseable one) never reaches this branch.
+    const limit = parseBudget(process.env.DSCODE_SESSION_BUDGET_USD)
+    if (limit !== null && budgetAcknowledgedFor !== session.id) {
+      const decision = evaluateBudget(sessionSpend(session.id).cost, limit)
+      if (decision.state === 'over') {
+        bridge.confirmBudget({
+          decision: { spent: decision.spent, limit: decision.limit, percent: decision.percent },
+          text: line, images, mode,
+        })
+        return
+      }
+    }
     deliverLine(line, images, mode)
   }
 
@@ -1834,9 +1953,12 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
   const loadUsage = (current: Session | undefined): Promise<UsageView> => {
     if (current === undefined) return Promise.resolve({ turns: [] })
     const values = ctx.get('sessionProjections')?.snapshot(current, ['tokenUsage']).values
+    const events = current.snapshotEvents()
+    // The token meter says what each turn billed; the cost ledger says what it
+    // cost. Both read the same durable log, so the panel's rows line up.
     return Promise.resolve({
       totals: values?.tokenUsage,
-      turns: turnUsages(current.snapshotEvents(), deriveTurnTokenUsage),
+      turns: turnUsages(events, deriveTurnTokenUsage, turnCostsFor(current.id, events)),
     })
   }
 
@@ -1905,6 +2027,13 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
       session = next.session
       store = next.store
       mentions = next.mentions
+      // Cross-session rows belong to the previous root. The incoming session's
+      // own history is re-derived from its log and marked seen, so the activity
+      // line keeps an unanswered request visible while only NEW traffic is
+      // announced.
+      communication = next.session.snapshotEvents().reduce((view, event) => foldCommunication(view, event), createCommunicationFeed())
+      communicationNoticed.clear()
+      for (const row of communication.rows) communicationNoticed.add(row.id)
       commands.setAgent(agent)
       skills.setAgent(agent)
       try {
@@ -1959,6 +2088,7 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
         // instance and React drops it silently. Defer past the commit.
         setTimeout(() => {
           bridge.notify(`${next.resumed ? 'resumed' : 'created'} ${next.session.id.slice(-12)} · mode ${next.mode}`)
+          if (next.folderWarning !== undefined) bridge.notify(next.folderWarning, 'warning')
         }, 0)
         return
       }
@@ -1978,6 +2108,7 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
         ? `${next.resumed ? 'resumed' : 'created'} ${next.session.id.slice(-12)} · mode ${next.mode}`
         : `switched to ${next.session.id.slice(-12)}, but ${cleanupWarning}`,
       cleanupWarning === undefined ? 'info' : 'warning')
+      if (next.folderWarning !== undefined) bridge.notify(next.folderWarning, 'warning')
     })
   }
 
@@ -2242,6 +2373,7 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
       approval,
       questions,
       subagents,
+      communication,
       btw,
       startBtw,
       commands,
@@ -2258,6 +2390,8 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
       /** Pre-session plan choice for the status badge until a session composes. */
       pendingPlan: session === undefined && pendingPlan,
       dispatch,
+      /** dscode: the budget gate's approval covers the rest of the session. */
+      dscodeAcknowledgeBudget: (sessionKey: string) => { budgetAcknowledgedFor = sessionKey },
       steer,
       interrupt,
       quit,
@@ -2338,7 +2472,12 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
       history: inputHistory,
       recordHistory,
       updateQueued,
-      onBridgeReady: (instance: AppBridge) => { bridge.notify = instance.notify },
+      onBridgeReady: (instance: AppBridge) => {
+        bridge.notify = instance.notify
+        if (bridgeReady) return
+        bridgeReady = true
+        for (const notice of pendingNotices.splice(0)) bridge.notify(notice.text, notice.tone)
+      },
     })
   }
 
@@ -2346,6 +2485,9 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     mountRef.current?.rerender(appElement())
   }
 
+  // Hold the cross-folder notice until a bridge exists: a resume that left the
+  // launch folder says so once, on the first window that can show it.
+  if (startupFolderWarning !== undefined) pendingNotices.push({ text: startupFolderWarning, tone: 'warning' })
   mountRef.current = io.mount(appElement())
 
   // Startup prompt/images use the same durable delivery path as composer

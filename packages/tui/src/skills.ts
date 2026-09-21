@@ -28,6 +28,8 @@ export interface SkillRow {
 export interface SkillsView {
   /** Name-sorted user-invocable rows; empty until the first load lands. */
   readonly rows: readonly SkillRow[]
+  /** Effective catalog size (model- and user-invocable entries alike); undefined until the first load lands. */
+  readonly count?: number
   /** Latest catalog-read failure; the help panel exposes it in place. */
   readonly error?: string
   /** Subscribe to catalog changes; returns the unsubscribe function. */
@@ -65,6 +67,7 @@ export function watchSkills(ctx: Context, fallbackCwd?: string): SkillsWatch {
   const skills = ctx.get('skills')
   let agent: Agent | undefined
   let rows: readonly SkillRow[] = []
+  let count: number | undefined
   let error: string | undefined
   // The agent whose workspace the current rows were last successfully read
   // from: a failure for an agent that never loaded must clear the rows, not
@@ -90,12 +93,16 @@ export function watchSkills(ctx: Context, fallbackCwd?: string): SkillsWatch {
       if (agent !== target) return
       const next = toRows(summaries)
       // Description and invocation-flag edits must surface too: a name-only
-      // comparison silently dropped those change notifications.
-      const unchanged = next.length === rows.length && next.every((row, index) =>
-        row.name === rows[index]?.name
-        && row.description === rows[index]?.description
-        && row.modelInvocable === rows[index]?.modelInvocable)
+      // comparison silently dropped those change notifications. The catalog
+      // size is compared as well, because a model-only skill moves the footer
+      // count without changing any user-invocable row.
+      const unchanged = summaries.length === count
+        && next.length === rows.length && next.every((row, index) =>
+          row.name === rows[index]?.name
+          && row.description === rows[index]?.description
+          && row.modelInvocable === rows[index]?.modelInvocable)
       rows = next
+      count = summaries.length
       loadedFor = target
       const recovered = error !== undefined
       error = undefined
@@ -107,14 +114,19 @@ export function watchSkills(ctx: Context, fallbackCwd?: string): SkillsWatch {
       // next skills/change notification is the retry surface, mirroring the
       // web directory); a target that never loaded starts from empty rows —
       // stale rows from a previous workspace must not keep completing here.
-      // The rows array keeps its identity unless the failure text itself
-      // changed: a repeated identical error on the 0.1.5 event storm must not
-      // churn fresh identities into React's update chain.
+      // That clearing is itself a state change, so it notifies even when the
+      // error text repeats; the error text alone keeps the identity rule
+      // below, where a repeated identical error on the 0.1.5 event storm must
+      // not churn fresh identities into React's update chain.
       const nextError = cause instanceof Error ? cause.message : String(cause)
-      if (loadedFor !== target) rows = []
+      const cleared = loadedFor !== target && (rows.length > 0 || count !== undefined)
+      if (loadedFor !== target) {
+        rows = []
+        count = undefined
+      }
       const errorChanged = nextError !== error
       error = nextError
-      if (!errorChanged) return
+      if (!errorChanged && !cleared) return
       for (const listener of listeners) listener()
     })
   }
@@ -129,6 +141,9 @@ export function watchSkills(ctx: Context, fallbackCwd?: string): SkillsWatch {
   const view: SkillsWatch = {
     get rows(): readonly SkillRow[] {
       return rows
+    },
+    get count(): number | undefined {
+      return count
     },
     get error(): string | undefined {
       return error

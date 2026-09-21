@@ -135,8 +135,9 @@
 - id: skill-filesystem
   name: '@deepseek-ai/dsh-skill-filesystem'
   config:
-    # DSCODE_SKILL_ANCESTORS=1 adds the skill roots of directories between the
-    # project root and home at rank 300: headers enter the catalog, bodies stay lazy.
+    # Ancestor skill discovery is on by default: the skill roots of directories
+    # between the working directory and home register at rank 300, nearest first,
+    # so headers enter the catalog and bodies stay lazy. =0 turns it off.
     customSkillDirs: !!js 'JSON.parse(process.env.DSCODE_SKILL_ANCESTOR_DIRS ?? "[]")'
 
 - id: tool-skill

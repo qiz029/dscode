@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { communicationPanel, createCommunicationFeed, foldCommunication } from '../../packages/tui/src/communication.ts';
 import { SessionBridge } from './server.mjs';
 import { CommunicationService } from './communication.mjs';
 import { defineTool } from '@deepseek-ai/dsh-tools';
@@ -20,6 +21,11 @@ export async function apply(ctx) {
     const [action, id] = rawInput.trim().split(/\s+/);
     const value = action === 'cancel' ? await communication.cancel(agent, id, true) : communication.store.list(agent.id);
     return { kind: 'success', text: JSON.stringify(value, null, 2) };
+  } });
+  // The same fold the terminal's activity line uses, so the panels agree.
+  ctx.commands.register({ name: 'tasks', description: 'Cross-session messages and what is still awaiting a reply', handler({ agent }) {
+    const view = agent.session.snapshotEvents().reduce((acc, event) => foldCommunication(acc, event), createCommunicationFeed());
+    return { kind: 'success', text: communicationPanel(view) };
   } });
   ctx.commands.register({ name: 'session-new-task', description: 'Explicitly start a fresh communication budget while idle', handler({ agent }) {
     return { kind: 'success', text: `New task chains: ${communication.newTask(agent).join(', ')}` };

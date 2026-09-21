@@ -29,6 +29,12 @@ export interface UsageTurn {
    * went unattributed, so the turn's own assistant messages answer instead.
    */
   readonly model: string
+  /**
+   * What this turn's calls cost, or undefined when this session predates the
+   * cost ledger (the panel then shows `--` rather than inventing a price).
+   * `unknown` marks a turn whose settled calls did not all report a cost.
+   */
+  readonly cost?: { readonly cost: number; readonly unknown: boolean }
 }
 
 /**
@@ -106,12 +112,15 @@ export function completedTurns(events: readonly SessionEvent[]): readonly TurnSl
 export function turnUsages(
   events: readonly SessionEvent[],
   derive: (events: readonly SessionEvent[]) => TurnTokenUsage | undefined,
+  costs?: readonly { readonly turn: number; readonly cost: number; readonly unknown: boolean }[],
 ): readonly UsageTurn[] {
+  const byTurn = new Map((costs ?? []).map(entry => [entry.turn, { cost: entry.cost, unknown: entry.unknown }]))
   const rows: UsageTurn[] = []
   for (const slice of completedTurns(events)) {
     const usage = derive(slice.events)
     if (usage === undefined || usage.totalTokens === 0) continue
-    rows.push({ turn: slice.turn, usage, model: turnModel(slice, usage) })
+    const cost = byTurn.get(slice.turn)
+    rows.push({ turn: slice.turn, usage, model: turnModel(slice, usage), ...(cost === undefined ? {} : { cost }) })
   }
   return rows
 }
@@ -422,6 +431,13 @@ export function usageLines(view: UsageView, columns: number): readonly StyledLin
     const withTurn = [
       { label: () => t('panel.usage.colTurn'), value: (row: UsageTurn) => `#${row.turn}`, width: 7 },
       ...BUCKET_COLUMNS.map(column => ({ ...column, value: (row: UsageTurn) => column.value(row.usage) })),
+      // The cost column answers what the token columns cannot: which turn spent
+      // the money. `+` marks a turn whose settled calls were not all priced.
+      {
+        label: () => t('panel.usage.colCost'),
+        value: (row: UsageTurn) => row.cost === undefined ? '--' : `$${row.cost.cost.toFixed(4)}${row.cost.unknown ? '+' : ''}`,
+        width: 10,
+      },
     ]
     lines.push(...table(withTurn, [...view.turns].reverse(), row => modelLabel(row.model), width, false))
   }

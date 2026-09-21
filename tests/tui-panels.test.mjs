@@ -4,10 +4,11 @@ process.env.DSCODE_LANGUAGE = 'en';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DscodeGrokPanel, DscodeProviderPanel } from '../packages/tui/src/app.ts';
+import { DscodeBudgetConfirmPanel, DscodeGrokPanel, DscodeProviderPanel } from '../packages/tui/src/app.ts';
 import { StatuslinePanel } from '../packages/tui/src/kernel-panels.ts';
 import { DEFAULT_STATUSLINE_ITEMS, STATUS_ITEMS } from '../packages/tui/src/render/status.ts';
 import { mount, assertFits, tick } from './fixtures/tui-mount.mjs';
+import { DARK_PALETTE, LIGHT_PALETTE, PRISMATIC_PALETTE } from '../packages/tui/src/theme.ts';
 
 // These panels are keyboard surfaces DSCODE added on top of the vendored terminal, and
 // no test mounted any of them: a key that stops being routed, a status column that stops
@@ -163,5 +164,65 @@ test('the provider panel keeps working when the directory fails to load', async 
     assert.equal(closed, 1, 'Esc leaves the panel');
   } finally {
     ui.close();
+  }
+});
+
+// The budget gate is the one panel that guards money rather than state, and it
+// is the only surface that can stop a prompt from being delivered. A key that
+// stops being routed here either sends a prompt the user refused or strands it.
+test('the budget panel states the spend, the limit and both outcomes', async () => {
+  let confirmed = 0, cancelled = 0;
+  const ui = await mount(DscodeBudgetConfirmPanel, {
+    decision: { spent: 12.5, limit: 10, percent: 125 },
+    confirm: () => { confirmed += 1; },
+    back: () => { cancelled += 1; },
+  }, { columns: 100 });
+  try {
+    assertFits(ui);
+    const text = ui.frame();
+    assert.match(text, /\$12\.50/, 'the recorded spend is stated');
+    assert.match(text, /\$10\.00/, 'the limit is stated');
+    assert.match(text, /125%/, 'the overshoot is stated as a percentage');
+    assert.match(text, /y send anyway/, 'the confirm key is advertised');
+    assert.match(text, /n\/esc cancel/, 'the cancel key is advertised');
+    // Esc declines without sending; it never confirms.
+    await ui.write('\u001b');
+    assert.equal(cancelled, 1, 'Esc declines');
+    assert.equal(confirmed, 0);
+  } finally {
+    ui.close();
+  }
+});
+
+test('the budget panel sends only on y and n is not a send', async () => {
+  let confirmed = 0, cancelled = 0;
+  const ui = await mount(DscodeBudgetConfirmPanel, {
+    decision: { spent: 10, limit: 10, percent: 100 },
+    confirm: () => { confirmed += 1; },
+    back: () => { cancelled += 1; },
+  }, { columns: 100 });
+  try {
+    await ui.write('n');
+    assert.equal(cancelled, 1, 'n declines');
+    assert.equal(confirmed, 0, 'n never delivers the prompt');
+    await ui.write('y');
+    assert.equal(confirmed, 1, 'y approves the over-budget turn');
+  } finally {
+    ui.close();
+  }
+});
+
+// Cross-session communication must never read as the session's own output. The
+// TUI paints it with the `steered` token and a ⇄-family glyph; this pins the one
+// part a rendering test cannot (Ink's colour depends on terminal depth): the
+// token is distinct from every colour ordinary tool/shell chrome already uses.
+test('the cross-session colour is distinct from the ordinary chrome colours', () => {
+  const ordinary = ['brandBright', 'brandMid', 'brand', 'dim', 'text'];
+  for (const [name, palette] of Object.entries({ dark: DARK_PALETTE, light: LIGHT_PALETTE, prismatic: PRISMATIC_PALETTE })) {
+    for (const token of ordinary) {
+      assert.notDeepEqual(palette.steered, palette[token], `${name}: steered overlaps ${token}`);
+    }
+    assert.notDeepEqual(palette.steered, palette.warn, `${name}: steered overlaps warn`);
+    assert.notDeepEqual(palette.steered, palette.error, `${name}: steered overlaps error`);
   }
 });

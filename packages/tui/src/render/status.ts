@@ -121,17 +121,19 @@ export interface StatusSpan {
 }
 
 /**
- * One pipe-separated cluster on the leading side of the bar. Spans are the
+ * One dot-separated cluster on the leading side of the bar. Spans are the
  * full visual sequence: junction separators ride along as their own dim
  * 'label'-tone spans, so joining is a flat concat with no implicit glue.
  */
 export interface StatusGroup {
   spans: readonly StatusSpan[]
+  /** dscode: the status item that produced the group; the telemetry cluster is tinted by it. */
+  id?: string
 }
 
 /** One physical row of the footer: leading clusters and trailing badges. */
 export interface StatusRow {
-  /** Leading clusters, pipe-separated in display order; index 0 is identity. */
+  /** Leading clusters, dot-separated in display order; index 0 is identity. */
   left: readonly StatusGroup[]
   /** Trailing spans pinned to the right edge, dot-separated in display order. */
   right: readonly StatusSpan[]
@@ -155,9 +157,9 @@ export interface StatusLayout {
 }
 
 /** Separator between leading clusters. */
-export const STATUS_GROUP_SEPARATOR = ' ｜ '
+export const STATUS_GROUP_SEPARATOR = ' · '
 /** Separator between trailing state spans. */
-export const STATUS_ITEM_SEPARATOR = ' ｜ '
+export const STATUS_ITEM_SEPARATOR = ' · '
 /** The Codex-style mode cycle hint appended to the permission badge. */
 /** English compatibility value for callers that only measure the default layout. */
 export const STATUS_CYCLE_HINT = ' (shift+tab to cycle)'
@@ -265,6 +267,7 @@ export type StatusItemId =
   | 'durations'
   | 'cache'
   | 'context'
+  | 'skills'
   | 'tokens'
   | 'title'
   | 'goal'
@@ -289,6 +292,7 @@ export const STATUS_ITEMS: readonly StatusItemInfo[] = [
   { id: 'mode', label: 'mode', description: 'agent preset composing the session', side: 'left' },
   { id: 'branch', label: 'branch', description: 'git branch inside a repository', side: 'left' },
   { id: 'context', label: 'context', description: 'context-window occupancy meter', side: 'left' },
+  { id: 'skills', label: 'skills', description: 'skills loaded in the session catalog', side: 'left' },
   { id: 'permission', label: 'permission', description: 'permission preset badge with cycle hint', side: 'right' },
   { id: 'plan', label: 'plan', description: 'plan-mode state mark', side: 'left' },
   { id: 'turns', label: 'turns', description: 'turn and step counters', side: 'left' },
@@ -304,7 +308,7 @@ export const STATUS_ITEMS: readonly StatusItemInfo[] = [
  * Default order: the whole catalog (matches the pre-customization bar).
  * The busy dot is not an item — it always leads the identity cluster.
  */
-export const DEFAULT_STATUSLINE_ITEMS: readonly StatusItemId[] = ['model', 'permission', 'title', 'plan', 'goal', 'sandbox']
+export const DEFAULT_STATUSLINE_ITEMS: readonly StatusItemId[] = ['model', 'permission', 'title', 'plan', 'goal', 'sandbox', 'skills']
 
 /**
  * Parse a persisted statusline item list. The stored value is the ordered
@@ -357,7 +361,10 @@ const RANK_IDENTITY = Number.POSITIVE_INFINITY
 /** Row 2 drop ranks: title and durations go first; state and counts survive longest. */
 const RANK2_DURATIONS = 40
 const RANK2_CACHE = 50
+const RANK2_SKILLS = 60
 const RANK2_PLAN = 70
+/** The live telemetry cluster is the last row-2 group to go: it carries the running cost. */
+const RANK2_TELEMETRY = 95
 
 /** Identity facts the runner resolves once at mount; empty strings drop out. */
 export interface StatusFacts {
@@ -383,10 +390,12 @@ export interface StatusFacts {
   permission: string
   /** dscode: full session identity the footer telemetry reads its live metrics from. */
   fullSessionId: string
-  /** dscode: the live metrics segment (tps / context / spend / cache) pinned right of row 2. */
+  /** dscode: the live metrics cluster (tps / context / spend / cache) that closes row 2. */
   telemetry?: string
-  /** dscode: the resolved reasoning effort, shown beside the model on row 1 and in the footer header. */
+  /** dscode: the resolved reasoning effort, shown beside the model on row 1. */
   effort?: string
+  /** dscode: the effective skill-catalog size; undefined until the first catalog read settles. */
+  skills?: number
 }
 
 /**
@@ -410,7 +419,7 @@ function safe(text: string): string {
 
 /** Dim junction separator span inside a cluster. */
 function sep(): StatusSpan {
-  return { text: ' ｜ ', tone: 'label' }
+  return { text: ' · ', tone: 'label' }
 }
 
 /** Total visible columns of a span list (separators ride inside the spans). */
@@ -428,26 +437,13 @@ function joinWidth(parts: readonly number[], separator: number): number {
   return width + separator * (parts.length - 1)
 }
 
-/** Build every candidate group/span with its drop rank and item id. */
-/** dscode: the footer telemetry header — `provider: model @ effort`. */
-export function dscodeFooterHeader(facts: StatusFacts, stats: { reasoningEffort?: string }): string {
-  const raw = typeof facts.model === 'string' ? facts.model : ''
-  if (raw === '') return ''
-  const cut = raw.indexOf('/')
-  const provider = cut > 0 ? raw.slice(0, cut) : ''
-  const model = cut > 0 ? raw.slice(cut + 1) : raw
-  const effort = typeof facts.effort === 'string' && facts.effort !== '' ? facts.effort : (typeof stats.reasoningEffort === 'string' ? stats.reasoningEffort : '')
-  return (provider === '' ? model : provider + ': ' + model) + (effort === '' ? '' : ' @ ' + effort)
-}
-
-/** dscode: row 1's identity lead — the session title, else the model and its effort. */
-function dscodeStatusLead(facts: StatusFacts, model: string, effort: string): string {
+/** dscode: row 1's identity lead — the session title, else the session id. */
+function dscodeStatusLead(facts: StatusFacts): string {
   const source = facts.title !== undefined && facts.title !== '' ? facts.title : facts.sessionId
-  const title = source === undefined || source === '' ? '' : truncateColumns(safe(source), TITLE_BUDGET)
-  if (title !== '') return title
-  return effort === '' ? model : model + ' ｜ ' + effort
+  return source === undefined || source === '' ? '' : truncateColumns(safe(source), TITLE_BUDGET)
 }
 
+/** Build every candidate group/span with its drop rank and item id. */
 function buildCandidates(
   facts: StatusFacts,
   stats: TranscriptStats,
@@ -470,11 +466,15 @@ function buildCandidates(
     identity.push(span)
   }
   const model = safe(facts.model).split('/').at(-1) ?? ''
-  // dscode: row 1 leads with the session title (falling back to the model), and the
-  // full `provider: model @ effort` header rides the telemetry segment instead.
+  // dscode: row 1 names the session (title, else its id) and then the model with
+  // its effort, so row 2 stays free for the live figures.
   if ((model !== '' && enabled.has('model')) || enabled.has('title')) {
+    const lead = dscodeStatusLead(facts)
+    if (lead !== '') push({ text: lead, tone: 'model' })
+  }
+  if (model !== '' && enabled.has('model')) {
     const effort = safe(facts.effort ?? stats.reasoningEffort)
-    push({ text: dscodeStatusLead(facts, model, effort), tone: 'model' })
+    push({ text: effort === '' ? model : model + ' @ ' + effort, tone: 'accent' })
   }
   const cwd = safe(facts.cwd)
   if (cwd !== '' && enabled.has('cwd')) push({ text: cwd, tone: 'path' })
@@ -579,6 +579,28 @@ function buildCandidates(
     row2.push({ group: { spans: tokens }, rank: RANK_TOKENS, id: 'tokens' })
   }
 
+  // dscode: the catalog size the session actually sees, read from the live
+  // skills view, so the footer answers "how many skills are loaded" without
+  // opening /skills. Before the first read settles the figure keeps its
+  // columns as the `--` placeholder, like every other live figure.
+  if (enabled.has('skills')) {
+    row2.push({
+      group: {
+        spans: [
+          { text: t('status.label.skills') + ' ', tone: 'label' },
+          {
+            text: facts.skills === undefined
+              ? pendingValue(VALUE_WIDTH.count)
+              : padValue(String(facts.skills), VALUE_WIDTH.count),
+            tone: 'value',
+          },
+        ],
+      },
+      rank: RANK2_SKILLS,
+      id: 'skills',
+    })
+  }
+
   // dscode: the session title moved to row 1's identity lead (dscodeStatusLead),
   // so row 2 no longer carries it.
 
@@ -626,14 +648,21 @@ function buildCandidates(
   if (facts.plan && enabled.has('plan')) {
     row2.push({ group: { spans: [{ text: '⧉ plan', tone: 'accent' }] }, rank: RANK2_PLAN, id: 'plan' })
   }
+  // dscode: the live figures close row 2 as one ordinary left-hand group, so the
+  // row reads as a single cluster instead of a pinned right edge with a gap. It
+  // drops last: the running cost is the last thing the width may take away.
+  if (facts.telemetry !== undefined && facts.telemetry !== '') {
+    row2.push({ group: { spans: [{ text: facts.telemetry, tone: 'meta' }] }, rank: RANK2_TELEMETRY, id: 'telemetry' })
+  }
   return { left, right, badge, row2 }
 }
 
 /**
- * Compose the two-row footer layout under a column budget. Row 1 keeps model,
- * cwd, mode, branch, context, then the right-pinned permission badge and cycle
- * hint. It drops hint, context, and permission before ellipsizing identity.
- * Row 2 fits all secondary figures and state within its own budget.
+ * Compose the two-row footer layout under a column budget. Row 1 keeps the
+ * session identity, cwd, mode, branch, context, then the right-pinned permission
+ * badge and cycle hint. It drops hint, context, and permission before
+ * ellipsizing identity. Row 2 fits all secondary figures, the live telemetry
+ * cluster and state within its own budget.
  * @param facts - identity facts resolved by the runner.
  * @param stats - session figures folded from the durable log.
  * @param columns - usable columns for each row (before their left padding).
@@ -798,9 +827,7 @@ export function layoutStatusBar(
   // group drops first until the row fits or nothing is left. An empty row2 is
   // a valid state — the footer degrades back to a single status row.
   const row2Kept = [...orderedRow2]
-  // dscode: the telemetry segment owns row 2's right edge, so its width comes out
-  // of the left groups' budget first.
-  const row2Budget = Math.max(0, budget - 1 - (facts.telemetry ? visibleColumns(facts.telemetry) + 3 : 0))
+  const row2Budget = Math.max(0, budget - 1)
   const row2Width = (): number =>
     joinWidth(row2Kept.map(entry => spansWidth(entry.group.spans)), groupSeparator)
   while (row2Width() > row2Budget && row2Kept.length > 0) {
@@ -817,13 +844,13 @@ export function layoutStatusBar(
 
   return {
     row1: {
-      left: leftKept.map(entry => entry.group),
+      left: leftKept.map(entry => ({ ...entry.group, id: entry.id })),
       right: rightKept.map(entry => entry.span),
       hint,
     },
     row2: {
-      left: row2Kept.map(entry => entry.group),
-      right: facts.telemetry ? [{ text: facts.telemetry, tone: 'meta' as const }] : [],
+      left: row2Kept.map(entry => ({ ...entry.group, id: entry.id })),
+      right: [],
       hint: false,
     },
   }

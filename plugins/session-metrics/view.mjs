@@ -4,7 +4,7 @@ import { estimateCost, peakEmoji } from './pricing.mjs';
 import { balanceNow, trustedNow } from './balance.mjs';
 import { grokSubscriptionNow } from '../grok/billing.mjs';
 import { sessionAverageTps } from './rate.mjs';
-import { providerOfHeader } from '../providers/catalog.mjs';
+import { attributeCostByTurn, evaluateBudget, parseBudget } from './turns.mjs';
 let source;
 export function setMetricSource(next) { source = next; return () => { if (source === next) source = undefined; }; }
 export function summarize(rows, events = [], corrupt = false) {
@@ -43,7 +43,29 @@ export function summarize(rows, events = [], corrupt = false) {
     // OpenRouter reports cache reads only when there are some: a missing count is zero, not unknown.
     input += total; hit += u.cacheReadTokens ?? 0;
   }
-  return { cost, unknown, calls, pending, cache: input > 0 && !cacheUnknown ? Math.min(100, hit / input * 100) : null };
+  // Per-turn attribution needs the ledger's own rows (the backfilled history has
+  // no turn boundary), so it reads them directly instead of the merged map.
+  const attribution = attributeCostByTurn(rows, events);
+  return {
+    cost, unknown, calls, pending,
+    cache: input > 0 && !cacheUnknown ? Math.min(100, hit / input * 100) : null,
+    turns: attribution.turns,
+    lastTurn: attribution.lastTurn,
+    unattributed: attribution.unattributed,
+  };
+}
+
+/**
+ * Per-turn cost for one live session, straight from its ledger, keyed by the
+ * durable turn number. The /usage panel prices its turns with this: the token
+ * meter says what each turn billed, this says what it cost.
+ * @param id - the session id.
+ * @param events - the session's durable events, for the turn windows.
+ * @returns `{ turn, cost, calls, unknown }` per completed or running turn.
+ */
+export function turnCostsFor(id, events = []) {
+  const entries = id && process.env.DSH_HOME ? readMetrics(process.env.DSH_HOME, id).rows : [];
+  return attributeCostByTurn(entries, events).turns;
 }
 /**
  * Terminal columns of a string: East Asian wide characters (such as the cache label's
@@ -113,50 +135,77 @@ function figure(text, width) {
   return padding > 0 ? ' '.repeat(padding) + text : text;
 }
 
-export function formatFooter(metrics, context, columns = 80, rates, locale = 'en', header = '', provider = providerOfHeader(header) ?? 'deepseek-official') {
+export function formatFooter(metrics, context, columns = 80, rates, locale = 'en', provider = 'deepseek-official') {
   const label = key => t(locale, key);
   const ctx = figure(Number.isFinite(context) ? `${Math.round(context)}%` : '--', FIGURE.percent);
   const cache = figure(metrics.cache === null ? '--' : `${metrics.cache.toFixed(1)}%`, FIGURE.share);
-  // The balance belongs to the provider the header names; only DeepSeek's official route bills by a peak window.
+  // The balance belongs to the provider serving the route; only DeepSeek's official one bills by a peak window.
   const balance = balanceNow(provider);
   const spend = metrics.unknown && metrics.cost === 0 ? '--' : `$${metrics.cost.toFixed(2)}${metrics.unknown ? '+' : ''}${metrics.pending ? '…' : ''}`;
-  // The money pair is the one live figure left unpadded: its digits cross a
-  // column a handful of times per session, and reserving those columns would
-  // evict a per-second figure at the widths the footer actually runs at.
+  // The money is the one live figure whose digits are not reserved: they cross a
+  // column a handful of times per session, and reserving them would evict a
+  // per-second figure at the widths the footer actually runs at. A balance the
+  // provider cannot report is left out instead of parked as `$--`.
   const dollars = provider === 'grok' ? grokFooterFact(grokSubscriptionNow(), locale)
-    : `${spend} / ${balance === null ? '$--' : '$' + balance.toFixed(2)}${provider === 'deepseek-official' ? ' ' + peakEmoji(trustedNow()) : ''}`;
+    : spend + (balance === null ? '' : ' / $' + balance.toFixed(2)) + (provider === 'deepseek-official' ? ' ' + peakEmoji(trustedNow()) : '');
+  // The budget slot rides the money figure: it answers "how much of the session's
+  // limit is spent", which is a fact about the cost, not a second cost. A session
+  // with no limit renders exactly as before, so the footer only grows by choice.
+  const budget = metrics.budget;
+  const budgeted = budget === undefined || budget.limit === null ? ''
+    : `/${budget.limit.toFixed(2)}${budget.state === 'over' ? '⚠!' : budget.state === 'warn' ? '⚠' : ''}`;
+  const money = dollars + budgeted;
+  // The last completed turn is the one figure the whole-session total cannot
+  // give: `$1.23 / $9.86 · #12 $0.04` reads "the session so far, of which the
+  // last turn cost this". `+` marks a turn whose settled calls were not all
+  // priceable, the same mark the total uses.
+  const turn = metrics.lastTurn === undefined || !Number.isFinite(metrics.lastTurn.cost) ? ''
+    : `#${metrics.lastTurn.turn} $${metrics.lastTurn.cost.toFixed(2)}${metrics.lastTurn.unknown ? '+' : ''}`;
+  // Every figure reads value first and carries its own short qualifier, so the
+  // cluster stays scannable without a `label:` prefix in front of each number.
   const base = rates ? [
-    `${label('footer.current')}: ${figure(Number.isFinite(rates.current) ? '~' + rates.current.toFixed(1) : '--', FIGURE.rate)} tps`,
-    `${label('footer.average')}: ${figure(Number.isFinite(rates.average) ? rates.average.toFixed(1) : '--', FIGURE.rate)} tps`,
-    `${label('footer.context')}: ${ctx}`, dollars, `${label('footer.cache')}: ${cache}`,
-  ] : [`${label('footer.context')}: ${ctx}`, dollars, `${label('footer.cache')}: ${cache}`];
-  // Narrow terminals shed the quietest figures first: average, current, context. The
-  // model header then falls back to its bare `model @ effort` form, then context goes,
-  // and only then the header itself — the running cost is the last thing standing.
-  const drops = rates ? [1, 0, 2, 4] : [0, 2];
-  const offset = header === '' ? 0 : 1;
-  const parts = header === '' ? base : [header, ...base];
-  const short = header.replace(/^[^:]+: /, '');
-  const heads = header === '' ? [''] : short === header ? [header] : [header, short];
-  const render = ({ omit, head }) => parts
-    .map((part, index) => (index === 0 && header !== '' ? head : part))
-    .filter((part, index) => part !== '' && !omit.has(index))
-    .join(' | ');
+    `${figure(Number.isFinite(rates.current) ? '~' + rates.current.toFixed(1) : '--', FIGURE.rate)} tps`,
+    `${figure(Number.isFinite(rates.average) ? rates.average.toFixed(1) : '--', FIGURE.rate)} tps ${label('footer.average')}`,
+    `${ctx} ${label('footer.context')}`, money, `${cache} ${label('footer.cache')}`,
+  ] : [`${ctx} ${label('footer.context')}`, money, `${cache} ${label('footer.cache')}`];
+  // The slot is reserved even when no turn has cost anything yet: the drop
+  // ladder's indices are fixed against this array, and an unfilled slot renders
+  // as '' (skipped by `render`) exactly like the absent figure would.
+  base.splice(rates ? 3 : 1, 0, turn);
+  // Narrow terminals shed the quietest figures first: the last turn, then
+  // average, current and context, and only then the cache. The running cost is
+  // the last thing standing, and its slot is index 4 (or 2 without rates) now
+  // that the turn slot holds index 3 (or 1) open.
+  const drops = rates ? [3, 1, 0, 2, 5, 4] : [1, 0, 3, 2];
+  const render = omit => base.filter((part, index) => part !== '' && !omit.has(index)).join(' · ');
   for (let dropped = 0; dropped <= drops.length; dropped++) {
-    const omit = new Set(drops.slice(0, dropped).map(index => index + offset));
-    for (const head of heads) {
-      const value = render({ omit, head });
-      if (displayWidth(value) <= columns) return value;
-    }
+    const value = render(new Set(drops.slice(0, dropped)));
+    if (displayWidth(value) <= columns) return value;
   }
-  const floor = render({ omit: new Set(drops.map(index => index + offset)), head: '' });
+  const floor = render(new Set(drops));
   let clipped = '';
   for (const char of floor) { if (displayWidth(clipped + char) > columns) break; clipped += char; }
   return clipped;
 }
+/**
+ * The session's recorded spend and whether any of it is unpriceable, for a host
+ * that must decide something (the budget gate) rather than only render it. Same
+ * ledger and same rules as {@link footerFor}, so the figure the gate compares
+ * and the figure the footer shows can never disagree.
+ */
+export function sessionSpend(id) {
+  try {
+    const ledger = id && process.env.DSH_HOME ? readMetrics(process.env.DSH_HOME, id) : { rows: [], corrupt: false };
+    const data = id ? source?.(id) : undefined;
+    const summary = summarize(ledger.rows, data?.events ?? [], ledger.corrupt);
+    return { cost: summary.cost, unknown: summary.unknown, pending: summary.pending };
+  } catch { return { cost: 0, unknown: true, pending: 0 }; }
+}
+
 /** Per-events memo: the status line renders up to once a second, and summarize/average are O(events). */
 const footerCache = new WeakMap();
-export function footerFor(id, stats, columns, header = '', locale = 'en') {
+export function footerFor(id, stats, columns, provider = 'deepseek-official', locale = 'en') {
+  const limit = parseBudget(process.env.DSCODE_SESSION_BUDGET_USD);
   try {
     const data = id ? source?.(id) : undefined;
     const ledger = id && process.env.DSH_HOME ? readMetrics(process.env.DSH_HOME, id) : { rows: [], corrupt: false };
@@ -170,6 +219,9 @@ export function footerFor(id, stats, columns, header = '', locale = 'en') {
     const capacity = data?.capacity ?? stats.contextWindow;
     const average = fresh ? hit.average : sessionAverageTps(events);
     if (events.length > 0 && !fresh) footerCache.set(events, { key: ledger.rows, length: events.length, tail, summary, average });
-    return formatFooter(summary, Number.isFinite(used) && capacity > 0 ? used / capacity * 100 : undefined, columns, { current: data?.currentTps, average }, locale, header);
-  } catch { return formatFooter({ cost: 0, unknown: true, cache: null }, undefined, columns, { current: null, average: null }, locale, header); }
+    // The budget comes from the environment for this process only: it is a
+    // per-machine spending guard, not a session property worth persisting.
+    const budget = limit === null ? undefined : evaluateBudget(summary.cost, limit);
+    return formatFooter({ ...summary, ...(budget === undefined ? {} : { budget }) }, Number.isFinite(used) && capacity > 0 ? used / capacity * 100 : undefined, columns, { current: data?.currentTps, average }, locale, provider);
+  } catch { return formatFooter({ cost: 0, unknown: true, cache: null }, undefined, columns, { current: null, average: null }, locale, provider); }
 }

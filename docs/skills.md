@@ -19,7 +19,7 @@ Each root is scanned only for its **top-level** `<name>/SKILL.md` or `<name>.md`
 
 ## Upward discovery (ancestor mode)
 
-Off by **default**. When enabled, the following three roots in **every** directory between the project root and home are registered at rank 300:
+On by **default**. The following three roots in **every** directory between the working directory and home are registered at rank 300:
 
 ```
 <each level>/.dsh/skills
@@ -30,7 +30,7 @@ Off by **default**. When enabled, the following three roots in **every** directo
 For example `~/Workspace/.dsh/skills` becomes visible to every project under `~/Workspace`. Rules:
 
 - **Only headers enter the catalog**; bodies stay lazy-loaded, exactly like a project-local skill.
-- **Nearest wins**: a directory closer to the cwd registers first. Rank 300 is below the project root's 100/200 and above the user roots' 400/500, so a project skill beats an ancestor one and an ancestor beats a user-level one.
+- **Nearest wins**: a directory closer to the cwd registers first. Rank 300 is below the project root's 100/200 and above the user roots' 400/500, so a project or ancestor skill beats a user-level one, and within rank 300 the roots are registered nearest-first, so a nearer ancestor beats a farther one. The single inversion is a directory between the working directory and the project root (for example `repo/src` while the session runs in it and `repo` is the project root): it ranks 300 while the project root's own `.dsh/skills` and `.agents/skills` rank 100/200, so the project root's definition of a duplicate name wins there.
 - A project root's `.dsh/skills` and `.agents/skills` are the provider's own roots and are **not registered twice**; a project root's `.claude/skills` is not one of the provider's roots, so it is included.
 - **Nothing above home is read**; when the cwd is not under home (for example `/Volumes/...`) no ancestor root is added.
 - The list is resolved **once at startup**: `/cd` inside a session, or creating an ancestor skill directory, needs dscode to be reopened before it takes effect (adding, changing and removing a skill file itself still has a watcher).
@@ -41,14 +41,14 @@ Environment variable `DSCODE_SKILL_ANCESTORS`:
 
 | Value | Result |
 |---|---|
-| unset, empty, `0`, `off`, `false` | off |
-| any other value (`1`, `true`, `on`, `yes`…, case-insensitive) | on |
+| unset, empty, or any unrecognised value | on |
+| `0`, `off`, `false`, `no`, `none`, `disable` (case-insensitive) | off |
 
-How to set it:
+How to turn it off:
 
 | Way | Command / location | Scope |
 |---|---|---|
-| One run | `DSCODE_SKILL_ANCESTORS=1 dscode` | this launch |
+| One run | `DSCODE_SKILL_ANCESTORS=0 dscode` | this launch |
 | Persistent (source / tar) | the repository's or installation's `.env` (already gitignored) | every later launch |
 | Persistent (npm / Hub) | `$DSCODE_HOME/.env`, by default `~/.local/share/dscode-hub/.env` | every later launch |
 
@@ -72,10 +72,10 @@ The byte budget keeps upstream's `maxBytes: 65536`: over budget, a wider file is
 | `/skills <name>` | description and effective path, without injecting the body |
 | `/skills conflicts` | same-name overrides and their effective source |
 
-To confirm ancestor mode is active, run `/skills` after startup: entries from an ancestor directory have `source` `custom`, and `/skills <name>` gives the file path directly.
+To confirm ancestor mode is active, run `/skills` after startup: entries from an ancestor directory have `source` `custom`, and `/skills <name>` gives the file path directly. The footer's `skills` figure carries the same catalog's size and updates with it (`/statusline` toggles the item); it stays `--` until the first catalog read settles.
 
 ## Limits
 
-- Ancestor mode is off by default: ancestor directories are outside version control and cannot be reviewed with the project, and directory entries live in the context permanently, so a wider scope costs more.
+- Ancestor discovery is on by default, so the content-cost of the wider scope and the fact that ancestor directories sit outside version control are the default experience; set `DSCODE_SKILL_ANCESTORS=0` to go back to the project and user roots alone.
 - The ancestor list is fixed at startup and does not follow `/cd`.
 - `/skills conflicts` cannot enumerate hidden candidates from a runtime or a remote provider.

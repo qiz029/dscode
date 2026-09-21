@@ -54,13 +54,12 @@ import { DEFAULT_TERMINAL_TITLE, sanitizeTerminalTitle, terminalTitleSequence, u
 import { settledEntryCount, type TranscriptEntry } from './render/projection.ts'
 import { imeCursorRowsUp, useImeCursorAnchor } from './render/ime-cursor.ts'
 import { readClipboardImage } from './dscode/clipboard-image/index.mjs'
-import { dscodeChatLines } from './dscode/chat.ts'
+import { createChatLinesCache, dscodeChatLines } from './dscode/chat.ts'
 import { readFileSync } from 'node:fs'
 import { FOOTER_FIGURE_RESERVE, footerFor as dscodeFooterFor } from '../../../plugins/session-metrics/view.mjs'
 import { newerVersion as dscodeNewerVersion } from '../../../plugins/tui-tools/update.mjs'
 import { languageName as dscodeLanguageName, normalizeLanguage as dscodeNormalizeLanguage, t as dscodeMessage } from '../../../plugins/i18n/messages.mjs'
 import { dscodeTelemetryNodes } from './dscode/telemetry.ts'
-import { dscodeFooterHeader } from './render/status.ts'
 import { dscodePadEnd, welcomeArtRows, welcomePath, WELCOME_ART, WELCOME_ART_SMALL } from './dscode/welcome.ts'
 import { TETRIS_TICK_MS as DSCODE_TETRIS_TICK_MS, TETRIS_WIDTH as DSCODE_TETRIS_WIDTH, tetrisFrame as dscodeTetrisFrame } from '../../../plugins/compaction/tetris.mjs'
 import {
@@ -185,6 +184,7 @@ import type { SkillsView, SkillRow } from './skills.ts'
 import { isPathLikeMentionQuery, type MentionCandidate } from './mentions.ts'
 import type { SubagentFeedView, SubagentRow } from './subagents.ts'
 import { createTranscriptStore } from './store.ts'
+import type { CommunicationView } from './communication.ts'
 import type { BtwFeed, BtwRun } from './btw.ts'
 import type { UsageView } from './render/usage.ts'
 import { AgentsPanel, editQuery, EffortPanel as NativeEffortPanel, HistoryPanel, JobsPanel, ModePanel, PermissionPanel, PluginPanel, ResumePanel, ReviewPickerPanel, SchedulePanel, SearchPanel, StatuslinePanel, runClock, SubagentPanel, UsagePanel, type JobRow, type SearchRow } from './kernel-panels.ts'
@@ -250,7 +250,6 @@ const SYNCHRONIZED_UPDATE_BEGIN = '\x1b[?2026h'
 const SYNCHRONIZED_UPDATE_END = '\x1b[?2026l'
 import {
   layoutStatusBar,
-  padValue,
   parseStatuslineItems,
   statusCycleHint,
   STATUS_GROUP_SEPARATOR,
@@ -328,7 +327,7 @@ import {
 } from './render/editor.ts'
 
 /** Visual priority for one bounded local notice. */
-export type NoticeTone = 'info' | 'warning' | 'error'
+export type NoticeTone = 'info' | 'warning' | 'error' | 'relay'
 
 /** One source of truth for TUI-owned slash commands in completion and `/help`. */
 /** One TUI-owned slash command: label plus its i18n description key. */
@@ -389,7 +388,24 @@ export type QueueMutation =
   | { readonly kind: 'edit'; readonly text: string }
   | { readonly kind: 'steer' }
 
-/** Props the runner hands the app; callbacks stay owned by the runner. */
+/** dscode: one prompt the budget gate stopped, waiting on the confirmation panel. */
+export interface BudgetSubmission {
+  readonly decision: BudgetDecision
+  readonly text: string
+  readonly images: readonly ContentBlock[]
+  readonly mode: 'followup' | 'steer'
+}
+
+/** dscode: the budget gate's verdict for the prompt the user just submitted. */
+export interface BudgetDecision {
+  /** Cost already recorded for this session, in dollars. */
+  spent: number
+  /** The session limit `DSCODE_SESSION_BUDGET_USD` set, in dollars. */
+  limit: number
+  /** `spent / limit` as a whole percentage; may exceed 100. */
+  percent: number
+}
+
 /** dscode: what a /model pick would cost the live context; measured before switching. */
 export interface DscodeCompactionPreview {
   compacts?: boolean
@@ -401,6 +417,7 @@ export interface DscodeCompactionPreview {
   overflows?: boolean
 }
 
+/** Props the runner hands the app; callbacks stay owned by the runner. */
 export interface AppProps {
   /** Event-fed transcript store for the live session. */
   store: TranscriptStore
@@ -410,6 +427,8 @@ export interface AppProps {
   questions: QuestionStore
   /** Live subagent activity feed (child sessions of the current root). */
   subagents: SubagentFeedView
+  /** dscode: live cross-session communication, folded by the runner. */
+  communication?: CommunicationView
   /** Live side-question runs (/btw), each with its own transcript. */
   btw: BtwFeed
   /** Run one side question beside this session, immediately and out of band. */
@@ -577,7 +596,17 @@ export interface AppProps {
   /** Run the launcher's aligned update; streams sanitized lines; resolves with the exit code. */
   applyUpdate: (onLine: (line: string) => void, plan?: { readonly dshSpec: string; readonly codeSpec: string; readonly pluginSpecs: readonly string[] }) => Promise<number>
   /** Registers the app's notice channel with the runner (called once on mount). */
-  onBridgeReady: (bridge: { notify: (text: string, tone?: NoticeTone) => void }) => void
+  onBridgeReady: (bridge: {
+    notify: (text: string, tone?: NoticeTone) => void
+    /** dscode: park a submission on the budget confirmation panel (undefined clears it). */
+    confirmBudget: (pending: { decision: BudgetDecision; text: string; images: readonly ContentBlock[]; mode: 'followup' | 'steer' } | undefined) => void
+  }) => void
+  /**
+   * dscode: the user approved an over-budget turn, so the rest of this session
+   * runs without asking again. Cancelling never calls this — the next prompt
+   * asks again instead of passing silently.
+   */
+  dscodeAcknowledgeBudget?: (sessionKey: string) => void
   /** Ordered enabled status items (/statusline config); the runner owns persistence. */
   statusline: readonly string[]
   /** Persist a new statusline item set; the runner surfaces IO failures as notices. */
@@ -788,6 +817,25 @@ function dscodeActivity(entries: readonly TranscriptEntry[], streaming: boolean)
     + (description ? ' · ' + truncateColumns(singleLineText(description), 56) : '')
 }
 
+/**
+ * dscode: what cross-session communication is doing, or undefined when none is.
+ * A send in flight and a request still awaiting its answer outrank the ordinary
+ * tool activity, because the turn is blocked on another session either way.
+ */
+function dscodeCommunicationActivity(view: CommunicationView): string | undefined {
+  const waiting = view.waiting.at(-1)
+  if (waiting !== undefined) return '⇄ ' + dscodeT('communication.waiting', { peer: shortPeer(waiting.peer) })
+  const sending = [...view.rows].reverse().find(row => row.direction === 'sent' && row.pending)
+  if (sending !== undefined) return '⇄ ' + dscodeT('communication.sending', { peer: shortPeer(sending.peer) })
+  return undefined
+}
+
+/** Bounded peer label: a full session id is too long for one activity row. */
+function shortPeer(peer: string): string {
+  const label = peer.startsWith('session:') ? `session ${peer.slice('session:'.length, 'session:'.length + 8)}` : peer
+  return label.length > 32 ? `${label.slice(0, 31)}…` : label
+}
+
 // dscode: the compaction indicator — a small scripted Tetris bot that lines each
 // piece up, drops it and clears full rows, the way compaction clears older history.
 function dscodeTetrisCells(row: string, palette: ReturnType<typeof getPalette>, key: string): readonly ReactElement[] {
@@ -843,7 +891,7 @@ export function DscodeCompactionLine({ since, rows, animated = true }: { since: 
   )
 }
 
-export function DscodeActivityLine({ entries, streaming, since, animated = true }: { entries: readonly TranscriptEntry[]; streaming: boolean; since: number; animated?: boolean }): ReactElement {
+export function DscodeActivityLine({ entries, streaming, since, animated = true, communication }: { entries: readonly TranscriptEntry[]; streaming: boolean; since: number; animated?: boolean; communication?: CommunicationView }): ReactElement {
   const columns = useStdout().stdout?.columns ?? 80
   const tick = useFrames(animated ? 100 : 1000)
   const elapsed = since > 0 ? Math.max(0, Date.now() - since) : 0
@@ -854,7 +902,8 @@ export function DscodeActivityLine({ entries, streaming, since, animated = true 
   const spinner = animated
     ? dscodeSpinnerCells(tick, palette)
     : { left: { text: ' ', color: palette.brandMid as readonly number[] }, flake: palette.brandBright as readonly number[], right: { text: ' ', color: palette.brandMid as readonly number[] } }
-  const label = truncateColumns(dscodeActivity(entries, streaming), Math.max(1, columns - 9 - visibleColumns(suffix)))
+  const crossSession = communication === undefined ? undefined : dscodeCommunicationActivity(communication)
+  const label = truncateColumns(crossSession ?? dscodeActivity(entries, streaming), Math.max(1, columns - 9 - visibleColumns(suffix)))
   return createElement(
     Box,
     { paddingX: 2 },
@@ -864,7 +913,7 @@ export function DscodeActivityLine({ entries, streaming, since, animated = true 
       createElement(Text, { color: inkColor(spinner.left.color as never) }, spinner.left.text),
       createElement(Text, { color: inkColor(spinner.flake as never) }, '❄'),
       createElement(Text, { color: inkColor(spinner.right.color as never) }, spinner.right.text),
-      createElement(Text, { color: inkColor(getPalette().brandBright) }, ' ' + label),
+      createElement(Text, { color: inkColor(crossSession === undefined ? getPalette().brandBright : getPalette().steered) }, ' ' + label),
       createElement(Text, { color: inkColor(getPalette().dim) }, suffix),
     ),
   )
@@ -1662,15 +1711,18 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
     const timer = setInterval(() => dscodeRefreshMetrics(n => n + 1), 1000)
     return () => clearInterval(timer)
   }, [])
-  // dscode: the telemetry segment carries the header and only appears once the
-  // terminal can seat it; below that the identity row keeps the model. Its
-  // slot is padded to the width it was laid out for, so the live figures
-  // decide the text the row shows without ever changing the row's geometry.
+  // dscode: the live figures close row 2 as one left-hand cluster and only appear
+  // once the terminal can seat them; row 1 names the model itself. The cluster is
+  // laid out against the same width budget as before, and its own ladder decides
+  // which figures fit.
   const telemetryWidth = Math.max(1, Math.min(columns - 8, Math.max(40, Math.floor(columns * 0.8) - 4) + FOOTER_FIGURE_RESERVE))
+  // The figures belong to the provider serving the route (`provider/model`).
+  const slash = facts.model.indexOf('/')
+  const provider = slash > 0 ? facts.model.slice(0, slash) : 'deepseek-official'
   const telemetry = columns >= 48
-    ? dscodeFooterFor(facts.fullSessionId, stats, telemetryWidth, dscodeFooterHeader(facts, stats), getLanguage())
+    ? dscodeFooterFor(facts.fullSessionId, stats, telemetryWidth, provider, getLanguage())
     : ''
-  facts = { ...facts, telemetry: telemetry === '' ? '' : padValue(telemetry, telemetryWidth) }
+  facts = { ...facts, telemetry }
   // Flowing-theme busy flow: the identity cluster's live dot cycles the
   // anchor walk while a turn runs; static themes never start the timer.
   const flow = themeFlow()
@@ -1699,6 +1751,7 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
     facts.goal?.phase,
     facts.goal?.rounds,
     facts.goal?.max,
+    facts.skills,
     stats,
     busy,
     columns,
@@ -1720,20 +1773,17 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
       if (groupIndex > 0) {
         leftParts.push(createElement(Text, { key: key + 'gs' + groupIndex, color: inkColor(getPalette().dim) }, STATUS_GROUP_SEPARATOR))
       }
+      const telemetryGroup = group.id === 'telemetry'
       group.spans.forEach((span, spanIndex) => {
+        const spanKey = key + 'g' + groupIndex + 's' + spanIndex
         leftParts.push(createElement(
           Text,
-          { key: key + 'g' + groupIndex + 's' + spanIndex, wrap: 'truncate-end', ...statusToneProps(span.tone, flowMs) },
-          span.text,
+          { key: spanKey, wrap: 'truncate-end', ...statusToneProps(span.tone, flowMs) },
+          telemetryGroup ? dscodeTelemetryNodes(span.text, spanKey) : span.text,
         ))
       })
     })
     const rightParts: ReactElement[] = []
-    // dscode: row 2 joins its left figures to the right-pinned telemetry with a
-    // quieter rule than the cluster separator.
-    if (key === 's2' && row.left.length > 0 && row.right.length > 0) {
-      rightParts.push(createElement(Text, { key: key + 'divider', color: inkColor(getPalette().dim) }, '｜ '))
-    }
     // dscode: the cycle hint rides LEFT of the right cluster, so the
     // right-anchored badge holds its columns whether or not the hint is
     // painted; layoutStatusBar reserves the hint's width in both states.
@@ -1750,7 +1800,7 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
       rightParts.push(createElement(
         Text,
         { key: key + 'r' + index, wrap: 'truncate-end', ...statusToneProps(span.tone, flowMs) },
-        key === 's2' && index === 0 ? dscodeTelemetryNodes(span.text, key + 'r' + index) : span.text,
+        span.text,
       ))
     })
     // Each row already fits the column budget; truncate-end stays as the
@@ -1786,12 +1836,17 @@ function NoticeLine({ text, tone, columns }: {
   tone: NoticeTone
   columns: number
 }): ReactElement {
+  // dscode: `relay` is cross-session traffic. It takes the violet the interface
+  // reserves for steered/queued interactive input plus its own glyph, so it is
+  // never mistaken for the session's own tool or shell output.
   const color = tone === 'error'
     ? getPalette().error
     : tone === 'warning'
       ? getPalette().warn
-      : getPalette().brandBright
-  const mark = tone === 'error' ? '⨯' : tone === 'warning' ? '!' : '•'
+      : tone === 'relay'
+        ? getPalette().steered
+        : getPalette().brandBright
+  const mark = tone === 'error' ? '⨯' : tone === 'warning' ? '!' : tone === 'relay' ? '⇄' : '•'
   return createElement(
     Box,
     { paddingLeft: 2 },
@@ -3495,6 +3550,43 @@ function ProviderDiscoveryPanel({ target, baseURL, apiKey, configured, discover,
     createElement(PanelGap, { visible: viewport.gapRows > 0 }),
     createElement(Text, { color: inkColor(getPalette().dim), wrap: 'truncate-end' }, truncateColumns(t('panel.discovery.footer'), viewport.contentColumns)),
   )
+}
+
+/**
+ * dscode: the budget gate. The runner checks the session's recorded spend
+ * against `DSCODE_SESSION_BUDGET_USD` before it delivers a prompt and hands the
+ * submission here instead of sending it; the user decides whether the turn
+ * still runs. It deliberately mirrors the compaction confirmation (`y`/`n`/Esc)
+ * so the two stops share one reflex, and it never sends the prompt itself — the
+ * runner owns delivery, this panel only answers.
+ */
+export function DscodeBudgetConfirmPanel({ decision, confirm, back }: {
+  decision: { spent: number; limit: number; percent: number }
+  confirm: () => void
+  back: () => void
+}) {
+  const stdout = useStdout().stdout
+  const viewport = panelViewport(stdout?.columns ?? 80, stdout?.rows ?? 30)
+  useStableInput((input, key) => {
+    if (key.escape || input === 'n') { back(); return }
+    if (input === 'y') confirm()
+  }, true)
+  const palette = getPalette()
+  const values = {
+    spent: '$' + decision.spent.toFixed(2),
+    limit: '$' + decision.limit.toFixed(2),
+    percent: String(Math.round(decision.percent)) + '%',
+  }
+  const title = dscodeT('budget.confirm.title', values)
+  const hint = dscodeT('budget.confirm.hint')
+  if (viewport.maxHeight === 0 || viewport.compact) return createElement(Text, { wrap: 'truncate-end' }, truncateColumns(title + ' · ' + hint, viewport.contentColumns))
+  const body = [dscodeT('budget.confirm.spent', values), dscodeT('budget.confirm.next', values)]
+    .map((text, index) => createElement(Text, { key: 'body' + index, color: index === 0 ? void 0 : inkColor(palette.dim), wrap: 'truncate-end' }, truncateColumns('  ' + text, viewport.contentColumns)))
+    .slice(0, viewport.bodyRows)
+  return createElement(Box, { flexDirection: 'column', width: viewport.outerColumns, paddingX: 1, borderStyle: 'round', borderColor: inkColor(palette.warn) },
+    createElement(Text, { color: inkColor(palette.warn), bold: true, wrap: 'truncate-end' }, truncateColumns(title, viewport.contentColumns)),
+    createElement(PanelGap, { visible: viewport.gapRows > 0 }), ...body, createElement(PanelGap, { visible: viewport.gapRows > 0 }),
+    createElement(Text, { color: inkColor(palette.dim), wrap: 'truncate-end' }, truncateColumns(hint, viewport.contentColumns)))
 }
 
 /** Bounded destructive-action confirmation for credential or provider removal. */
@@ -6297,6 +6389,12 @@ export function App(props: AppProps): ReactElement {
   // dscode: the email inbox owns the surface while it is open; a picked message
   // steers into the running turn (or starts one) and closes the panel.
   const [emailOpen, setEmailOpen] = useState(false)
+  /**
+   * dscode: a submission the budget gate stopped. The runner parks it here
+   * instead of delivering it; the panel's `y` hands the exact line back, and
+   * `n`/Esc clears it without sending. Only one prompt waits at a time.
+   */
+  const [budgetPending, setBudgetPending] = useState<BudgetSubmission | undefined>(undefined)
   const gmail = useMemo(() => dscodeCreateGmailConnector(), [])
   const imap = useMemo(() => dscodeCreateImapConnector(), [])
   useEffect(() => {
@@ -6318,6 +6416,9 @@ export function App(props: AppProps): ReactElement {
     setEmailOpen(false)
     setBtwOpen(false)
     setBtwSelected(undefined)
+    // A parked prompt belongs to the session that was over budget; carrying it
+    // across a switch would deliver the old session's text into the new one.
+    setBudgetPending(undefined)
   }, [props.sessionKey])
   // The stores are closure-backed singletons whose methods never touch `this`,
   // but a bare method reference still detaches it from its receiver. One stable
@@ -6347,10 +6448,12 @@ export function App(props: AppProps): ReactElement {
   // process-stable, so one callback per view identity is enough.
   const readDescriptors = useCallback(() => props.commands.descriptors, [props.commands])
   const readSkills = useCallback(() => props.skills.rows, [props.skills])
+  const readSkillCount = useCallback(() => props.skills.count, [props.skills])
   const subscribeCommands = useCallback((listener: () => void) => props.commands.subscribe(listener), [props.commands])
   const subscribeSkills = useCallback((listener: () => void) => props.skills.subscribe(listener), [props.skills])
   const descriptors = useSyncExternalStore(subscribeCommands, readDescriptors)
   const skills = useSyncExternalStore(subscribeSkills, readSkills)
+  const skillCount = useSyncExternalStore(subscribeSkills, readSkillCount)
   const [modelLabel, setModelLabel] = useState(props.model)
   const [modelOpen, setModelOpen] = useState(false)
   /** Nested /model stages; only one owns terminal input at a time. */
@@ -6468,7 +6571,7 @@ export function App(props: AppProps): ReactElement {
   }, [])
 
   useEffect(() => {
-    props.onBridgeReady({ notify })
+    props.onBridgeReady({ notify, confirmBudget: setBudgetPending })
   }, [])
   useEffect(() => {
     if (!modelOpen) return
@@ -6645,8 +6748,8 @@ export function App(props: AppProps): ReactElement {
   // panel keypress.
   const inputActive = deleteConfirmId !== undefined
     ? !approvalPending && !questionPending
-    : !emailOpen && !modelOpen && !helpOpen && !modeOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
-  const transcriptVisible = !btwOpen && !emailOpen && !modelOpen && !helpOpen && !modeOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
+    : !emailOpen && !modelOpen && !helpOpen && !modeOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && budgetPending === undefined && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
+  const transcriptVisible = !btwOpen && !emailOpen && !modelOpen && !helpOpen && !modeOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && budgetPending === undefined && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
 
   // Human questions outrank local inspectors. Close the lower modal instead
   // of leaving an approval/question visible but keyboard-locked behind it.
@@ -6812,13 +6915,18 @@ export function App(props: AppProps): ReactElement {
   // session title; cleared on unmount so the host shell regains its default.
   const tabTitle = view.title === '' ? DEFAULT_TERMINAL_TITLE : view.title
   useTerminalTitle(tabTitle)
+  // dscode: the live region is re-rendered for every event, but an entry that
+  // did not change keeps its object identity, so its wrapped lines are reused
+  // instead of re-flowed per frame. Only the streaming text (view.streaming)
+  // changes between those frames, and it is rendered outside this list.
+  const chatLines = useMemo(() => createChatLinesCache(), [])
   const allLiveLines = useMemo(
     () => view.entries.slice(settled).flatMap(
       // Width shrinks with the real terminal (no 10-column floor: on a
       // narrower terminal the floor silently overflowed every row).
-      entry => dscodeChatLines(entry, Math.max(1, terminalColumns - 2), showReasoning),
+      entry => chatLines(entry, Math.max(1, terminalColumns - 2), showReasoning),
     ),
-    [view.entries, settled, terminalColumns, showReasoning],
+    [view.entries, settled, terminalColumns, showReasoning, chatLines],
   )
   // Reserve the same stream slice from the moment a turn becomes busy. This
   // keeps the first thinking frame from changing the dynamic-tree geometry
@@ -6866,7 +6974,7 @@ export function App(props: AppProps): ReactElement {
   const auditedReasoningRows = liveAudit.allocation.reasoning
   const auditedAnswerRows = liveAudit.allocation.answer
   const inspectorVisible = verboseOpen && !approvalPending && !questionPending
-  const modalVisible = emailOpen || modelOpen || helpOpen && modeOpen || permissionOpen || resumeOpen || pluginOpen || updateOpen || scheduleOpen || jobsOpen || statuslineOpen || themeOpen || languageOpen || historyOpen || queueOpen || agentsOpen || subagentOpen || todosOpen || usageOpen || inspectorVisible || diffView !== undefined || reviewPickerOpen || approvalPending || questionPending
+  const modalVisible = budgetPending !== undefined || emailOpen || modelOpen || helpOpen && modeOpen || permissionOpen || resumeOpen || pluginOpen || updateOpen || scheduleOpen || jobsOpen || statuslineOpen || themeOpen || languageOpen || historyOpen || queueOpen || agentsOpen || subagentOpen || todosOpen || usageOpen || inspectorVisible || diffView !== undefined || reviewPickerOpen || approvalPending || questionPending
   // The surface that currently owns the keyboard, named in the frozen band:
   // an empty composer under a panel must not advertise typing it cannot
   // accept — every key actually feeds the panel (which may or may not
@@ -7413,6 +7521,18 @@ export function App(props: AppProps): ReactElement {
         onClose: () => setQueueOpen(false),
       })
       : undefined,
+    budgetPending !== undefined
+      ? createElement(DscodeBudgetConfirmPanel, {
+        decision: budgetPending.decision,
+        confirm: () => {
+          const parked = budgetPending
+          setBudgetPending(undefined)
+          props.dscodeAcknowledgeBudget?.(props.sessionKey)
+          props.dispatch(parked.text, parked.images, props.sessionKey)
+        },
+        back: () => setBudgetPending(undefined),
+      })
+      : undefined,
     createElement(QuestionBar, { store: props.questions, snapshot: questionSnapshot, locked: false }),
     createElement(ApprovalBar, { snapshot: approvalSnapshot, locked: questionPending, notify, interrupt: props.interrupt, summarize: questionPending }),
     effortFor !== undefined ? undefined : modelSurface,
@@ -7847,6 +7967,7 @@ export function App(props: AppProps): ReactElement {
           permission: view.permission !== '' ? view.permission : props.permission,
           sandbox: view.sandbox,
           goal: view.goal === undefined ? undefined : { phase: view.goal.phase, rounds: view.goal.rounds, max: view.goal.max },
+          skills: skillCount,
         },
         stats: view.stats,
         busy,

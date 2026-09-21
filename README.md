@@ -55,9 +55,9 @@ The [90-second demo script](docs/demo.md) has the shot list, the exact commands,
 
 ## 🆕 What's new
 
-**0.7.22** — The Hub client moves to `@dsh-plugin-hub/cli` 0.5.0, which prepares and verifies the pinned DSH runtime itself (an exact-version `npm install` into `$DSCODE_HOME/.hub/runtimes/<version>`, then launch with the current Node) instead of spawning `npm exec` per bundle. A failed `dscode` command now prints its whole cause chain and, for a Hub or npm step, the causes to check — proxy, internal mirror, corporate CA, or the prebuilt GitHub tarball — and a leftover unmanaged profile prints the `mv` that unblocks every command.
+**0.7.23** — A session now stays in the folder it was created in: resuming it from anywhere else runs it in that folder and prints one warning naming both, while `--cwd` still decides where a new session binds. Cross-session traffic became visible — the activity line reads `⇄ sending to` / `⇄ waiting for`, a notice line records every settled send and inbound relay in its own violet, and `/tasks` lists the messages. The footer shows the last completed turn's cost beside the session total and `/usage` prices every turn. Streaming no longer re-wraps the whole live region per frame (3.12 → 0.001 ms on 16 long entries), ancestor skill discovery is on by default, and the Ink repaint ledger stops leaving a blank band above the composer.
 
-Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.22 notes](docs/releases/0.7.22.md) have the long version.
+Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.23 notes](docs/releases/0.7.23.md) have the long version.
 
 ## 🚀 Quick start
 
@@ -86,7 +86,7 @@ The first launch installs the pinned complete preset from [DSH Plugin Hub](https
 
 ```sh
 dscode --continue                 # continue the last session
-dscode --resume SESSION_ID        # resume a specific session
+dscode --resume SESSION_ID        # resume a specific session (it runs in the folder it was created in)
 dscode --cwd /another/project     # work in another directory
 dscode doctor                     # analyse recent logs and session traces
 dscode --version                  # print the DSCODE version
@@ -114,7 +114,7 @@ npm start -- --cwd /path/to/project
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh
-curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.22
+curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.23
 ```
 
 **From a tar package** — download the prebuilt `dscode-<version>-darwin-arm64.tar.gz` (Apple silicon) or `dscode-<version>-darwin-x64.tar.gz` (Intel) from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
@@ -130,14 +130,14 @@ The command lands in `~/.local/bin/dscode` by default—make sure that directory
 **If the npm name lookup returns 404**, install the same version straight from the official registry tarball:
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.22.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.23.tgz
 ```
 
 **Upgrade** — `dscode update [exact-version]` updates the whole installation in one step, and requires no running DSCODE sessions. On the npm/Hub install it replaces the launcher binary with npm and then upgrades the installed profile to the same version. On a tar install it downloads the release tarball (the prebuilt one for this platform when the release has it, so the update needs no npm either), verifies it against the release's sha256 digest, swaps the installation directory in place and migrates `.runtime`, `.env` and local `config/`; the previous installation is kept as a sibling backup directory. A source checkout updates itself the same way: `git pull --ff-only` on the branch it tracks, then `npm ci --ignore-scripts` and `npm run setup`; uncommitted changes in tracked files refuse before anything runs, so a failed update never half-applies.
 
 ```sh
 dscode update                  # latest release
-dscode update 0.7.22           # an exact version
+dscode update 0.7.23           # an exact version
 ```
 
 `dscode history` lists retained versions and `dscode rollback` returns to the previous preset revision (npm/Hub install). Tar installs older than the first release with `dscode update` upgrade by installing the new tarball into a fresh directory and migrating the state once. Source, tar and npm/Hub installs use different data directories, and sessions and credentials are not migrated between them. See the [tar distribution notes](docs/distribution.md) and the [npm + Hub guide](docs/hub-distribution.md).
@@ -180,7 +180,7 @@ The default is a `workspace-write` sandbox with **Auto** permission review, wher
 | Source | repository `.runtime/` | repository `.env` and `config/` |
 | tar | `.runtime/` inside the install directory | `.env` and `config/` in the install directory |
 
-`config/hooks.local.json`, `config/mcp.local.yml` and `config/harness.local.yml` are supported. Local configs, secrets and sessions never enter a release package. Skills are discovered in the target project's `.agents/skills` and `.dsh/skills`, plus an isolated user skill directory; `/skills conflicts` diagnoses same-name overrides. A project's `.codex/hooks.json`, `.dsh/hooks.json` and `.claude/settings.json` are layered on top of `config/hooks.local.json` by default; set `DSCODE_PROJECT_HOOKS=0` to load the installation file alone. Skills come from the project's `.dsh/skills` and `.agents/skills` plus the user roots, and `DSCODE_SKILL_ANCESTORS=1` also reads `.dsh/skills`, `.agents/skills` and `.claude/skills` from every directory between the project root and home; `AGENTS.md`/`CLAUDE.md` in those ancestor directories is folded into the workspace instructions.
+`config/hooks.local.json`, `config/mcp.local.yml` and `config/harness.local.yml` are supported. Local configs, secrets and sessions never enter a release package. Skills are discovered in the target project's `.agents/skills` and `.dsh/skills`, plus an isolated user skill directory; `/skills conflicts` diagnoses same-name overrides. A project's `.codex/hooks.json`, `.dsh/hooks.json` and `.claude/settings.json` are layered on top of `config/hooks.local.json` by default; set `DSCODE_PROJECT_HOOKS=0` to load the installation file alone. Skills come from the project's `.dsh/skills` and `.agents/skills` plus the user roots, and by default `.dsh/skills`, `.agents/skills` and `.claude/skills` are also read from every directory between the working directory and home, nearest first; `DSCODE_SKILL_ANCESTORS=0` keeps discovery to the project and user roots alone. `AGENTS.md`/`CLAUDE.md` in those ancestor directories is folded into the workspace instructions.
 
 ## 🧩 Development
 
