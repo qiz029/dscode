@@ -88,6 +88,7 @@ The first launch installs the pinned complete preset from [DSH Plugin Hub](https
 dscode --continue                 # continue the last session
 dscode --resume SESSION_ID        # resume a specific session (it runs in the folder it was created in)
 dscode --cwd /another/project     # work in another directory
+dscode trigger list               # event-driven runs defined in this project (run|fire|install|log)
 dscode doctor                     # analyse recent logs and session traces
 dscode --version                  # print the DSCODE version
 ```
@@ -210,6 +211,7 @@ The bundle generates its modified modules at build time and never rewrites third
 |---|---|
 | [Changelog](docs/CHANGELOG.md) | Every release, newest first |
 | [Non-interactive runs](docs/exec.md) | `dscode exec`, JSON output, resume and effort/model/permission flags |
+| [Triggers](docs/triggers.md) | Events that start a fresh session: definitions, sources, scheduling with launchd, the run log |
 | [Session bridge](docs/session-bridge.md) | `dscode sessions`, `send`, `read`, `watch` against a live session |
 | [Session communication](docs/session-communication.md) | Agent-side messaging, delivery modes, budgets and de-duplication |
 | [Session cards](docs/session-cards.md) | Project, workspace and topic fields, and how they are derived |
@@ -231,6 +233,7 @@ Design records do not repeat the guides above:
 |---|---|
 | [Session messaging design](docs/session-messaging-design.md) | Rationale, boundaries and fixed limits behind agent-to-agent tasks |
 | [Cloud web app host](docs/cloud-webapp-host.md) | Design baseline and trust model for browser access; not implemented |
+| [Triggers](docs/triggers-design.md) | Why the trigger mechanism is shaped this way: the ingress, the OS-owned clock, the run log as a contract |
 | [Verification](docs/verification.md) | What the maintained checks cover, and what cannot run inside a session |
 | [Maintainability](docs/maintainability.md) | What checks the forked terminal, and what stays unverified |
 | [Upgrading the vendored terminal](docs/vendored-tui-upgrade.md) | Taking a new upstream dsh-code release: the merge procedure, and what only a smoke test catches |

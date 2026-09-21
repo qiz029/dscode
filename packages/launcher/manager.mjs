@@ -9,12 +9,26 @@ export { acquireLock } from './locks.mjs';
 const require = createRequire(import.meta.url);
 // The exec CLI ships beside the published launcher; a source checkout reads it from plugins/. Only `dscode exec` loads it.
 const loadExecCli = () => import(existsSync(new URL('./exec/cli.mjs', import.meta.url)) ? './exec/cli.mjs' : '../../plugins/exec/cli.mjs');
+// The trigger CLI ships beside the published launcher too (the trigger modules are
+// dependency-free apart from `yaml`); a source checkout reads them from plugins/.
+const loadTriggerModules = async () => {
+  const base = existsSync(fileURLToPath(new URL('./trigger/cli.mjs', import.meta.url)))
+    ? new URL('./trigger/', import.meta.url)
+    : new URL('../../plugins/triggers/', import.meta.url);
+  const [cli, overlay, options] = await Promise.all([
+    import(new URL('cli.mjs', base).href),
+    import(new URL('overlay.mjs', base).href),
+    import(new URL('options.mjs', base).href),
+  ]);
+  return { cli, triggerOverlay: overlay.triggerOverlay, writeRunSpec: options.writeRunSpec, readRunResult: options.readRunResult };
+};
 export function stateHome(env = process.env) {
   return resolve(env.DSCODE_HOME || join(homedir(), '.local/share/dscode-hub'));
 }
 export function commandPlan(args, release, installed, launcherVersion) {
   const [command, ...rest] = args;
   if (command === 'exec') return { exec: rest, install: !installed };
+  if (command === 'trigger') return { trigger: rest, install: !installed };
   if (command === 'resume') {
     const id = rest[0] && !rest[0].startsWith('-') ? rest.shift() : undefined;
     return { launch: [...(id ? ['--resume', id] : ['--continue']), ...rest], install: !installed };
@@ -211,6 +225,15 @@ export async function run(args, release) {
     await exec(dsh, ['--profile', 'dscode', '--patch', overlay]);
     return;
   }
+  let triggerRequest;
+  if (args[0] === 'trigger') {
+    const modules = await loadTriggerModules();
+    const triggerArgs = commandPlan(args, release, true).trigger;
+    const parsed = modules.cli.parseTriggerArgs(triggerArgs);
+    if (parsed.help) { console.log(modules.cli.USAGE); return; }
+    if (parsed.error !== undefined) throw Error(`${parsed.error}\n${modules.cli.USAGE}`);
+    triggerRequest = { modules, triggerArgs };
+  }
   let execOptions, execPrompt;
   if (args[0] === 'exec') {
     const cli = await loadExecCli();
@@ -282,6 +305,44 @@ Move it aside to install a managed profile, for example:
           { cwd: workspace, lease, started: releaseLock, extraEnv: { DSCODE_EXEC_OPTIONS: optionsFile }, nodeArgs: ['--disable-warning=ExperimentalWarning'] });
         process.exitCode = code ?? (signal ? 130 : 0);
       } finally { rmSync(scratch, { recursive: true, force: true }); }
+      return;
+    }
+    if (triggerRequest !== undefined) {
+      // One Host process per run, exactly like `exec`, plus the launcher's own
+      // launchctl calls. The portable CLI half does the deciding and recording.
+      const { cli, triggerOverlay, writeRunSpec, readRunResult } = triggerRequest.modules;
+      const runner = join(profile, 'node_modules', release.bundle, 'plugins/triggers/host.mjs');
+      const spawnTriggerRun = async ({ spec, cwd }) => {
+        if (!existsSync(runner)) throw Error('This DSCODE installation has no trigger host. Run dscode update first.');
+        const scratch = mkdtempSync(join(tmpdir(), 'dscode-trigger-'));
+        let runLease;
+        try {
+          const specPath = join(scratch, 'run.json');
+          const overlay = join(scratch, 'trigger.patch.yml');
+          writeRunSpec(specPath, spec);
+          writeFileSync(overlay, triggerOverlay(runner));
+          runLease = await registerRun(home);
+          const { code, signal } = await spawnRun(dsh, ['--profile', 'dscode', ...overlays, '--patch', overlay],
+            { cwd, lease: runLease, started: releaseLock, extraEnv: { DSCODE_TRIGGER_OPTIONS: specPath }, nodeArgs: ['--disable-warning=ExperimentalWarning'] });
+          return { code: code ?? (signal ? 130 : 0), result: readRunResult(`${specPath}.result.json`) };
+        } finally {
+          runLease?.release();
+          rmSync(scratch, { recursive: true, force: true });
+        }
+      };
+      const launchctl = (launchArgs, { ignoreFailure = false } = {}) => new Promise((resolvePromise, reject) => {
+        const child = spawn('launchctl', launchArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
+        let stderr = '';
+        child.stderr?.on('data', chunk => { stderr += String(chunk); });
+        child.once('error', error => (ignoreFailure ? resolvePromise(1) : reject(error)));
+        child.once('exit', code => (code === 0 || ignoreFailure
+          ? resolvePromise(code ?? 0)
+          : reject(Error(`launchctl ${launchArgs[0]} failed (${code}): ${stderr.trim()}`))));
+      });
+      process.exitCode = await cli.runTriggerCli(triggerRequest.triggerArgs, {
+        home, project: process.cwd(), platform: process.platform, dscodePath: resolve(process.argv[1]),
+        stdout: process.stdout, stderr: process.stderr, launchctl, spawnRun: spawnTriggerRun,
+      });
       return;
     }
     const launch = [...plan.launch];

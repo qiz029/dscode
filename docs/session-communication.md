@@ -1,6 +1,6 @@
 # Agent-to-agent tasks
 
-Supported since DSCODE 0.2.0. An agent can read session cards and use built-in tools to send messages to a loaded dscode root session in the same state directory. The receiver keeps using the single native runtime; the TUI, the CLI and the agent tools share the session bridge. An offline session is never opened automatically.
+Supported since DSCODE 0.2.0. An agent can read session cards and use built-in tools to send messages to a loaded dscode root session in the same state directory. This is how one running session reaches another; to start a *new* session from an event instead — a schedule, a file change, a poll, a CI job — see [Triggers](triggers.md). The receiver keeps using the single native runtime; the TUI, the CLI and the agent tools share the session bridge. An offline session is never opened automatically.
 
 ## Delivery modes
 

@@ -88,6 +88,7 @@ dscode
 dscode --continue                 # 继续上次会话
 dscode --resume SESSION_ID        # 恢复指定会话（仍在该会话创建时的目录中运行）
 dscode --cwd /another/project     # 在指定目录工作
+dscode trigger list               # 本项目定义的事件触发运行（run|fire|install|log）
 dscode doctor                     # 分析近期运行日志和 session trace
 dscode --version                  # 输出 DSCODE 版本
 ```
@@ -211,6 +212,7 @@ Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第�
 |---|---|
 | [更新日志](docs/CHANGELOG.md) | 每次发布，最新在前 |
 | [非交互执行](docs/exec.md) | `dscode exec`、JSON 输出、resume 与 effort/model/permission 参数 |
+| [触发器](docs/triggers.md) | 由事件启动全新会话：定义、来源、用 launchd 排程、运行日志 |
 | [会话接入](docs/session-bridge.md) | 用 `dscode sessions`、`send`、`read`、`watch` 接入运行中的会话 |
 | [Session 通信](docs/session-communication.md) | Agent 侧消息、投递方式、预算与去重 |
 | [会话名片](docs/session-cards.md) | 项目、工作区与 topic 字段及其来源 |
@@ -232,6 +234,7 @@ Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第�
 |---|---|
 | [Session 通信设计](docs/session-messaging-design.md) | Agent 间任务的取舍、边界与固定限制的依据 |
 | [云端 Web App Host](docs/cloud-webapp-host.md) | 浏览器接入的架构基线与信任模型；尚未实现 |
+| [触发器](docs/triggers-design.md) | 触发器机制为何如此设计：投递入口、交给系统调度、运行日志作为契约 |
 | [验证说明](docs/verification.md) | 维护中的检查覆盖范围，以及哪些检查不能在 session 内运行 |
 | [可维护性](docs/maintainability.md) | 对 vendored 终端的检查范围，以及仍未验证的部分 |
 | [升级 vendored 终端](docs/vendored-tui-upgrade.md) | 合并上游 dsh-code 新版本的流程，以及只有人工冒烟测试能发现的部分 |

@@ -17,7 +17,7 @@ try {
     const unpack = spawnSync('tar', ['-xzf', tarball, '-C', destination, '--strip-components=1'], { encoding: 'utf8' });
     assert.equal(unpack.status, 0, unpack.stderr);
     const pkg = JSON.parse(readFileSync(join(destination, 'package.json'), 'utf8'));
-    const entries = name === 'launcher' ? ['cli.mjs', 'manager.mjs', 'locks.mjs', 'session-bridge/client.mjs', 'exec/cli.mjs'] : Object.values(pkg.exports).filter(path => path.endsWith('.mjs') || path.endsWith('.js'));
+    const entries = name === 'launcher' ? ['cli.mjs', 'manager.mjs', 'locks.mjs', 'session-bridge/client.mjs', 'exec/cli.mjs', 'trigger/cli.mjs', 'trigger/overlay.mjs', 'trigger/config.mjs', 'trigger/launchd.mjs'] : Object.values(pkg.exports).filter(path => path.endsWith('.mjs') || path.endsWith('.js'));
     for (const entry of entries) {
       assert(existsSync(join(destination, entry)), `Missing packaged entry: ${entry}`);
       const check = spawnSync(process.execPath, ['--check', join(destination, entry)], { encoding: 'utf8' });
@@ -26,6 +26,8 @@ try {
     if (name === 'launcher') {
       assert.equal(pkg.dependencies['@deepseek-ai/node-addon-system'], '0.1.2');
       assert.match(readFileSync(join(destination, 'manager.mjs'), 'utf8'), /'\.\/exec\/cli\.mjs'/, 'the launcher loads its own exec CLI');
+      assert.match(readFileSync(join(destination, 'manager.mjs'), 'utf8'), /trigger\/cli\.mjs/, 'the launcher loads its own trigger CLI');
+      assert.equal(pkg.dependencies.yaml, '2.9.1', 'the launcher carries the YAML parser its trigger CLI reads definitions with');
     }
     else {
       assert.match(readFileSync(join(destination, 'vendor/terminal/index.js'), 'utf8'), /dscode-no-history-expansion-v1/);
@@ -37,6 +39,8 @@ try {
       assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/code-review'/);
       assert.match(readFileSync(join(destination, 'vendor/tui/lib/app.mjs'), 'utf8'), /dispatch\(text\)/, 'the terminal routes /review through the shared service');
       assert.match(readFileSync(join(destination, 'vendor/subagent/index.js'), 'utf8'), /dscode-child-worktree-v3/);
+      assert.match(readFileSync(join(destination, 'vendor/command-goal/index.js'), 'utf8'), /dscode-goal-cap-v1/, 'the vendored goal command carries the [N] round-cap patch');
+      assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /dscode-bundle\/command-goal/);
       assert.match(readFileSync(join(destination, 'vendor/subagent-core/index.js'), 'utf8'), /workspaceCwd/);
       assert.match(readFileSync(join(destination, 'vendor/subagent-driver/index.js'), 'utf8'), /request\.workspaceCwd/);
       assert.match(readFileSync(join(destination, 'cordis.patch.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/subagent-core'/);

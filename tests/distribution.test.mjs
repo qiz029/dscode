@@ -14,6 +14,7 @@ test('launcher routes management separately, pins install version and preserves 
  assert.throws(()=>commandPlan(['update','newest'],release,true));
  assert.throws(()=>commandPlan(['rollback','--help'],release,true));
  assert.deepEqual(commandPlan(['rollback'],release,true).hub,['profile','rollback','--profile','dscode']);
+ assert.deepEqual(commandPlan(['trigger','run','nightly'],release,true),{trigger:['run','nightly'],install:false},'the trigger CLI is routed, never launched as a prompt');
  assert.deepEqual(commandPlan(['doctor'],release,true),{doctor:'analyze'});
  assert.deepEqual(commandPlan(['doctor','--local'],release,true),{doctor:'local'});
  assert.throws(()=>commandPlan(['doctor','extra'],release,true),/Usage/);

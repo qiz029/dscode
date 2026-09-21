@@ -167,8 +167,36 @@ export function patchAppBoot(text) {
 /** The upstream DSH release every runtime patch in this file was validated against. */
 export const RUNTIME_VERSION = '0.1.5-rc.2';
 
+/**
+ * dscode: the round cap is a goal field the model-facing tools can set, and the
+ * human-facing `/goal` could not: this teaches it the `[N]` shorthand, so a
+ * person can set or change the cap from the command plane — `/goal[20] <objective>`
+ * creates with that cap, `/goal[20]` re-caps the current goal. Retire the patch
+ * when @deepseek-ai/dsh-command-goal carries the syntax upstream.
+ */
+export function patchGoalCommand(text) {
+  const marker = '// dscode-goal-cap-v1';
+  if (text.includes(marker)) return text;
+  // The parsed command carries an optional cap, so create/edit pass it through.
+  const helper = '/** dscode: the create/edit request, carrying the `[N]` cap when the human set one. */\nfunction goalRequest(command) {\n\treturn { objective: command.objective, ...command.maxGoalRounds === void 0 ? {} : { maxGoalRounds: command.maxGoalRounds } };\n}\n';
+  // `[N]` must be the whole input or immediately precede an objective: a control
+  // word after a cap would read as an objective, which is never what was meant.
+  const parse = '\tconst capMatch = /^\\[(\\d+)\\]\\s*(.*)$/su.exec(input);\n\tif (capMatch !== null) {\n\t\tconst maxGoalRounds = Number(capMatch[1]);\n\t\tconst rest = capMatch[2].trim();\n\t\tif (maxGoalRounds < 1 || ["clear", "pause", "resume", "edit"].includes(rest.toLowerCase())) return { kind: "invalid-cap" };\n\t\treturn rest === "" ? { kind: "cap", maxGoalRounds } : { kind: "create", objective: rest, maxGoalRounds };\n\t}\n';
+  const cases = '\t\t\tcase "cap": {\n\t\t\t\tif (current === void 0) return {\n\t\t\t\t\tkind: "error",\n\t\t\t\t\ttext: `No goal is currently set; /goal[<rounds>] changes the round cap of an existing goal. ${USAGE}`\n\t\t\t\t};\n\t\t\t\treturn renderGoal("Goal updated", ctx.goals.edit(invocation.agent, goalRef(current), { maxGoalRounds: command.maxGoalRounds }));\n\t\t\t}\n\t\t\tcase "invalid-cap": return {\n\t\t\t\tkind: "error",\n\t\t\t\ttext: `The round cap must be a positive whole number and cannot accompany a control word.\\n${USAGE}`\n\t\t\t};\n';
+  text = replaceOnce(text, 'const USAGE = "Usage: /goal [<objective>|clear|edit <objective>|pause|resume]";',
+    'const USAGE = "Usage: /goal [<objective>|clear|edit <objective>|pause|resume], /goal[<rounds>] set the round cap";');
+  text = replaceOnce(text, '/** Direct error for an operation that requires a current goal. */', helper + '/** Direct error for an operation that requires a current goal. */');
+  text = replaceOnce(text, 'function parseGoalCommand(rawInput) {\n\tconst input = rawInput.trim();\n', 'function parseGoalCommand(rawInput) {\n\tconst input = rawInput.trim();\n' + parse);
+  text = replaceOnce(text, '\t\t\t\tconst created = ctx.goals.create(invocation.agent, { objective: command.objective });', '\t\t\t\tconst created = ctx.goals.create(invocation.agent, goalRequest(command));');
+  text = replaceOnce(text, '\t\t\t\t\tconst replaced = ctx.goals.create(invocation.agent, { objective: command.objective });', '\t\t\t\t\tconst replaced = ctx.goals.create(invocation.agent, goalRequest(command));');
+  text = replaceOnce(text, '\t\t\t\tconst edited = ctx.goals.edit(invocation.agent, goalRef(current), { objective: command.objective });', '\t\t\t\tconst edited = ctx.goals.edit(invocation.agent, goalRef(current), goalRequest(command));');
+  text = replaceOnce(text, '\t\t\t/* v8 ignore next 2 -- GoalCommand is closed and every member is handled above */', cases + '\t\t\t/* v8 ignore next 2 -- GoalCommand is closed and every member is handled above */');
+  text = replaceOnce(text, 'input: {\n\t\t\thint: "[<objective>|clear|edit <objective>|pause|resume]",', 'input: {\n\t\t\thint: "[<objective>|clear|edit <objective>|pause|resume], [<rounds>]",');
+  return marker + '\n' + text;
+}
+
 export function patchRuntime(root, { requireMacStdin = true } = {}) {
-  for (const [pkg, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-subagent-in-process-driver', patchSubagentDriver], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash]]) {
+  for (const [pkg, patch] of [['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-subagent-in-process-driver', patchSubagentDriver], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash], ['dsh-command-goal', patchGoalCommand]]) {
     const dir = join(root, 'node_modules/@deepseek-ai', pkg);
     if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== RUNTIME_VERSION) throw new Error('Revalidate runtime patches before upgrading ' + pkg);
     const path = join(dir, 'lib/index.js');
