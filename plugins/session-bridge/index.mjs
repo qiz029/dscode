@@ -1,6 +1,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { communicationPanel, createCommunicationFeed, foldCommunication } from '../../packages/tui/src/communication.ts';
+import { communicationPanel, createCommunicationFeed, foldCommunication } from './tasks.mjs';
 import { SessionBridge } from './server.mjs';
 import { CommunicationService } from './communication.mjs';
 import { defineTool } from '@deepseek-ai/dsh-tools';

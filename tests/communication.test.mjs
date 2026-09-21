@@ -4,6 +4,10 @@ process.env.DSCODE_LANGUAGE = 'en';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { communicationPanel, createCommunicationFeed, foldCommunication, MAX_COMMUNICATION_ROWS } from '../packages/tui/src/communication.ts';
+// The bridge's `/tasks` half carries its own copy: the Hub bundle ships
+// plugins/ but not packages/tui/src, so it cannot import the TUI module. The
+// copy is only sound while it folds identically, which is what this pins.
+import * as bridgeTasks from '../plugins/session-bridge/tasks.mjs';
 
 // Cross-session traffic is otherwise invisible: the transcript hides tool
 // arguments and a waiting request looks like any other running tool. These tests
@@ -147,4 +151,25 @@ test('two requests to one peer both stay visible as awaiting', () => {
   ]);
   assert.equal(view.waiting.length, 2, 'the second request does not overwrite the first');
   assert.deepEqual(view.waiting.map(entry => entry.id), ['sent:call-1', 'sent:call-3']);
+});
+
+test('the bridge copy of the fold agrees with the terminal one event for event', () => {
+  const events = [
+    call(1, 1000, 'send_session', { session_id: 'session-target', kind: 'request', mode: 'queue', text: 'check the parser' }),
+    result(2, 1100, 'call-1'),
+    relay(3, 1200, 'session:session-target', 'still working', 'notify'),
+    call(4, 1300, 'reply_session', { request_message_id: 'msg-other', text: 'done' }),
+    result(5, 1400, 'call-4', true),
+    relay(6, 1500, 'session:session-target', 'here is the answer', 'reply'),
+  ];
+  let ui = createCommunicationFeed();
+  let bridge = bridgeTasks.createCommunicationFeed();
+  assert.equal(bridgeTasks.MAX_COMMUNICATION_ROWS, MAX_COMMUNICATION_ROWS);
+  for (const event of events) {
+    ui = foldCommunication(ui, event);
+    bridge = bridgeTasks.foldCommunication(bridge, event);
+    assert.deepEqual(bridge, ui, `diverged on ${event.type} #${event.seq}`);
+  }
+  assert.equal(bridgeTasks.communicationPanel(bridge), communicationPanel(ui), 'the /tasks text is the same');
+  assert.equal(bridgeTasks.communicationPanel(bridgeTasks.createCommunicationFeed()), communicationPanel(createCommunicationFeed()));
 });
