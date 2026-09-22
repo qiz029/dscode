@@ -14,7 +14,8 @@ const TOOL_RESULT_IMAGE_TEXT = 'Attached image(s) from tool result:';
 const DEEPSEEK_WIRE = Object.freeze({ ...OPENROUTER_EFFORTS, ultra: OPENROUTER_EFFORTS.max });
 const DEEPSEEK_V4 = /^deepseek\/deepseek-v4/;
 // Models whose provider rejects an assistant tool-call turn without `reasoning_content`.
-const REASONING_CONTENT_MODELS = /^(?:deepseek\/deepseek-v4|moonshotai\/kimi-k2\.6)/;
+// MiMo needs it too: Xiaomi's API answers 400 Invalid Format when thinking mode is not passed back.
+const REASONING_CONTENT_MODELS = /^(?:deepseek\/deepseek-v4|moonshotai\/kimi-k2\.6|xiaomi\/mimo-v2\.6)/;
 // Alibaba caches only at explicit breakpoints.
 const EXPLICIT_CACHE_MODELS = /^qwen\//;
 const DEFAULT_LEVELS = ['low', 'medium', 'high'];

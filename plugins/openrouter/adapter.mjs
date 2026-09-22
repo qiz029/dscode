@@ -10,6 +10,27 @@ export const DEFAULT_OUTPUT_CAP = 131072;
 const APP_URL = 'https://github.com/qiz029/dscode';
 const IMAGE_POLICY = Object.freeze({ maxPixels: 2048 * 2048, maxBytes: 1024 * 1024 });
 
+/**
+ * What `/model` offers on this route: the labs DSCODE tunes and tests, plus the current
+ * flagship line of the mainstream Western labs. OpenRouter carries hundreds of tool-calling
+ * models, and an alphabetical wall of them is not a picker, so the list is curated by hand;
+ * an id OpenRouter retires drops out of the picker until this list is edited.
+ * Only the picker narrows: `resolveModel` still serves every id the listing knows, so a
+ * session already on a trimmed model, `exec --model` and provider switches keep working.
+ */
+export const LISTED_MODELS = Object.freeze([
+  'deepseek/deepseek-v4-pro', 'deepseek/deepseek-v4-flash', 'deepseek/deepseek-v4.1-flash',
+  'z-ai/glm-5.3', 'z-ai/glm-5.3-flash', 'z-ai/glm-5.3-flashx',
+  'moonshotai/kimi-k3', 'moonshotai/kimi-k2.7-code', 'moonshotai/kimi-k2.6',
+  'qwen/qwen3.8-max-0902', 'qwen/qwen3.8-flash', 'qwen/qwen3.8-27b', 'qwen/qwen3.7-plus',
+  'xiaomi/mimo-v2.6-pro', 'xiaomi/mimo-v2.6-flash', 'xiaomi/mimo-v2.6-pro-ultraspeed',
+  'anthropic/claude-opus-5', 'anthropic/claude-sonnet-5', 'anthropic/claude-fable-5.1', 'anthropic/claude-haiku-4.5',
+  'openai/gpt-6-astra-pro', 'openai/gpt-6-astra', 'openai/gpt-5.6-luna-pro', 'openai/gpt-5.6-terra-pro',
+  'google/gemini-3.8-flash', 'google/gemini-3.1-pro-preview',
+  'x-ai/grok-4.7', 'x-ai/grok-build-0.1',
+]);
+const LISTED = new Set(LISTED_MODELS);
+
 function modelInfo(provider, id, entry) {
   return { provider, id, name: entry?.name ?? id, inputModalities: entry?.inputModalities?.length ? [...entry.inputModalities] : ['text'] };
 }
@@ -45,10 +66,10 @@ export class OpenRouterAdapter extends LlmAdapter {
     return this.config.options().retryPolicy;
   }
 
-  /** Models that can drive an agent: text output and tool calls. */
+  /** The curated picker list, narrowed to entries that can drive an agent: text output and tool calls. */
   async listModels(provider) {
     await this.config.ensureModels();
-    return listOpenRouterModels().filter(([, entry]) => entry.tools !== false && entry.textOutput !== false).map(([id, entry]) => modelInfo(provider, id, entry));
+    return listOpenRouterModels().filter(([id, entry]) => LISTED.has(id) && entry.tools !== false && entry.textOutput !== false).map(([id, entry]) => modelInfo(provider, id, entry));
   }
 
   async resolveModel(provider, model) {

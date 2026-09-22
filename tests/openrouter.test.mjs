@@ -31,6 +31,8 @@ test('the OpenRouter listing supplies context, modalities, tools and reasoning c
   assert.deepEqual(MODELS['moonshotai/kimi-k2.6'].reasoning, { mandatory: false });
   assert.equal(MODELS['qwen/qwen3.7-plus'].reasoning, undefined);
   assert(Math.abs(MODELS['qwen/qwen3.7-plus'].cacheWrite - 0.4) < 1e-9, 'cache-write prices are kept per million tokens');
+  assert.deepEqual(MODELS['xiaomi/mimo-v2.6-pro'].reasoning, { mandatory: false }, 'a listing without supported_efforts leaves the generic bands');
+  assert.equal(MODELS['xiaomi/mimo-v2.6-flash'].contextWindow, 1048576);
   assert.equal(MODELS['black-forest-labs/flux'].textOutput, false);
 });
 
@@ -71,6 +73,7 @@ test('each model offers its own effort levels, DeepSeek V4 keeps the official de
   assert.equal(glm.wire.ultra, 'max');
   assert.deepEqual(modelReasoning('moonshotai/kimi-k2.6', MODELS['moonshotai/kimi-k2.6']).levels, ['off', 'low', 'medium', 'high']);
   assert.equal(modelReasoning('qwen/qwen3.7-plus', MODELS['qwen/qwen3.7-plus']), undefined);
+  assert.deepEqual(modelReasoning('xiaomi/mimo-v2.6-pro', MODELS['xiaomi/mimo-v2.6-pro']), { levels: ['off', 'low', 'medium', 'high'], defaultEffort: 'high', wire: { off: 'none', low: 'low', medium: 'medium', high: 'high' } });
 });
 
 test('request bodies carry the wire effort, the session id, the Ultra policy and only allowed tools', () => {
@@ -129,6 +132,8 @@ test('history replays reasoning only to the model that produced it, beside its t
   assert.equal(foreign[2].reasoning_details, undefined);
   assert.equal(foreign[2].reasoning, undefined);
   assert.equal(serializeMessages(history, { model: 'deepseek/deepseek-v4-flash' })[2].reasoning_content, '', 'DeepSeek V4 requires reasoning_content on assistant turns');
+  assert.equal(serializeMessages(history, { model: 'xiaomi/mimo-v2.6-pro' })[2].reasoning_content, '', 'MiMo needs reasoning_content back in thinking mode');
+  assert.equal(serializeMessages(history, { model: 'xiaomi/mimo-v2.6-pro-ultraspeed' })[2].reasoning_content, '', 'the whole MiMo V2.6 family is covered, UltraSpeed included');
   assert.equal(serializeMessages([{ role: 'assistant', source: { kind: 'model', provider: 'openrouter', model: 'x' }, content: [{ type: 'reasoning', text: 'only thinking' }] }], { model: 'x' }).length, 0, 'a reasoning-only turn has nothing a provider accepts');
   assert.equal(serializeMessages([{ role: 'system', content: [] }], { model: 'x' }).length, 0, 'an empty system prompt sends no message');
 });
@@ -215,7 +220,8 @@ test('the adapter resolves models from the listing and sends OpenRouter headers 
   const unknown = await route.resolveModel('openrouter', 'vendor/new-model');
   assert.deepEqual(unknown.context, { contextWindow: 262144 });
   assert.equal(unknown.reasoning, undefined);
-  assert.deepEqual((await route.listModels('openrouter')).map(model => model.id), ['deepseek/deepseek-v4-flash', 'z-ai/glm-5.3-flash', 'moonshotai/kimi-k2.6', 'qwen/qwen3.7-plus'], 'models that cannot drive an agent are not listed');
+  assert.deepEqual((await route.listModels('openrouter')).map(model => model.id), ['deepseek/deepseek-v4-flash', 'z-ai/glm-5.3-flash', 'moonshotai/kimi-k2.6', 'qwen/qwen3.7-plus', 'xiaomi/mimo-v2.6-pro', 'xiaomi/mimo-v2.6-flash', 'xiaomi/mimo-v2.6-pro-ultraspeed', 'anthropic/claude-opus-5'], 'the picker lists the curated models that can drive an agent');
+  assert.equal((await route.resolveModel('openrouter', 'openai/gpt-4o')).name, 'OpenAI: GPT-4o', 'a model off the list still resolves, so an existing session keeps running');
   const out = await collect(route.stream({ provider: 'openrouter', model: 'moonshotai/kimi-k2.6', reasoningEffort: 'medium', messages: conversation, sessionId: 's-9' }));
   assert.equal(out.at(-1).replayState.response.cost, 0.000001);
   const [request] = requests;
