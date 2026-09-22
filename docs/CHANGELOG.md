@@ -8,6 +8,8 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 ## [Unreleased]
 
+## [0.7.24] - 2026-09-21
+
 ### Added
 
 - `/goal[20]` sets the goal's round cap from the command plane: `/goal[20] <objective>` creates the goal with that cap and `/goal[20]` re-caps the current goal, so an unattended task stops after the rounds the human allowed. A cap with no goal, or a control word after a cap, is refused with the usage. Upstream's `/goal` remains the surface; a runtime patch (`dsh-command-goal`) adds the shorthand.
