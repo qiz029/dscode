@@ -76,6 +76,7 @@ Every other install path reaches the same pinned harness:
 | Method | How |
 |---|---|
 | npm / Hub | the command above; the launcher installs the pinned profile from [DSH Plugin Hub](https://dshpluginhub.ai) |
+| Homebrew | `brew tap qiz029/tap && brew trust qiz029/tap && brew install dscode` (Homebrew 7 refuses an untrusted third-party tap); the formula installs the same launcher, `dscode update` then moves only the profile, and `brew upgrade dscode` owns the launcher |
 | GitHub release, one line | `curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh \| sh` |
 | Release tarball | download `dscode-<version>-darwin-arm64.tar.gz` (or `-darwin-x64`) from [Releases](https://github.com/qiz029/dscode/releases), unpack it and run `sh dscode-install/install.sh` |
 | Source checkout | `git clone https://github.com/qiz029/dscode.git && cd dscode && npm ci --ignore-scripts && npm run setup` |
@@ -128,7 +129,7 @@ tar -xzf dscode-<version>-darwin-arm64.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
-The command lands in `~/.local/bin/dscode` by default—make sure that directory is on your PATH. The installer never overwrites an existing command or installation.
+The command lands in `~/.local/bin/dscode` by default—make sure that directory is on your PATH. Running it again keeps a tar installation current: an older one is updated through its own `dscode update`, an equal or newer one is reported and left alone, and anything else — a directory that is not a DSCODE installation, or a `dscode` command that belongs to another installation — is refused with the path it found.
 
 **If the npm name lookup returns 404**, install the same version straight from the official registry tarball:
 

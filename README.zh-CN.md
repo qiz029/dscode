@@ -76,6 +76,7 @@ dscode
 | 方式 | 做法 |
 |---|---|
 | npm / Hub | 上面的命令；launcher 会从 [DSH Plugin Hub](https://dshpluginhub.ai) 安装固定版本的 profile |
+| Homebrew | `brew tap qiz029/tap && brew trust qiz029/tap && brew install dscode`（Homebrew 7 会拒绝未信任的第三方 tap）；该方式装的是同一个 launcher，`dscode update` 只更新 profile，launcher 由 `brew upgrade dscode` 负责 |
 | GitHub release，一行命令 | `curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh \| sh` |
 | release tar 包 | 从 [Releases](https://github.com/qiz029/dscode/releases) 下载 `dscode-<version>-darwin-arm64.tar.gz`（或 `-darwin-x64`），解包后执行 `sh dscode-install/install.sh` |
 | 源码 checkout | `git clone https://github.com/qiz029/dscode.git && cd dscode && npm ci --ignore-scripts && npm run setup` |
@@ -130,7 +131,7 @@ tar -xzf dscode-<version>-darwin-arm64.tar.gz -C dscode-install
 sh dscode-install/install.sh
 ```
 
-默认命令位于 `~/.local/bin/dscode`，请确保该目录在 PATH 中。安装器不会覆盖已有命令或安装。
+默认命令位于 `~/.local/bin/dscode`，请确保该目录在 PATH 中。再次运行可让 tar 安装保持最新：旧版本交给它自己的 `dscode update` 原地升级，版本相同或更新则只报告、不做改动；其他情况——不是 DSCODE 安装的目录，或属于另一个安装的 `dscode` 命令——会带着它找到的路径拒绝执行。
 
 **若 npm 包名查询暂时返回 404**，可直接安装同一版本的官方 registry tarball：
 

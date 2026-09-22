@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { commandPlan, acquireLock, stateHome, warnCompatibility, describeError, formatFailure, hubFailureHint } from '../packages/launcher/manager.mjs';
+import { brewManaged, commandPlan, acquireLock, stateHome, warnCompatibility, describeError, formatFailure, hubFailureHint } from '../packages/launcher/manager.mjs';
 const release={slug:'dscode',version:'0.1.0'};
 test('launcher routes management separately, pins install version and preserves existing profile',()=>{
  assert.deepEqual(commandPlan([],release,false),{launch:[],install:true});
@@ -169,4 +169,13 @@ test('a profile path with a quote stays one shell argument in the printed comman
   const backslash=String.fromCharCode(92);
   assert(result.stderr.includes("'" + backslash + "''"),'a quote in the path is escaped for the shell, not left to close the argument');
  } finally {rmSync(home,{recursive:true,force:true});}
+});
+
+test('the formula marker keeps the launcher with Homebrew',()=>{
+ const directory=mkdtempSync(join(tmpdir(),'dscode-brew-'));
+ try{
+  assert.equal(brewManaged(directory),false);
+  writeFileSync(join(directory,'.dscode-brew'),'1\n');
+  assert.equal(brewManaged(directory),true,'the formula marks its own libexec so the npm pass is skipped');
+ } finally {rmSync(directory,{recursive:true,force:true});}
 });

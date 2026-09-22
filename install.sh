@@ -26,17 +26,16 @@ need() {
 need node
 need git
 node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (!(major >= 24 || (major === 22 && minor >= 19))) { console.error("Node 22.19+ (22.x), or Node 24+ required"); process.exit(1); }'
-if [ -e "$install_dir" ] || [ -L "$install_dir" ]; then
-  echo "Install directory already exists: $install_dir. Use a new DSCODE_INSTALL_DIR for another installation." >&2
-  exit 1
-fi
-if [ -e "$bin_dir/dscode" ] || [ -L "$bin_dir/dscode" ]; then
-  echo "Command already exists: $bin_dir/dscode. It has not been replaced." >&2
-  exit 1
-fi
-
 install_from() {
   source_dir=$1
+  if [ -e "$install_dir" ] || [ -L "$install_dir" ]; then
+    echo "Install directory already exists: $install_dir. Use a new DSCODE_INSTALL_DIR for another installation." >&2
+    exit 1
+  fi
+  if [ -e "$bin_dir/dscode" ] || [ -L "$bin_dir/dscode" ]; then
+    echo "Command already exists: $bin_dir/dscode. It has not been replaced." >&2
+    exit 1
+  fi
   entries='package.json package-lock.json .npmrc .env.example bin scripts packages plugins tests presets config README.md docs install.sh'
   prebuilt=''
   if [ -f "$source_dir/.dscode-prebuilt" ] && [ -d "$source_dir/node_modules" ]; then
@@ -82,7 +81,28 @@ bootstrap_release() {
   need tar
   work=$(mktemp -d "${TMPDIR:-/tmp}/dscode-install.XXXXXX")
   trap 'rm -rf "$work"' EXIT
-  version=$(DSCODE_RELEASES_API="$RELEASES_API" DSCODE_WANTED="$wanted" DSCODE_WORK="$work" DSCODE_INSTALL_SOURCE="${DSCODE_INSTALL_SOURCE:-}" node --input-type=module -e '
+  # A managed installation is upgraded in place rather than refused, so the version it
+  # carries decides: equal or newer stops here, older hands the swap to the updater that
+  # installation ships (it migrates the state and keeps a backup). Only what the installer
+  # itself created counts — the command must be this installation's symlink.
+  existing=''
+  if [ -L "$bin_dir/dscode" ] && [ "$(readlink "$bin_dir/dscode")" = "$install_dir/bin/dscode.mjs" ] && [ -f "$install_dir/package.json" ] && [ -f "$install_dir/scripts/self-update.mjs" ]; then
+    existing=$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).version' "$install_dir/package.json" 2>/dev/null || printf '')
+    case "$existing" in ''|*[!A-Za-z0-9._-]*) existing='' ;; esac
+  fi
+  if [ -z "$existing" ]; then
+    # Anything else is refused before the download the packaged installer would otherwise
+    # make first. Its own guards stay for the local tree and as the last mile.
+    if [ -e "$install_dir" ] || [ -L "$install_dir" ]; then
+      echo "Install directory already exists: $install_dir. Use a new DSCODE_INSTALL_DIR for another installation." >&2
+      exit 1
+    fi
+    if [ -e "$bin_dir/dscode" ] || [ -L "$bin_dir/dscode" ]; then
+      echo "Command already exists: $bin_dir/dscode. It has not been replaced." >&2
+      exit 1
+    fi
+  fi
+  resolved=$(DSCODE_RELEASES_API="$RELEASES_API" DSCODE_WANTED="$wanted" DSCODE_WORK="$work" DSCODE_INSTALL_SOURCE="${DSCODE_INSTALL_SOURCE:-}" DSCODE_EXISTING="$existing" node --input-type=module -e '
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -99,6 +119,22 @@ const body = await listing.json();
 const version = String(body.tag_name ?? "").replace(/^v/, "");
 if (body.draft || body.prerelease || !exact.test(version)) fail("the release on GitHub is not a published DSCODE release.");
 if (wanted !== "latest" && version !== wanted) fail("GitHub published " + version + " for the requested tag; refusing to install another version.");
+// An installation is already here: the updater it ships fetches and verifies the release
+// itself, so nothing is downloaded here, and an equal or newer version changes nothing.
+const existing = String(process.env.DSCODE_EXISTING ?? "");
+if (existing !== "") {
+  // Semver enough for release versions: compare x.y.z, then a version carrying a
+  // pre-release suffix sorts below the release it leads to.
+  const core = value => String(value).split("-")[0].split(".").map(part => Number(part) || 0);
+  const compare = (left, right) => {
+    const a = core(left), b = core(right);
+    for (let index = 0; index < 3; index++) if (a[index] !== b[index]) return a[index] < b[index] ? -1 : 1;
+    if (String(left).includes("-") === String(right).includes("-")) return 0;
+    return String(left).includes("-") ? -1 : 1;
+  };
+  console.log((compare(existing, version) >= 0 ? "uptodate " : "upgrade ") + version);
+  process.exit(0);
+}
 const assets = Array.isArray(body.assets) ? body.assets : [];
 const named = wantedName => assets.find(candidate => candidate?.name === wantedName && candidate.browser_download_url);
 const platform = process.platform + "-" + process.arch;
@@ -116,11 +152,26 @@ if (!download.ok) fail("downloading " + name + " failed (HTTP " + download.statu
 const bytes = Buffer.from(await download.arrayBuffer());
 if (createHash("sha256").update(bytes).digest("hex") !== digest) fail("the downloaded tarball does not match the release digest; nothing was installed.");
 writeFileSync(join(work, "dscode-" + version + ".tar.gz"), bytes, { mode: 0o600 });
-console.log(version);
+console.log("install " + version);
 ')
+  outcome=${resolved%% *}
+  version=${resolved#* }
   # The version lands in a filename below, so refuse anything that is not plainly one.
   case "$version" in
     ''|*[!A-Za-z0-9._-]*) echo 'DSCODE install: the release reported no usable version.' >&2; exit 1 ;;
+  esac
+  case "$outcome" in
+    uptodate)
+      printf 'DSCODE %s is already installed at %s; nothing was changed.\n' "$version" "$install_dir"
+      exit 0
+      ;;
+    upgrade)
+      printf 'DSCODE %s is installed at %s; updating it to %s...\n' "$existing" "$install_dir" "$version"
+      node "$install_dir/bin/dscode.mjs" update "$version"
+      exit $?
+      ;;
+    install) ;;
+    *) echo 'DSCODE install: the release reported no usable version.' >&2; exit 1 ;;
   esac
   mkdir -p "$work/unpack"
   tar -xzf "$work/dscode-$version.tar.gz" -C "$work/unpack"

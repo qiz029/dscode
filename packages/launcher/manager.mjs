@@ -25,6 +25,17 @@ const loadTriggerModules = async () => {
 export function stateHome(env = process.env) {
   return resolve(env.DSCODE_HOME || join(homedir(), '.local/share/dscode-hub'));
 }
+
+/**
+ * Whether Homebrew owns the launcher this process runs from. The formula writes
+ * `.dscode-brew` beside its own `cli.mjs`, and `dscode update` then keeps the launcher with
+ * Homebrew instead of installing a second one with npm that the formula cannot see.
+ * @param directory - the launcher's own directory; injectable so a test can place the marker.
+ */
+export function brewManaged(directory = dirname(fileURLToPath(import.meta.url)), { exists = existsSync } = {}) {
+  return exists(join(directory, '.dscode-brew'));
+}
+
 export function commandPlan(args, release, installed, launcherVersion) {
   const [command, ...rest] = args;
   if (command === 'exec') return { exec: rest, install: !installed };
@@ -255,8 +266,15 @@ export async function run(args, release) {
 Move it aside to install a managed profile, for example:
   mv ${shellQuote(profile)} ${shellQuote(profile + '.unmanaged')}`);
     }
-    const launcherVersion = args[0] === 'update' ? await launcherUpdateVersion(args[1], release) : undefined;
+    // A Homebrew launcher is never replaced with npm: the profile follows this launcher's
+    // own version, and an explicit one is refused rather than leaving the profile ahead of it.
+    const managed = brewManaged();
+    const launcherVersion = args[0] === 'update' && !managed ? await launcherUpdateVersion(args[1], release) : undefined;
     const plan = commandPlan(args, release, installed, launcherVersion);
+    if (managed) {
+      if (plan.launcherUpdate) throw Error('This launcher is managed by Homebrew; run "brew upgrade dscode" to move it, then run "dscode update" for the profile.');
+      if (args[0] === 'update') console.error(`[DSCODE] Homebrew owns this launcher; moving the profile to ${release.version}. Run "brew upgrade dscode" to move the launcher itself.`);
+    }
     const running = await activeRuns(home);
     const mutatesProfile = plan.install || plan.hub && !['history', 'doctor'].includes(plan.hub[1]);
     if (mutatesProfile && running.length) throw Error('DSCODE sessions are running. Exit them before installing, updating or rolling back this profile.');

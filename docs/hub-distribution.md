@@ -53,6 +53,8 @@ Cutting a release from this repository, in order. The rule that matters most: **
 5. On a tag push the `publish` job runs: credential check → bundle → profile sync → launcher → attach the tarballs. **The launcher is published last on purpose**; a user's first launch fails when the launcher reaches npm before its bundle and its Hub profile. The order is enforced by the job, not by discipline.
 6. Confirm the published result rather than the green check: the credential step prints `free to publish` (or `already on npm with the tested integrity` for a re-run), and the attach step either creates or updates the GitHub release the `dscode update` assets come from.
 
+7. The Homebrew tap follows on its own: `qiz029/homebrew-tap` runs a scheduled (and manually dispatchable) workflow that reads `npm view @toddzheng024/dscode version`, recomputes the launcher tarball's sha256 and commits the formula change. It is deliberately not wired to this repository's tag push — the launcher is the last stage the publish job releases, so a formula bumped earlier would send a user to a Hub profile that is not there yet.
+
 Before tagging, a dry run needs no publication: Actions → Release → Run workflow with both switches left `false` (build and verify only), or tick `verify_credentials` to check the tokens and whether the version is still free.
 
 ### Known failure modes

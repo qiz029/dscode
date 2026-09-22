@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -213,4 +213,76 @@ test('the script still installs a local tree, and its guards run before anything
   const versioned = await install({ base: 'http://127.0.0.1:1', installDir: join(work, 'other'), binDir: join(work, 'other-bin'), args: [join(tree, 'install.sh'), '9.9.9'], cwd: work, path: stub + ':' + process.env.PATH, extraEnv: { STUB_LOG: log } });
   assert.equal(versioned.status, 1, 'a local tree must not silently install under a requested version');
   assert.match(versioned.stderr, /installs the tree it came from/);
+});
+
+/** A tar installation the installer itself creates: its tree, the updater it ships, and the command symlink. */
+function managedInstall(directory, version) {
+  const installDir = join(directory, 'install'), binDir = join(directory, 'bin');
+  mkdirSync(join(installDir, 'bin'), { recursive: true });
+  mkdirSync(join(installDir, 'scripts'), { recursive: true });
+  mkdirSync(binDir, { recursive: true });
+  writeFileSync(join(installDir, 'package.json'), JSON.stringify({ name: 'todd-dsh-tui-harness', version }) + '\n');
+  writeFileSync(join(installDir, 'scripts/self-update.mjs'), 'export const selfUpdate = () => {};\n');
+  writeFileSync(join(installDir, 'bin/dscode.mjs'), 'import { appendFileSync } from "node:fs";\nif (process.env.STUB_LOG) appendFileSync(process.env.STUB_LOG, process.argv.slice(2).join(" ") + "\\n");\n');
+  symlinkSync(join(installDir, 'bin/dscode.mjs'), join(binDir, 'dscode'));
+  return { installDir, binDir };
+}
+
+test('an older installation is updated through its own updater instead of refused', async t => {
+  const work = scratch(t, 'upgrade');
+  const { installDir, binDir } = managedInstall(work, '1.0.0');
+  const log = join(work, 'update.log');
+  // The asset carries no digest: an upgrade hands the swap to the installed updater, which
+  // fetches and verifies the release itself, so this path must not download anything.
+  const api = await serve(t, (request, response, base) => request.url === '/releases/latest'
+    ? listing(response, { tag_name: 'v9.9.9', draft: false, prerelease: false, assets: [{ name: 'dscode-9.9.9.tar.gz', browser_download_url: base + '/asset/dscode-9.9.9.tar.gz' }] })
+    : response.writeHead(200, { 'content-type': 'application/gzip' }).end('not a tarball'));
+  const result = await install({ base: api.base, installDir, binDir, cwd: work, extraEnv: { STUB_LOG: log } });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /DSCODE 1\.0\.0 is installed at .*; updating it to 9\.9\.9/);
+  assert.equal(readFileSync(log, 'utf8'), 'update 9.9.9\n', 'the installed updater owns the swap');
+  assert.deepEqual(api.requests.filter(url => url.startsWith('/asset/')), [], 'the updater fetches the release, not the installer');
+});
+
+test('an installation at the same or a newer version is left untouched', async t => {
+  const work = scratch(t, 'current');
+  const { installDir, binDir } = managedInstall(work, '9.9.9');
+  const log = join(work, 'update.log');
+  const api = await serve(t, (request, response) => request.url === '/releases/latest'
+    ? listing(response, { tag_name: 'v9.9.9', draft: false, prerelease: false, assets: [] })
+    : response.writeHead(404).end());
+  const same = await install({ base: api.base, installDir, binDir, cwd: work, extraEnv: { STUB_LOG: log } });
+  assert.equal(same.status, 0, same.stderr);
+  assert.match(same.stdout, /already installed at/);
+  writeFileSync(join(installDir, 'package.json'), JSON.stringify({ name: 'todd-dsh-tui-harness', version: '10.0.0' }) + '\n');
+  const newer = await install({ base: api.base, installDir, binDir, cwd: work, extraEnv: { STUB_LOG: log } });
+  assert.equal(newer.status, 0, newer.stderr);
+  assert.match(newer.stdout, /already installed at/, 'a locally newer installation is not rolled back');
+  assert.equal(existsSync(log), false, 'nothing was updated');
+});
+
+test('a command that belongs to another installation is still refused', async t => {
+  const work = scratch(t, 'foreign');
+  const installDir = join(work, 'install'), binDir = join(work, 'bin');
+  mkdirSync(binDir, { recursive: true });
+  const checkout = join(work, 'checkout-dscode.mjs');
+  writeFileSync(checkout, '#!/usr/bin/env node\n');
+  symlinkSync(checkout, join(binDir, 'dscode'));
+  // The releases API is unreachable on purpose: the refusal must come before any request.
+  const result = await install({ base: 'http://127.0.0.1:1', installDir, binDir, cwd: work });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Command already exists/);
+  assert.equal(readlinkSync(join(binDir, 'dscode')), checkout, 'the foreign command is left in place');
+});
+
+test('a pre-release installation is not mistaken for the release it leads to', async t => {
+  const work = scratch(t, 'prerelease');
+  const { installDir, binDir } = managedInstall(work, '9.9.9-rc.1');
+  const log = join(work, 'update.log');
+  const api = await serve(t, (request, response, base) => request.url === '/releases/latest'
+    ? listing(response, { tag_name: 'v9.9.9', draft: false, prerelease: false, assets: [{ name: 'dscode-9.9.9.tar.gz', browser_download_url: base + '/asset/dscode-9.9.9.tar.gz' }] })
+    : response.writeHead(200, { 'content-type': 'application/gzip' }).end('not a tarball'));
+  const result = await install({ base: api.base, installDir, binDir, cwd: work, extraEnv: { STUB_LOG: log } });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readFileSync(log, 'utf8'), 'update 9.9.9\n', 'the release supersedes its own pre-release');
 });
