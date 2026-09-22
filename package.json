@@ -1,6 +1,6 @@
 {
   "name": "todd-dsh-tui-harness",
-  "version": "0.7.24",
+  "version": "0.7.25",
   "private": true,
   "type": "module",
   "bin": {

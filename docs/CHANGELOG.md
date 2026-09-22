@@ -8,6 +8,16 @@ Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries 
 
 ## [Unreleased]
 
+## [0.7.25] - 2026-09-21
+
+### Added
+
+- A Homebrew formula installs the launcher: `brew tap qiz029/tap && brew trust qiz029/tap && brew install dscode` (Homebrew 7 refuses an untrusted third-party tap) takes the published launcher tarball into the formula's `libexec`, links `dscode`, and writes `.dscode-brew` beside `cli.mjs`. `brewManaged()` reads that marker, so on a formula installation `dscode update` moves only the Hub profile and an explicit version is refused with a pointer to `brew upgrade dscode`, which owns the launcher. The tap's own workflow follows `npm view @toddzheng024/dscode version` daily, recomputes the tarball's sha256 and commits the formula; it is deliberately not wired to this repository's tag push, because the launcher is the publish job's last stage.
+
+### Changed
+
+- Re-running the installer keeps a tar installation current instead of refusing: it reads the installed version, reports and changes nothing when that version is equal or newer, and hands an older one to the installation's own `dscode update`, which migrates the state and leaves `.dscode-backup-<version>` beside it. Anything the installer did not create — a foreign directory, or a `dscode` command belonging to another installation such as a source checkout — is still refused with the path it found, and that check now runs before the download rather than after it. [Distribution](distribution.md)
+
 ## [0.7.24] - 2026-09-21
 
 ### Added
