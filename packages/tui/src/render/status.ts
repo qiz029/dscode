@@ -118,6 +118,8 @@ export type StatusTone =
 export interface StatusSpan {
   text: string
   tone: StatusTone
+  /** Render financial figures with the telemetry's numeric tinting. */
+  telemetry?: boolean
 }
 
 /**
@@ -146,7 +148,7 @@ export interface StatusRow {
 }
 
 /**
- * The footer layout: two stacked physical rows. Row 1 keeps the primary
+ * The footer layout: two primary rows and an optional third financial row. Row 1 keeps the primary
  * controls (model, cwd, mode, branch, context) flowing from the left while the
  * permission badge anchors the right edge. Row 2 carries every secondary
  * session/run figure and degrades independently.
@@ -154,6 +156,8 @@ export interface StatusRow {
 export interface StatusLayout {
   row1: StatusRow
   row2: StatusRow
+  /** Complete financial group moves here when it cannot share row 2. */
+  row3?: StatusRow
 }
 
 /** Separator between leading clusters. */
@@ -392,7 +396,16 @@ export interface StatusFacts {
   fullSessionId: string
   /** dscode: the live metrics cluster (tps / context / spend / cache) that closes row 2. */
   telemetry?: string
-  /** dscode: the resolved reasoning effort, shown beside the model on row 1. */
+  /** Independently laid-out figures from the same metrics snapshot. */
+  telemetryFigures?: {
+    current: string
+    average: string
+    context: string
+    money: string
+    cache: string
+    turn: string
+  }
+  /** Effort for facts.model; an absent value never inherits an older request's effort. */
   effort?: string
   /** dscode: the effective skill-catalog size; undefined until the first catalog read settles. */
   skills?: number
@@ -473,7 +486,7 @@ function buildCandidates(
     if (lead !== '') push({ text: lead, tone: 'model' })
   }
   if (model !== '' && enabled.has('model')) {
-    const effort = safe(facts.effort ?? stats.reasoningEffort)
+    const effort = safe(facts.effort ?? '')
     push({ text: effort === '' ? model : model + ' @ ' + effort, tone: 'accent' })
   }
   const cwd = safe(facts.cwd)
@@ -596,7 +609,7 @@ function buildCandidates(
           },
         ],
       },
-      rank: RANK2_SKILLS,
+      rank: facts.telemetryFigures === undefined ? RANK2_SKILLS : 100,
       id: 'skills',
     })
   }
@@ -648,17 +661,25 @@ function buildCandidates(
   if (facts.plan && enabled.has('plan')) {
     row2.push({ group: { spans: [{ text: '⧉ plan', tone: 'accent' }] }, rank: RANK2_PLAN, id: 'plan' })
   }
-  // dscode: the live figures close row 2 as one ordinary left-hand group, so the
-  // row reads as a single cluster instead of a pinned right edge with a gap. It
-  // drops last: the running cost is the last thing the width may take away.
-  if (facts.telemetry !== undefined && facts.telemetry !== '') {
+  // Structured runtime figures sit on the left; finances are placed separately
+  // after fitting that row. Keep the flat form for older text-only callers.
+  if (facts.telemetryFigures !== undefined) {
+    const figures = facts.telemetryFigures
+    for (const [id, text, rank] of [
+      ['telemetry-current', figures.current, 95],
+      ['telemetry-average', figures.average, 30],
+      ['telemetry-context', figures.context, 94],
+    ] as const) {
+      if (text !== '') row2.push({ group: { spans: [{ text, tone: 'meta' }] }, rank, id })
+    }
+  } else if (facts.telemetry !== undefined && facts.telemetry !== '') {
     row2.push({ group: { spans: [{ text: facts.telemetry, tone: 'meta' }] }, rank: RANK2_TELEMETRY, id: 'telemetry' })
   }
   return { left, right, badge, row2 }
 }
 
 /**
- * Compose the two-row footer layout under a column budget. Row 1 keeps the
+ * Compose the responsive footer layout under a column budget. Row 1 keeps the
  * session identity, cwd, mode, branch, context, then the right-pinned permission
  * badge and cycle hint. It drops hint, context, and permission before
  * ellipsizing identity. Row 2 fits all secondary figures, the live telemetry
@@ -670,7 +691,7 @@ function buildCandidates(
  * keeps mode hints idle-only); 'items' is the ordered enabled-item config
  * from /statusline (defaults to the full catalog). Display order follows the
  * config per side while the drop ladder keeps its fixed ranks.
- * @returns the two rows to render; row1.left is never empty.
+ * @returns the rows to render; row1.left is never empty.
  */
 export function layoutStatusBar(
   facts: StatusFacts,
@@ -697,7 +718,10 @@ export function layoutStatusBar(
     (position.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (position.get(b.id) ?? Number.MAX_SAFE_INTEGER)
   const orderedLeft = [left[0], ...left.slice(1).sort(byPosition)]
   const orderedRight = right.slice().sort(byPosition)
-  const orderedRow2 = row2.slice().sort(byPosition)
+  const orderedRow2 = facts.telemetryFigures === undefined ? row2.slice().sort(byPosition) : [
+    ...row2.filter(entry => entry.id.startsWith('telemetry-')),
+    ...row2.filter(entry => !entry.id.startsWith('telemetry-')).sort(byPosition),
+  ]
 
   // The cycle hint keeps its columns reserved whether or not it is painted:
   // the badge anchors the right edge, so a turn opening or closing must not
@@ -842,6 +866,21 @@ export function layoutStatusBar(
     row2Kept.splice(dropIndex, 1)
   }
 
+  // Keep fees, balance, peak/off-peak and cache together. Move the group down
+  // before sacrificing left-side figures just to seat it on the same row.
+  const figures = facts.telemetryFigures
+  let financial: StatusSpan[] = []
+  if (figures !== undefined) {
+    const parts = [figures.money, figures.turn, figures.cache].filter(Boolean)
+    let text = parts.join(STATUS_ITEM_SEPARATOR)
+    // The optional per-turn cost goes first on extremely narrow terminals.
+    if (visibleColumns(text) > row2Budget) text = [figures.money, figures.cache].filter(Boolean).join(STATUS_ITEM_SEPARATOR)
+    financial = [{ text: truncateColumns(text, row2Budget), tone: 'meta', telemetry: true }]
+  }
+  const financialWidth = spansWidth(financial)
+  const financialWrap = financial.length > 0 && row2Kept.length > 0
+    && row2Width() + LEFT_RIGHT_GAP + financialWidth > row2Budget
+
   return {
     row1: {
       left: leftKept.map(entry => ({ ...entry.group, id: entry.id })),
@@ -850,8 +889,9 @@ export function layoutStatusBar(
     },
     row2: {
       left: row2Kept.map(entry => ({ ...entry.group, id: entry.id })),
-      right: [],
+      right: financialWrap ? [] : financial,
       hint: false,
     },
+    ...(financialWrap ? { row3: { left: [], right: financial, hint: false } } : {}),
   }
 }

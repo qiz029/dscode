@@ -1,3 +1,4 @@
+import { JobStore } from '../plugins/triggers/jobs.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -132,9 +133,11 @@ test('an emitted event travels into the prompt, and fire posts its own', async t
   const specs = [];
   const deps = { home: f.home, project: f.project, now: NOW, stdout: f.capture, stderr: f.captureErr, spawnRun: async ({ spec }) => { specs.push(spec); return { code: 0, result: { outcome: 'completed', exitCode: 0 } }; } };
   assert.equal(await runTriggerCli(['emit', 'nightly', '--text', 'the build failed'], { ...deps, eventId: 'e1' }), 0);
-  assert.equal(listEvents(f.home, 'nightly').length, 1);
+  const queue = new JobStore(f.home);
+  t.after(() => queue.close());
+  assert.equal(queue.list('nightly').filter(j => j.state === 'pending').length, 1);
   assert.equal(await runTriggerCli(['run', 'nightly'], deps), 0);
-  assert.equal(listEvents(f.home, 'nightly').length, 0, 'the event is consumed when the run starts');
+  assert.equal(queue.list('nightly')[0].state, 'completed');
   assert.match(specs.at(-1).prompt, /review the diff\n\nEvent \(cli\): the build failed/);
 
   assert.equal(await runTriggerCli(['fire', 'nightly', '--text', 'fire me'], { ...deps, now: NOW + 120000, eventId: 'e2' }), 0);
@@ -216,7 +219,7 @@ test('signal handlers do not accumulate across runs', async () => {
   assert.deepEqual(killed, ['SIGTERM']);
 });
 
-test('a host that never starts leaves the event pending and frees the lock', async t => {
+test('a claimed event whose host never starts is failed durably and frees the lock', async t => {
   const f = fixture(t);
   await runTriggerCli(['emit', 'nightly', '--text', 'keep me'], { home: f.home, project: f.project, now: NOW, eventId: 'e-keep', stdout: f.capture, stderr: f.captureErr });
   const code = await runTriggerCli(['run', 'nightly'], {
@@ -225,8 +228,10 @@ test('a host that never starts leaves the event pending and frees the lock', asy
   });
   assert.equal(code, 1);
   assert.match(f.output.err, /harness refused to start/);
-  assert.deepEqual(listEvents(f.home, 'nightly').map(event => event.eventId), ['e-keep'], 'the event is still pending');
-  assert.deepEqual(readRuns(f.home, { triggerId: 'nightly' }), [], 'no run was recorded');
+  const queue = new JobStore(f.home);
+  t.after(() => queue.close());
+  assert.equal(queue.list('nightly')[0].state, 'failed');
+  assert.equal(readRuns(f.home, { triggerId: 'nightly' })[0].outcome, 'failed');
   assert.throws(() => readFileSync(lockPath(f.home, 'nightly'), 'utf8'), 'the lock is released for the next attempt');
 });
 

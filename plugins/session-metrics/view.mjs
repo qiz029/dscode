@@ -111,7 +111,7 @@ function resetStamp(iso, now) {
  * terminal width decides which segments the drop ladder keeps.
  */
 const FIGURE = {
-  /** `~999.9` decode rates; the average reads the same scale without the tilde. */
+  /** Request and session-average rates share the same fixed figure width. */
   rate: 6,
   /** `100%` context occupancy. */
   percent: 4,
@@ -135,7 +135,7 @@ function figure(text, width) {
   return padding > 0 ? ' '.repeat(padding) + text : text;
 }
 
-export function formatFooter(metrics, context, columns = 80, rates, locale = 'en', provider = 'deepseek-official') {
+function footerFigures(metrics, context, rates, locale = 'en', provider = 'deepseek-official') {
   const label = key => t(locale, key);
   const ctx = figure(Number.isFinite(context) ? `${Math.round(context)}%` : '--', FIGURE.percent);
   const cache = figure(metrics.cache === null ? '--' : `${metrics.cache.toFixed(1)}%`, FIGURE.share);
@@ -161,13 +161,21 @@ export function formatFooter(metrics, context, columns = 80, rates, locale = 'en
   // priceable, the same mark the total uses.
   const turn = metrics.lastTurn === undefined || !Number.isFinite(metrics.lastTurn.cost) ? ''
     : `#${metrics.lastTurn.turn} $${metrics.lastTurn.cost.toFixed(2)}${metrics.lastTurn.unknown ? '+' : ''}`;
-  // Every figure reads value first and carries its own short qualifier, so the
-  // cluster stays scannable without a `label:` prefix in front of each number.
-  const base = rates ? [
-    `${figure(Number.isFinite(rates.current) ? '~' + rates.current.toFixed(1) : '--', FIGURE.rate)} tps`,
-    `${figure(Number.isFinite(rates.average) ? rates.average.toFixed(1) : '--', FIGURE.rate)} tps ${label('footer.average')}`,
-    `${ctx} ${label('footer.context')}`, money, `${cache} ${label('footer.cache')}`,
-  ] : [`${ctx} ${label('footer.context')}`, money, `${cache} ${label('footer.cache')}`];
+  return {
+    current: rates ? `${rates.active ? '◌' : ' '} ${figure(Number.isFinite(rates.current) ? rates.current.toFixed(1) : '--', FIGURE.rate)} tps` : '',
+    average: rates ? `${figure(Number.isFinite(rates.average) ? rates.average.toFixed(1) : '--', FIGURE.rate)} tps ${label('footer.average')}` : '',
+    context: `${ctx} ${label('footer.context')}`,
+    money,
+    cache: `${cache} ${label('footer.cache')}`,
+    turn,
+  };
+}
+
+/** Flat footer for text consumers; the TUI uses the same figures as separate groups. */
+export function formatFooter(metrics, context, columns = 80, rates, locale = 'en', provider = 'deepseek-official') {
+  const figures = footerFigures(metrics, context, rates, locale, provider);
+  const { current, average, context: ctx, money, cache, turn } = figures;
+  const base = rates ? [current, average, ctx, money, cache] : [ctx, money, cache];
   // The slot is reserved even when no turn has cost anything yet: the drop
   // ladder's indices are fixed against this array, and an unfilled slot renders
   // as '' (skipped by `render`) exactly like the absent figure would.
@@ -204,7 +212,7 @@ export function sessionSpend(id) {
 
 /** Per-events memo: the status line renders up to once a second, and summarize/average are O(events). */
 const footerCache = new WeakMap();
-export function footerFor(id, stats, columns, provider = 'deepseek-official', locale = 'en') {
+export function footerFor(id, stats, columns, provider = 'deepseek-official', locale = 'en', format = formatFooter) {
   const limit = parseBudget(process.env.DSCODE_SESSION_BUDGET_USD);
   try {
     const data = id ? source?.(id) : undefined;
@@ -222,6 +230,12 @@ export function footerFor(id, stats, columns, provider = 'deepseek-official', lo
     // The budget comes from the environment for this process only: it is a
     // per-machine spending guard, not a session property worth persisting.
     const budget = limit === null ? undefined : evaluateBudget(summary.cost, limit);
-    return formatFooter({ ...summary, ...(budget === undefined ? {} : { budget }) }, Number.isFinite(used) && capacity > 0 ? used / capacity * 100 : undefined, columns, { current: data?.currentTps, average }, locale, provider);
-  } catch { return formatFooter({ cost: 0, unknown: true, cache: null }, undefined, columns, { current: null, average: null }, locale, provider); }
+    return format({ ...summary, ...(budget === undefined ? {} : { budget }) }, Number.isFinite(used) && capacity > 0 ? used / capacity * 100 : undefined, columns, { current: data?.currentTps, average, active: data?.requestActive }, locale, provider);
+  } catch { return format({ cost: 0, unknown: true, cache: null }, undefined, columns, { current: null, average: null }, locale, provider); }
+}
+
+/** Structured figures preserve money/cache as one right-aligned group in the TUI. */
+export function footerFiguresFor(id, stats, provider = 'deepseek-official', locale = 'en') {
+  return footerFor(id, stats, 0, provider, locale,
+    (metrics, context, _columns, rates, language, route) => footerFigures(metrics, context, rates, language, route));
 }

@@ -21,7 +21,8 @@
  * @module @deepseek-ai/dsh-tui/startup
  */
 
-import { Command } from 'commander'
+import { Command, Option } from 'commander'
+import { requireDscodePreset } from './dscode/preset.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import { parseCmdline } from '@deepseek-ai/dsh-cmdline'
 import { THEME_NAMES, type ThemeName } from './theme.ts'
@@ -64,7 +65,7 @@ export function resolveTuiStartup(options: TuiStartupOptions): TuiStartup {
   if (selected.filter(Boolean).length > 1) throw new Error('--resume, --continue, and --session are mutually exclusive')
   if (options.session === '') throw new Error('--session needs an id')
   if (options.resume === '') throw new Error('--resume needs a session id or id prefix')
-  if (options.mode === '') throw new Error('--mode needs a preset id')
+  requireDscodePreset(options.mode)
   if (options.mode !== undefined && (options.resume !== undefined || options.continue === true)) {
     throw new Error('--mode applies only to a new session; it cannot be combined with --resume or --continue')
   }
@@ -98,7 +99,7 @@ function tuiCommand(): Command {
     .option('-r, --resume <session>', 'resume the persisted session with this id (or unique id prefix)')
     .option('-c, --continue', 'resume the most recent persisted session for this working directory')
     .option('--session <id>', 'create a new session under this explicit id')
-    .option('--mode <preset>', 'agent preset for a newly created session')
+    .addOption(new Option('--mode <preset>', 'compatibility flag; only dscode is accepted').hideHelp())
     .option('--theme <name>', 'color theme: dark (default), light, prismatic, rainbow, or auto')
     .option('-i, --image <path>', 'attach an image to the initial prompt (repeatable)', (path, paths: string[]) => [...paths, path], [])
     .argument('[prompt...]', 'initial prompt; sends immediately after startup')
@@ -107,7 +108,6 @@ Examples:
   dsh --profile cli                       fresh session, minted id
   dsh --profile cli --resume abc123       resume session by id prefix
   dsh --profile cli --continue            resume the latest local session
-  dsh --profile cli --mode minimal        fresh session using the minimal preset
   dsh --profile cli --theme light         light palette for bright terminals
   dsh --profile cli "explain this repo"   start and send an initial prompt
   dsh --profile cli -i diagram.png "review this diagram"

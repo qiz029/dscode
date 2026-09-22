@@ -31,6 +31,7 @@ try {
   assert((await completed(start('successor'))).includes('FOUNDATIONS_RELEASED'));
   assert((await completed(start('successor'))).includes('FOUNDATIONS_RELEASED'));
   console.log('FOUNDATIONS_OWNERSHIP: kernel lock excludes second Host, read stays available, SIGKILL and clean disposal release ownership');
+  console.log((await completed(start('preset'))).split('\n').find(s => s.includes('FOUNDATIONS_PRESET_LOCK')));
   console.log((await completed(start('boundaries'))).split('\n').find(s => s.includes('FOUNDATIONS_BOUNDARIES')));
 } finally {
   for (const record of children) if (!record.done) record.child.kill('SIGKILL');

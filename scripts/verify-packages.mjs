@@ -17,7 +17,7 @@ try {
     const unpack = spawnSync('tar', ['-xzf', tarball, '-C', destination, '--strip-components=1'], { encoding: 'utf8' });
     assert.equal(unpack.status, 0, unpack.stderr);
     const pkg = JSON.parse(readFileSync(join(destination, 'package.json'), 'utf8'));
-    const entries = name === 'launcher' ? ['cli.mjs', 'manager.mjs', 'locks.mjs', 'session-bridge/client.mjs', 'exec/cli.mjs', 'trigger/cli.mjs', 'trigger/overlay.mjs', 'trigger/config.mjs', 'trigger/launchd.mjs'] : Object.values(pkg.exports).filter(path => path.endsWith('.mjs') || path.endsWith('.js'));
+    const entries = name === 'launcher' ? ['cli.mjs', 'manager.mjs', 'locks.mjs', 'session-bridge/client.mjs', 'exec/cli.mjs', 'trigger/cli.mjs', 'trigger/overlay.mjs', 'trigger/lease.mjs', 'trigger/schedule.mjs', 'trigger/jobs.mjs', 'trigger/job-cli.mjs', 'trigger/scheduler.mjs', 'trigger/scheduler-service.mjs', 'trigger/sources.mjs', 'trigger/source-host.mjs', 'trigger/source-ingress.mjs', 'trigger/source-sandbox.mjs', 'trigger/source-emit.mjs', 'trigger/config.mjs', 'trigger/launchd.mjs'] : Object.values(pkg.exports).filter(path => path.endsWith('.mjs') || path.endsWith('.js'));
     for (const entry of entries) {
       assert(existsSync(join(destination, entry)), `Missing packaged entry: ${entry}`);
       const check = spawnSync(process.execPath, ['--check', join(destination, entry)], { encoding: 'utf8' });
@@ -27,6 +27,7 @@ try {
       assert.equal(pkg.dependencies['@deepseek-ai/node-addon-system'], '0.1.2');
       assert.match(readFileSync(join(destination, 'manager.mjs'), 'utf8'), /'\.\/exec\/cli\.mjs'/, 'the launcher loads its own exec CLI');
       assert.match(readFileSync(join(destination, 'manager.mjs'), 'utf8'), /trigger\/cli\.mjs/, 'the launcher loads its own trigger CLI');
+      assert.equal(pkg.dependencies['cron-parser'], '5.7.0', 'the launcher ships the pinned cron parser');
       assert.equal(pkg.dependencies.yaml, '2.9.1', 'the launcher carries the YAML parser its trigger CLI reads definitions with');
     }
     else {

@@ -1,6 +1,6 @@
 // Trigger definitions: the configuration half of the trigger mechanism
 // (docs/triggers-design.md). A definition says what produces an event, which
-// folder the fresh session binds to, what it is asked to do, and the limits that
+// folder the session binds to, what it is asked to do, and the limits that
 // keep an unattended run bounded. Nothing here starts a run: the ingress, the
 // runner and the source installers are separate work, and `/triggers` reads this
 // layer only.
@@ -11,11 +11,12 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { validateCalendar } from './schedule.mjs';
 
 /** Source kinds this version accepts; each has its own required fields. */
-export const SOURCE_KINDS = Object.freeze(['interval', 'calendar', 'watch', 'poll', 'external']);
+export const SOURCE_KINDS = Object.freeze(['interval', 'calendar', 'watch', 'poll', 'external', 'script']);
 
-/** The only overlap policy: a trigger whose run is still going is skipped. */
+/** The default fresh-session overlap policy; persistent sessions queue instead. */
 export const OVERLAP = 'skip';
 
 /** The only notification policy for now: append to the run log. */
@@ -70,17 +71,27 @@ function normalizeSource(raw) {
   const kind = nonEmptyString(raw.kind, 'source.kind');
   if (!SOURCE_KINDS.includes(kind)) fail(`source.kind must be one of: ${SOURCE_KINDS.join(', ')}`);
   const fields = kind === 'interval' ? ['kind', 'seconds']
-    : kind === 'calendar' ? ['kind', 'cron']
+    : kind === 'calendar' ? ['kind', 'cron', 'timezone', 'misfire']
       : kind === 'watch' ? ['kind', 'paths']
         : kind === 'poll' ? ['kind', 'everySeconds', 'check']
-          : ['kind'];
+          : kind === 'script' ? ['kind', 'mode', 'command', 'everySeconds', 'timeoutSeconds', 'permission'] : ['kind'];
   knownKeys(raw, fields, `source (${kind})`);
+  if (kind === 'script') {
+    if (!['poll', 'daemon'].includes(raw.mode)) fail('source.mode must be poll or daemon');
+    if (!Array.isArray(raw.command) || !raw.command.length || raw.command.some(arg => typeof arg !== 'string' || arg.includes('\0')) || !raw.command[0].trim()) fail('source.command must be a non-empty argv array');
+    const permission = raw.permission ?? 'read-only';
+    if (!['read-only', 'workspace-write'].includes(permission)) fail('source.permission must be read-only or workspace-write');
+    if (raw.mode === 'daemon' && (raw.everySeconds !== undefined || raw.timeoutSeconds !== undefined)) fail('daemon sources do not accept everySeconds or timeoutSeconds');
+    return { kind, mode: raw.mode, command: raw.command, permission, ...(raw.mode === 'poll' ? { everySeconds: positiveInteger(raw.everySeconds, 'source.everySeconds'), timeoutSeconds: positiveInteger(raw.timeoutSeconds ?? 60, 'source.timeoutSeconds') } : {}) };
+  }
   if (kind === 'interval') return { kind, seconds: positiveInteger(raw.seconds, 'source.seconds') };
   if (kind === 'calendar') {
     const cron = nonEmptyString(raw.cron, 'source.cron');
-    // Five fields is the only shape the installer can translate to launchd.
-    if (cron.split(/\s+/u).length !== 5) fail('source.cron must have five fields (minute hour day month weekday)');
-    return { kind, cron };
+    const timezone = raw.timezone === undefined ? Intl.DateTimeFormat().resolvedOptions().timeZone : nonEmptyString(raw.timezone, 'source.timezone');
+    const misfire = raw.misfire ?? 'run-once';
+    if (!['run-once', 'skip'].includes(misfire)) fail('source.misfire must be run-once or skip');
+    validateCalendar(cron, timezone);
+    return { kind, cron, timezone, misfire };
   }
   if (kind === 'watch') {
     if (!Array.isArray(raw.paths) || raw.paths.length === 0) fail('source.paths must be a non-empty list of paths');
@@ -101,7 +112,7 @@ function normalizeSource(raw) {
  */
 export function normalizeTrigger(raw, { origin, path } = {}) {
   if (!isPlainObject(raw)) fail('a trigger definition must be a mapping');
-  knownKeys(raw, ['id', 'enabled', 'source', 'workspace', 'prompt', 'preset', 'permission', 'model', 'effort', 'goal', 'limits', 'overlap', 'notify'], 'the definition');
+  knownKeys(raw, ['id', 'enabled', 'source', 'workspace', 'prompt', 'preset', 'permission', 'model', 'effort', 'session', 'goal', 'limits', 'overlap', 'notify'], 'the definition');
   const id = nonEmptyString(raw.id, 'id');
   if (!ID_PATTERN.test(id)) fail('id must start with a letter or digit and use only a-z, 0-9, dot, underscore or dash');
   const workspace = nonEmptyString(raw.workspace, 'workspace');
@@ -114,6 +125,11 @@ export function normalizeTrigger(raw, { origin, path } = {}) {
   if (!UNATTENDED_PERMISSIONS.includes(permission)) {
     fail(`permission must be one of: ${UNATTENDED_PERMISSIONS.join(', ')} — an unattended run cannot ask for approval`);
   }
+
+  const session = raw.session === undefined ? { mode: 'new' } : raw.session;
+  if (!isPlainObject(session)) fail('session must be an object with mode: new or persistent');
+  knownKeys(session, ['mode'], 'session');
+  if (!['new', 'persistent'].includes(session.mode)) fail('session.mode must be new or persistent');
 
   const goal = raw.goal;
   if (!isPlainObject(goal)) fail('goal must be an object with the objective to finish');
@@ -129,7 +145,8 @@ export function normalizeTrigger(raw, { origin, path } = {}) {
   const minIntervalSeconds = limits.minIntervalSeconds === undefined ? DEFAULTS.minIntervalSeconds : positiveInteger(limits.minIntervalSeconds, 'limits.minIntervalSeconds');
   const maxCostUsd = limits.maxCostUsd === undefined ? undefined : positiveNumber(limits.maxCostUsd, 'limits.maxCostUsd');
 
-  if (raw.overlap !== undefined && raw.overlap !== OVERLAP) fail(`overlap must be "${OVERLAP}"`);
+  const overlap = session.mode === 'persistent' ? 'queue' : OVERLAP;
+  if (raw.overlap !== undefined && raw.overlap !== overlap) fail(`overlap must be "${overlap}" for session.mode ${session.mode}`);
   if (raw.notify !== undefined && raw.notify !== NOTIFY) fail(`notify must be "${NOTIFY}"`);
 
   const source = normalizeSource(raw.source);
@@ -141,7 +158,8 @@ export function normalizeTrigger(raw, { origin, path } = {}) {
     ...(raw.effort === undefined ? {} : { effort: nonEmptyString(raw.effort, 'effort') }),
     goal: { objective, maxRounds },
     limits: { timeoutSeconds, maxRunsPerDay, minIntervalSeconds, ...(maxCostUsd === undefined ? {} : { maxCostUsd }) },
-    overlap: OVERLAP,
+    session: { mode: session.mode },
+    overlap,
     notify: NOTIFY,
     origin: origin ?? 'user',
     path: path ?? '',
@@ -227,14 +245,15 @@ const inline = (text, limit = 96) => {
  */
 export function formatTrigger(definition, { lastRun } = {}) {
   const source = definition.source.kind === 'interval' ? `every ${definition.source.seconds}s`
-    : definition.source.kind === 'calendar' ? `cron ${definition.source.cron}`
+    : definition.source.kind === 'calendar' ? `cron ${definition.source.cron} (${definition.source.timezone}, ${definition.source.misfire})`
       : definition.source.kind === 'watch' ? `watch ${definition.source.paths.join(', ')}`
         : definition.source.kind === 'poll' ? `poll ${definition.source.everySeconds}s: ${definition.source.check}`
-          : 'external (emit only)';
+          : definition.source.kind === 'script' ? `script ${definition.source.mode}: ${definition.source.command.join(' ')}` : 'external (emit only)';
   return [
     `${definition.enabled ? 'on ' : 'off'} ${definition.id}${definition.overrides ? ' (project overrides user)' : ''}`,
     `    source:    ${source}`,
     `    workspace: ${definition.workspace}`,
+    `    session:   ${definition.session?.mode ?? 'new'}`,
     `    goal:      ${inline(definition.goal.objective)} (max ${definition.goal.maxRounds} rounds)`,
     `    prompt:    ${inline(definition.prompt)}`,
     `    limits:    ${definition.limits.timeoutSeconds}s, ${definition.limits.maxRunsPerDay}/day${definition.limits.maxCostUsd === undefined ? '' : `, $${definition.limits.maxCostUsd}`}`,

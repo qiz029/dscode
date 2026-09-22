@@ -2,11 +2,37 @@
 
 All notable changes to DSCODE, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions match the npm launcher and the Hub profile.
 
-Per-release notes in Chinese live in [`docs/releases/`](releases/); the entries below summarise them.
+Per-release notes live in [`docs/releases/`](releases/); the entries below summarise them.
 
 <!-- Add upcoming changes under Unreleased. -->
 
 ## [Unreleased]
+
+## [0.7.26] - 2026-09-22
+
+### Changed
+
+- The footer separates left-side runtime figures (TPS, average, context and skills) from right-aligned finances (cost, DeepSeek balance and peak/off-peak marker, last-turn cost and cache). Narrow terminals move finances together to a third row, with the live transcript budget and IME cursor accounting for that row.
+- A request activity indicator beside footer TPS animates while the main model call waits or streams, without changing the measured number. It stops during tool execution and idle time, uses a static circle when animations are disabled, and reserves its space to keep the footer aligned.
+- Footer TPS now uses a normalized exponential moving average of completed request rates, based only on provider-reported output tokens and measured request duration. Each valid completion halves older sample weights (decay coefficient `0.5`); idle time does not expire the reading. A request on a different provider, model or effort resets it. UTF-8 byte estimates and the `~` prefix are removed; missing usage stays unknown and does not update the average.
+- Model switches now display the target model's default effort when the previous effort is unsupported. Both effort pickers start at that default, and the footer no longer pairs a newly selected model with the previous request's effort (such as MiMo `medium` after switching to DeepSeek).
+- The interactive TUI is fixed to the `dscode` preset. `/mode` no longer appears in help or completion, and direct preset-switch requests cannot change the composition. Fresh sessions and resumed legacy sessions load DSCODE; resume preserves history and records the effective preset. `/new` and the hidden `--mode dscode` compatibility flag reject other presets. Model, effort, permission and plan controls keep their existing behavior.
+
+### Fixed
+
+- OpenRouter's untyped 403 `Request blocked by content filter` response is classified as `CONTENT_POLICY` instead of `AUTH`. Ordinary authentication failures retain their classification. Content-policy and content-filter errors now explain that the turn stopped and ask the user to review the request and context before continuing, both live and on session replay. The default retry policy does not retry these rejections; DSCODE cannot remove a provider-side filter.
+
+### Added
+
+- `/trigger` (with `/triggers` as an alias) now manages workspace triggers directly in the TUI: disabled starters, JSON definition edits, enable/disable, recurring registration, queued runs, delay jobs and cancellation, script lifecycle/logs, and scheduler status/installation. Commands reuse the agent tools' management service and workspace/permission boundaries without invoking a model. [Triggers](triggers.md)
+
+- Script trigger sources support finite polling checks and supervised daemon loops. `trigger_source` and `dscode trigger source` expose status, start/stop/restart and bounded output tails. Script events enter the shared durable queue through a scoped local ingress, with stable event identities, conflict detection and explicit queue backpressure. Source scripts and legacy poll predicates use filesystem sandboxes without an unrestricted fallback; guardian processes clean up ordinary child process groups on stop or scheduler loss. [Triggers](triggers.md)
+
+- DSCODE can manage schedules with `trigger_manage`, `trigger_jobs` and `trigger_scheduler`: project-local cron/interval definitions, one-shot delay jobs with durable idempotency keys, pending-job cancellation, and shared scheduler status/installation. The tools reuse CLI state, bind management to the current workspace, and route mutations through tool approval. Plan/read-only sessions, subagents and unattended runs cannot mutate schedules through these tools. [Triggers](triggers.md)
+
+- Durable trigger jobs: `schedule --after/--at`, `jobs` and `cancel`, plus a shared `scheduler` supervised by launchd. Recurring calendar/interval/poll sources now create jobs in SQLite, atomically with their schedule cursor. Calendar rules support numeric ranges/lists/steps, IANA time zones and `run-once`/`skip` misfire handling. Due jobs retain their waiting reason under overlap or execution limits, reuse the existing session modes and never automatically retry a failed run. [Triggers](triggers.md)
+
+- Triggers support `session.mode: new` (the default) and `persistent`. Persistent triggers durably bind their id to a session, resume its history across Hosts, and give each event a fresh goal with independent round and cost limits. Concurrent events queue and drain in order under a kernel lock inherited by the Host; minimum intervals still apply, and daily caps leave events pending for the next invocation. A missing bound session or changed workspace/preset fails rather than silently losing context. [Triggers](triggers.md)
 
 ## [0.7.25] - 2026-09-21
 

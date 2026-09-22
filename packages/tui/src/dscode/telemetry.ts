@@ -5,7 +5,7 @@
  * @module dsh-code/dscode/telemetry
  */
 
-import { createElement } from 'react'
+import { createElement, useEffect, useState } from 'react'
 import { Text } from 'ink'
 import { getPalette, getTheme, inkColor } from '../theme.ts'
 
@@ -48,6 +48,8 @@ export function dscodeTpsInkColor(tone: DscodeTelemetryTone): ReturnType<typeof 
 export interface DscodeTelemetryPart {
   text: string
   tone: DscodeTelemetryTone
+  /** A real model request is open; this slot may animate independently of TPS. */
+  activity?: boolean
 }
 
 /**
@@ -61,12 +63,13 @@ export function dscodeTelemetryParts(value: string): readonly DscodeTelemetryPar
     if (index > 0) result.push({ text: ' · ', tone: null })
     // A rate figure reserves its columns, so the padding stays outside the tinted
     // run and only the reading carries the tier.
-    const rate = /^(\s*)(~?(?:\d+(?:\.\d+)?|--)) tps( \S+)?$/.exec(part)
+    const rate = /^(◌ )?(\s*)(\d+(?:\.\d+)?|--) tps( \S+)?$/.exec(part)
     if (rate) {
-      const display = rate[2]
-      result.push({ text: rate[1], tone: null }, { text: display + ' tps', tone: dscodeTpsTone(Number(display.startsWith('~') ? display.slice(1) : display)) })
+      if (rate[1]) result.push({ text: rate[1], tone: null, activity: true })
+      const display = rate[3]
+      result.push({ text: rate[2], tone: null }, { text: display + ' tps', tone: dscodeTpsTone(Number(display)) })
       // The average's trailing qualifier rides along untinted.
-      if (rate[3] !== undefined) result.push({ text: rate[3], tone: null })
+      if (rate[4] !== undefined) result.push({ text: rate[4], tone: null })
       continue
     }
     // Only a recognised cache label on the very last figure is tinted; the label
@@ -83,9 +86,23 @@ export function dscodeTelemetryParts(value: string): readonly DscodeTelemetryPar
   return result
 }
 
-/** The telemetry run as Ink text nodes, one per tinted segment. */
-export function dscodeTelemetryNodes(value: string, key: string): readonly ReturnType<typeof createElement>[] {
-  return dscodeTelemetryParts(value).map((part, index) => createElement(
+/** Only this leaf ticks; neither the numeric reading nor ledger polling animates. */
+function TpsActivity({ animated }: { animated: boolean }): ReturnType<typeof createElement> {
+  const [frame, setFrame] = useState(0)
+  useEffect(() => {
+    if (!animated) return
+    const timer = setInterval(() => setFrame(value => value + 1), 120)
+    return () => clearInterval(timer)
+  }, [animated])
+  const frames = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+  return createElement(Text, { color: inkColor(getPalette().brandMid) }, (animated ? frames[frame % frames.length] : '◌') + ' ')
+}
+
+/** The telemetry run as Ink nodes; only the request activity slot may move. */
+export function dscodeTelemetryNodes(value: string, key: string, animated = false): readonly ReturnType<typeof createElement>[] {
+  return dscodeTelemetryParts(value).map((part, index) => part.activity
+    ? createElement(TpsActivity, { key: key + 'p' + index, animated })
+    : createElement(
     Text,
     { key: key + 'p' + index, color: dscodeTpsInkColor(part.tone) },
     part.text,

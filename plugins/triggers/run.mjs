@@ -142,6 +142,7 @@ export function finishTriggerRun(home, handle, result) {
     startedAt: handle.startedAt,
     endedAt: result.endedAt ?? Date.now(),
     eventId: result.eventId ?? handle.eventId,
+    ...(result.jobId ? { jobId: result.jobId } : {}),
     source: result.source ?? null,
     outcome: result.outcome,
     reason: result.reason ?? null,

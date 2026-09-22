@@ -75,6 +75,7 @@ export function writeRunSpec(path, spec) {
   }
   if (!isPlainObject(spec.goal) || typeof spec.goal.objective !== 'string' || spec.goal.objective.trim() === '') fail('a run spec needs goal.objective');
   if (!Number.isSafeInteger(spec.goal.maxRounds) || spec.goal.maxRounds <= 0) fail('a run spec needs a positive goal.maxRounds');
+  validateSessionMode(spec);
   return writeJson(path, spec);
 }
 
@@ -84,6 +85,7 @@ export function readRunSpec(path) {
   for (const field of ['triggerId', 'runId', 'workspace', 'prompt', 'goal']) {
     if (spec[field] === undefined) fail(`the run spec is missing ${field}`);
   }
+  validateSessionMode(spec);
   return spec;
 }
 
@@ -105,5 +107,11 @@ export function readRunResult(path) {
     return readJson(path, 'the run result');
   } catch {
     return undefined;
+  }
+}
+
+function validateSessionMode(spec) {
+  if (spec.session !== undefined && (!isPlainObject(spec.session) || !['new', 'persistent'].includes(spec.session.mode) || Object.keys(spec.session).some(key => key !== 'mode'))) {
+    fail('a run spec session must contain only mode: new or persistent');
   }
 }

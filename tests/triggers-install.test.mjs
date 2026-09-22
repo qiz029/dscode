@@ -1,3 +1,5 @@
+import { schedulerPath } from '../plugins/triggers/scheduler-service.mjs';
+import { JobStore } from '../plugins/triggers/jobs.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -93,34 +95,34 @@ function fixture(t) {
   const output = { out: '', err: '' };
   // The installer refuses a path launchd cannot execute, so the fixture points at
   // a real file (`node` itself); the plist text is asserted separately.
-  const deps = { home, project, now: NOW, dscodePath: process.execPath, stdout: { write: text => { output.out += text; } }, stderr: { write: text => { output.err += text; } } };
+  const deps = { home, project, now: NOW, agentsDirectory: join(root, 'LaunchAgents'), dscodePath: process.execPath, stdout: { write: text => { output.out += text; } }, stderr: { write: text => { output.err += text; } } };
   return { root, home, project, workspace, output, deps };
 }
 
-test('install writes a plist, loads it, and uninstall takes it away', async t => {
+test('install registers a recurrence and loads the shared scheduler; uninstall preserves the service', async t => {
   const f = fixture(t);
-  writeFileSync(join(f.project, '.dsh', 'triggers', 'nightly.yml'), `id: nightly\nworkspace: ${f.workspace}\nprompt: review\nsource: { kind: calendar, cron: "0 9 * * *" }\ngoal: { objective: keep it green }\n`);
+  writeFileSync(join(f.project, '.dsh', 'triggers', 'nightly.yml'), `id: nightly\nworkspace: ${f.workspace}\nprompt: review\nsource: { kind: calendar, cron: "0 9 * * 1-5", timezone: UTC }\ngoal: { objective: keep it green }\n`);
   const calls = [];
-  const deps = { ...f.deps, platform: 'darwin', launchctl: async args => { calls.push(args); return 0; } };
-
+  const deps = { ...f.deps, platform: 'darwin', launchctl: async args => { calls.push(args); return args[0] === 'print' ? 1 : 0; } };
   assert.equal(await runTriggerCli(['install', 'nightly'], deps), 0);
-  const path = agentPath(f.home, 'nightly');
-  assert.equal(existsSync(path), true);
-  assert.match(readFileSync(path, 'utf8'), /<key>StartCalendarInterval<\/key>/);
-  assert.deepEqual(calls.map(args => args[0]), ['bootout', 'bootstrap'], 'the previous load is cleared before the new one');
-  assert.match(f.output.out, new RegExp(`0 9 \\* \\* \\* ${process.execPath.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')} trigger run nightly --project `));
-
+  const path = schedulerPath(f.home, deps.agentsDirectory);
+  assert.match(readFileSync(path, 'utf8'), /<key>KeepAlive<\/key><true\/>/);
+  assert.match(readFileSync(path, 'utf8'), /<string>scheduler<\/string><string>start<\/string>/);
+  assert.deepEqual(calls.map(args => args[0]), ['bootout', 'print', 'bootstrap']);
+  const store = new JobStore(f.home);
+  t.after(() => store.close());
+  assert.equal(store.schedules().length, 1);
   assert.equal(await runTriggerCli(['uninstall', 'nightly'], deps), 0);
-  assert.equal(existsSync(path), false);
-  assert.deepEqual(calls.at(-1)[0], 'bootout');
+  assert.equal(store.schedules().length, 0);
+  assert.equal(existsSync(path), true, 'the shared service also serves other triggers and delay jobs');
 });
 
-test('without launchd the same schedule is printed as a crontab line', async t => {
+test('without launchd installation prints the foreground scheduler command', async t => {
   const f = fixture(t);
   writeFileSync(join(f.project, '.dsh', 'triggers', 'nightly.yml'), `id: nightly\nworkspace: ${f.workspace}\nprompt: review\nsource: { kind: interval, seconds: 600 }\ngoal: { objective: x }\n`);
   assert.equal(await runTriggerCli(['install', 'nightly'], { ...f.deps, platform: 'linux', launchctl: async () => { throw new Error('must not be called'); } }), 0);
-  assert.match(f.output.out, /launchd is not available here/);
-  assert.match(f.output.out, /\*\/10 \* \* \* \* .* trigger run nightly/);
+  assert.match(f.output.out, /service manager/);
+  assert.match(f.output.out, /trigger scheduler start/);
 });
 
 test('install needs a real program path and refuses to guess one', async t => {

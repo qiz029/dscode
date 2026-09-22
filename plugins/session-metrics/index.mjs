@@ -6,7 +6,7 @@ import { BALANCE_PROVIDERS, refreshBalance } from './balance.mjs';
 import { refreshOpenRouterModels } from '../openrouter/models.mjs';
 import { REPLAY_KIND } from '../openrouter/wire.mjs';
 import { providerSpec } from '../providers/catalog.mjs';
-import { createWindowRate } from './rate.mjs';
+import { createSmoothedRate } from './rate.mjs';
 import { currentCharge } from './attribution.mjs';
 
 // Chunks that carry generated output; the first one marks time to first token.
@@ -15,18 +15,20 @@ export const name = 'dscode-session-metrics';
 export const inject = ['llm', 'agents', 'tokenMeter', 'sessionProjections'];
 export function apply(ctx) {
   const snapshots = new WeakMap();
-  const liveRate = createWindowRate();
+  const smoothedRate = createSmoothedRate();
+  const activeRequests = new WeakMap();
   ctx.effect(() => setMetricSource(id => {
     const agent = ctx.agents.get(id);
     if (!agent) return undefined;
     const session = agent.session;
     const cached = snapshots.get(session);
-    if (cached?.seq === session.seq) return { ...cached.value, currentTps: liveRate.get(session) };
+    const requestActive = (activeRequests.get(session) ?? 0) > 0;
+    if (cached?.seq === session.seq) return { ...cached.value, currentTps: smoothedRate.get(session), requestActive };
     const state = ctx.sessionProjections.stateOf(session, 'contextPressure');
     const measurement = ctx.tokenMeter.measure(session);
     const value = { events: session.snapshotEvents(), used: measurement.totalTokens, capacity: state?.contextWindow };
     snapshots.set(session, { seq: session.seq, value });
-    return { ...value, currentTps: liveRate.get(session) };
+    return { ...value, currentTps: smoothedRate.get(session), requestActive };
   }));
   const home = process.env.DSH_HOME;
   // Remaining balance is best-effort decoration: resolve the key lazily (never
@@ -72,19 +74,26 @@ export function apply(ctx) {
     save({ kind: 'start', id, time, provider: options.provider, model: options.model, purpose });
     let usage, firstTokenTime, billed;
     const liveSession = purpose === 'agent' ? ctx.agents.get(sessionId)?.session : undefined;
+    const settleRate = liveSession
+      ? smoothedRate.begin(liveSession, JSON.stringify([options.provider, options.model, options.reasoningEffort ?? null]))
+      : undefined;
+    if (liveSession) activeRequests.set(liveSession, (activeRequests.get(liveSession) ?? 0) + 1);
+    let completed = false;
     try {
       for await (const chunk of next()) {
         if (chunk.type === 'usage') usage = chunk.usage;
         else if (firstTokenTime === undefined && OUTPUT_CHUNKS.has(chunk.type)) firstTokenTime = Date.now();
         // OpenRouter reports what it charged; the finish of its response carries it.
         if (chunk.type === 'finish' && chunk.replayState?.response?.kind === REPLAY_KIND && Number.isFinite(chunk.replayState.response.cost)) billed = chunk.replayState.response.cost;
-        if (liveSession) liveRate.add(liveSession, chunk);
         yield chunk;
       }
+      completed = true;
     } finally {
-      if (liveSession) liveRate.calibrate(liveSession, usage?.outputTokens);
+      const endTime = Date.now();
+      if (liveSession) activeRequests.set(liveSession, (activeRequests.get(liveSession) ?? 1) - 1);
+      if (completed) settleRate?.({ start: time, end: endTime, outputTokens: usage?.outputTokens });
       // `time` stays the start (it prices the call); `endTime` and `firstTokenTime` time it.
-      save({ kind: 'end', id, time, endTime: Date.now(), ...(firstTokenTime === undefined ? {} : { firstTokenTime }), usage: usage ?? null, ...(billed === undefined
+      save({ kind: 'end', id, time, endTime, ...(firstTokenTime === undefined ? {} : { firstTokenTime }), usage: usage ?? null, ...(billed === undefined
         ? { cost: estimateCost(options.provider, options.model, usage, time), priceVersion: priceVersionFor(options.provider, options.model) }
         : { cost: billed, priceVersion: 'openrouter-billed' }) });
     }

@@ -56,7 +56,7 @@ import { imeCursorRowsUp, useImeCursorAnchor } from './render/ime-cursor.ts'
 import { readClipboardImage } from './dscode/clipboard-image/index.mjs'
 import { createChatLinesCache, dscodeChatLines } from './dscode/chat.ts'
 import { readFileSync } from 'node:fs'
-import { FOOTER_FIGURE_RESERVE, footerFor as dscodeFooterFor } from '../../../plugins/session-metrics/view.mjs'
+import { footerFiguresFor as dscodeFooterFiguresFor } from '../../../plugins/session-metrics/view.mjs'
 import { newerVersion as dscodeNewerVersion } from '../../../plugins/tui-tools/update.mjs'
 import { languageName as dscodeLanguageName, normalizeLanguage as dscodeNormalizeLanguage, t as dscodeMessage } from '../../../plugins/i18n/messages.mjs'
 import { dscodeTelemetryNodes } from './dscode/telemetry.ts'
@@ -167,7 +167,7 @@ import {
 import type { ApprovalSnapshot, ApprovalStore } from './approval.ts'
 import { isSlashLine, submissionPayload, type CommandsView } from './commands.ts'
 import { rankByName } from './render/fuzzy.ts'
-import type { ModelDirectory, ModelRow } from './models.ts'
+import { resolveModelEffort, type ModelDirectory, type ModelRow } from './models.ts'
 import {
   isDeclaredReasoningEfforts,
   parseReasoningEffortsDraft,
@@ -187,8 +187,7 @@ import { createTranscriptStore } from './store.ts'
 import type { CommunicationView } from './communication.ts'
 import type { BtwFeed, BtwRun } from './btw.ts'
 import type { UsageView } from './render/usage.ts'
-import { AgentsPanel, editQuery, EffortPanel as NativeEffortPanel, HistoryPanel, JobsPanel, ModePanel, PermissionPanel, PluginPanel, ResumePanel, ReviewPickerPanel, SchedulePanel, SearchPanel, StatuslinePanel, runClock, SubagentPanel, UsagePanel, type JobRow, type SearchRow } from './kernel-panels.ts'
-import type { PresetRow } from './presets.ts'
+import { AgentsPanel, editQuery, EffortPanel as NativeEffortPanel, HistoryPanel, JobsPanel, PermissionPanel, PluginPanel, ResumePanel, ReviewPickerPanel, SchedulePanel, SearchPanel, StatuslinePanel, runClock, SubagentPanel, UsagePanel, type JobRow, type SearchRow } from './kernel-panels.ts'
 import type { PermissionRow } from './permissions.ts'
 import type { PluginRow } from './plugin-inventory.ts'
 import {
@@ -337,7 +336,6 @@ const LOCAL_COMMANDS: readonly LocalCommand[] = [
   { label: '/help', descriptionKey: 'cmd.help' },
   { label: '/model', descriptionKey: 'cmd.model' },
   { label: '/effort', descriptionKey: 'cmd.effort' },
-  { label: '/mode', descriptionKey: 'cmd.mode' },
   { label: '/permission', descriptionKey: 'cmd.permission' },
   { label: '/new', descriptionKey: 'cmd.new' },
   { label: '/fork', descriptionKey: 'cmd.fork' },
@@ -380,7 +378,7 @@ const LOCAL_COMMANDS: readonly LocalCommand[] = [
   { label: '/quit', descriptionKey: 'cmd.quit' },
 ] as const
 
-const LOCAL_COMMAND_NAMES = new Set(LOCAL_COMMANDS.map(command => command.label.slice(1)))
+const LOCAL_COMMAND_NAMES = new Set([...LOCAL_COMMANDS.map(command => command.label.slice(1)), 'mode'])
 
 /** One mutation the terminal may request for a pending next-turn inbox item. */
 export type QueueMutation =
@@ -567,8 +565,6 @@ export interface AppProps {
   /** Start a model review after applying the read-only permission preset. */
   reviewChanges: (selection: ReviewSelection) => void
   /** Preset/session/plugin kernel operations. */
-  loadPresets: () => Promise<readonly PresetRow[]>
-  switchMode: (id: string) => Promise<string>
   /** Load the switchable permission presets for the /permission panel. */
   loadPermissions: () => Promise<readonly PermissionRow[]>
   createSession: (mode?: string) => void
@@ -1651,13 +1647,13 @@ function statusToneProps(tone: StatusTone, flowMs?: number): {
 }
 
 /**
- * The footer status line: two stacked physical rows in every mode. Row 1
+ * The footer status line: two rows, or three when finances need their own row. Row 1
  * carries Claude-Code-style identity facts and session figures from the left
  * with the Codex-style permission badge — the autonomous-selection anchor
  * with its shift+tab cycle hint — pinned to the right edge. Row 2 (mode,
  * context progress bar, cache, duration figures) renders only while it has
- * content, so the footer degrades to a single row on narrow terminals. Both
- * layouts arrive pre-measured from the pure reducer, so Ink only paints;
+ * content, and the financial group moves to row 3 when needed. All rows
+ * arrive pre-measured from the pure reducer, so Ink only paints;
  * truncation degrades groups, it never wraps a row.
  *
  * The DeepSeek easter egg: when the model label *switches* to an official
@@ -1698,9 +1694,9 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
   busy: boolean
   columns: number
   items: readonly string[]
-  /** Reports the footer's exact physical row count (1 or 2) so the IME
+  /** Reports the footer's exact physical row count (1, 2 or 3) so the IME
    * anchor ledger below the composer stays exact. */
-  onRows?: (rows: 1 | 2) => void
+  onRows?: (rows: 1 | 2 | 3) => void
   /** Whether timed animations run (the persisted preference). */
   animated: boolean
 }): ReactElement {
@@ -1711,18 +1707,11 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
     const timer = setInterval(() => dscodeRefreshMetrics(n => n + 1), 1000)
     return () => clearInterval(timer)
   }, [])
-  // dscode: the live figures close row 2 as one left-hand cluster and only appear
-  // once the terminal can seat them; row 1 names the model itself. The cluster is
-  // laid out against the same width budget as before, and its own ladder decides
-  // which figures fit.
-  const telemetryWidth = Math.max(1, Math.min(columns - 8, Math.max(40, Math.floor(columns * 0.8) - 4) + FOOTER_FIGURE_RESERVE))
-  // The figures belong to the provider serving the route (`provider/model`).
+  // Keep the figures structured: the layout can move the complete financial
+  // group to a third row instead of dropping it to make the left group fit.
   const slash = facts.model.indexOf('/')
   const provider = slash > 0 ? facts.model.slice(0, slash) : 'deepseek-official'
-  const telemetry = columns >= 48
-    ? dscodeFooterFor(facts.fullSessionId, stats, telemetryWidth, provider, getLanguage())
-    : ''
-  facts = { ...facts, telemetry }
+  facts = { ...facts, telemetryFigures: dscodeFooterFiguresFor(facts.fullSessionId, stats, provider, getLanguage()) }
   // Flowing-theme busy flow: the identity cluster's live dot cycles the
   // anchor walk while a turn runs; static themes never start the timer.
   const flow = themeFlow()
@@ -1738,6 +1727,12 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
     contextWidth: Math.max(5, columns - 6),
   }), [
     facts.telemetry,
+    facts.telemetryFigures?.current,
+    facts.telemetryFigures?.average,
+    facts.telemetryFigures?.context,
+    facts.telemetryFigures?.money,
+    facts.telemetryFigures?.cache,
+    facts.telemetryFigures?.turn,
     facts.model,
     facts.effort,
     facts.mode,
@@ -1762,7 +1757,7 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
   // The IME anchor below the composer counts every row between the caret and
   // Ink's parked cursor, so the footer reports its exact row count one-way
   // (same contract as the composer's row report).
-  const statusRowCount: 1 | 2 = layout.row2.left.length > 0 || layout.row2.right.length > 0 ? 2 : 1
+  const statusRowCount: 1 | 2 | 3 = layout.row3 !== undefined ? 3 : layout.row2.left.length > 0 || layout.row2.right.length > 0 ? 2 : 1
   useEffect(() => {
     onRows?.(statusRowCount)
   }, [onRows, statusRowCount])
@@ -1773,13 +1768,13 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
       if (groupIndex > 0) {
         leftParts.push(createElement(Text, { key: key + 'gs' + groupIndex, color: inkColor(getPalette().dim) }, STATUS_GROUP_SEPARATOR))
       }
-      const telemetryGroup = group.id === 'telemetry'
+      const telemetryGroup = group.id?.startsWith('telemetry') === true
       group.spans.forEach((span, spanIndex) => {
         const spanKey = key + 'g' + groupIndex + 's' + spanIndex
         leftParts.push(createElement(
           Text,
           { key: spanKey, wrap: 'truncate-end', ...statusToneProps(span.tone, flowMs) },
-          telemetryGroup ? dscodeTelemetryNodes(span.text, spanKey) : span.text,
+          telemetryGroup ? dscodeTelemetryNodes(span.text, spanKey, animated) : span.text,
         ))
       })
     })
@@ -1800,7 +1795,7 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
       rightParts.push(createElement(
         Text,
         { key: key + 'r' + index, wrap: 'truncate-end', ...statusToneProps(span.tone, flowMs) },
-        span.text,
+        span.telemetry ? dscodeTelemetryNodes(span.text, key + 'r' + index, animated) : span.text,
       ))
     })
     // Each row already fits the column budget; truncate-end stays as the
@@ -1812,8 +1807,8 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
       // The secondary row adds the model-name indent
       // (its budget already shrinks by the same amount) so its figures align
       // under the model name rather than under the busy dot.
-      { paddingLeft: 2 + indent, width: columns, justifyContent: rightParts.length > 0 ? 'space-between' : undefined },
-      createElement(Text, { wrap: 'truncate-end' }, ...leftParts),
+      { paddingLeft: 2 + indent, width: columns, justifyContent: rightParts.length > 0 ? leftParts.length > 0 ? 'space-between' : 'flex-end' : undefined },
+      leftParts.length > 0 ? createElement(Text, { wrap: 'truncate-end' }, ...leftParts) : undefined,
       rightParts.length > 0 ? createElement(Text, { wrap: 'truncate-end' }, ...rightParts) : undefined,
     )
   }
@@ -1823,6 +1818,7 @@ export function StatusLine({ facts, stats, busy, columns, items, onRows, animate
     { flexDirection: 'column' },
     renderRow(layout.row1, 's1'),
     row2Present ? renderRow(layout.row2, 's2', STATUS_ROW2_INDENT) : undefined,
+    layout.row3 !== undefined ? renderRow(layout.row3, 's3', STATUS_ROW2_INDENT) : undefined,
   )
 }
 
@@ -4533,9 +4529,8 @@ function DscodeUltraFocus({ width, animations }) {
 export function DscodeEffortBar({ row, current, select, back, onExit, animations = true }) {
   const ids = ['low', 'high', 'max', 'ultra'];
   const advertised = row.reasoning.efforts;
-  const defaultEffort = row.reasoning.defaultEffort;
-  const initial = current || defaultEffort;
-  const [cursor, setCursor] = useState(Math.max(0, ids.indexOf(initial)));
+  const initial = resolveModelEffort(row, current);
+  const [cursor, setCursor] = useState(Math.max(0, ids.indexOf(initial ?? '')));
   useStableInput((input, key) => {
     if (key.ctrl && input === 'c') return onExit();
     if (key.escape || input === 'q') return back();
@@ -4563,7 +4558,7 @@ export function DscodeEffortBar({ row, current, select, back, onExit, animations
     createElement(Text, { color: inkColor(palette.dim), wrap: 'truncate-end' },
       truncateColumns('←→ adjust · enter confirm · esc cancel', contentWidth)));
   const description = advertised.find(effort => effort.id === selected)?.description ?? '';
-  const currentLabel = current || defaultEffort || 'default';
+  const currentLabel = initial || 'default';
   const footer = '←/→ adjust · Enter confirm · Esc cancel' + (hasOff ? ' · o off' : '');
   const trackNode = Math.floor((slot - 1) / 2);
   const pointerColumn = barIndent + cursor * slot + trackNode;
@@ -4605,7 +4600,7 @@ export function DscodeEffortPanel(props) {
 }
 
 
-function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, descriptors, skills, dispatch, steer, submitMode, cycleSubmitMode, interrupt, quit, openEmail, openLogin, openProvider, openOpenRouter, openModel, openEffort, openHelp, openMode, openPermission, openResume, openSearch, openPlugin, openUpdate, openSchedule, openJobs, openStatusline, openTheme, openLanguage, saveLanguage, openHistory, openQueue, openBtw, openAgents, openSubagent, openTodos, openUsage, openDelete, openDiff, openReviewPicker, reviewChanges, deleteConfirm, confirmDelete, cancelDelete, createSession, forkSession, cancelSessionSwitch, notify, applyEditorKeys, hasNotice, dismissNotice, toggleReasoning, openVerbose, clearView, refresh, loadMentions, inspectImages, prepareImages, inspectFiles, prepareFiles, readClipboardImage, cycleMode, exportTranscript, renameTitle, copyLastResponse, recallSpace, recordLocal, recordHistory, queued, updateQueued, historyFill, historyConsumed, animations, applyAnimations, applyRainbow, rainbowBurstId, waveTier, waveStyle, maxRows, anchorRowsBelow, tabTitle, onEditorRows, onMenuRows, sessionKey }: {
+function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, descriptors, skills, dispatch, steer, submitMode, cycleSubmitMode, interrupt, quit, openEmail, openLogin, openProvider, openOpenRouter, openModel, openEffort, openHelp, openPermission, openResume, openSearch, openPlugin, openUpdate, openSchedule, openJobs, openStatusline, openTheme, openLanguage, saveLanguage, openHistory, openQueue, openBtw, openAgents, openSubagent, openTodos, openUsage, openDelete, openDiff, openReviewPicker, reviewChanges, deleteConfirm, confirmDelete, cancelDelete, createSession, forkSession, cancelSessionSwitch, notify, applyEditorKeys, hasNotice, dismissNotice, toggleReasoning, openVerbose, clearView, refresh, loadMentions, inspectImages, prepareImages, inspectFiles, prepareFiles, readClipboardImage, cycleMode, exportTranscript, renameTitle, copyLastResponse, recallSpace, recordLocal, recordHistory, queued, updateQueued, historyFill, historyConsumed, animations, applyAnimations, applyRainbow, rainbowBurstId, waveTier, waveStyle, maxRows, anchorRowsBelow, tabTitle, onEditorRows, onMenuRows, sessionKey }: {
   active: boolean
   /** dscode: the effort bar or Ultra ripple that owns the composer band. */
   effortSurface?: ReactElement
@@ -4640,7 +4635,6 @@ function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, de
   openModel: () => void
   openEffort: () => void
   openHelp: () => void
-  openMode: () => void
   openPermission: () => void
   openResume: () => void
   /** Open the /search panel with an optional seed query. */
@@ -5647,9 +5641,7 @@ function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, de
         return
       }
       if (text === '/mode' || text.startsWith('/mode ')) {
-        const mode = text.slice(5).trim()
-        if (mode === '') openMode()
-        else dispatch(text)
+        notify(t('notice.modeLocked'), 'info')
         return
       }
       if (text === '/resume cancel') {
@@ -6655,7 +6647,6 @@ export function App(props: AppProps): ReactElement {
   const [diffView, setDiffView] = useState<GitDiffView | undefined>(undefined)
   const [reviewPickerOpen, setReviewPickerOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
-  const [modeOpen, setModeOpen] = useState(false)
   const [permissionOpen, setPermissionOpen] = useState(false)
   const [resumeOpen, setResumeOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -6748,8 +6739,8 @@ export function App(props: AppProps): ReactElement {
   // panel keypress.
   const inputActive = deleteConfirmId !== undefined
     ? !approvalPending && !questionPending
-    : !emailOpen && !modelOpen && !helpOpen && !modeOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && budgetPending === undefined && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
-  const transcriptVisible = !btwOpen && !emailOpen && !modelOpen && !helpOpen && !modeOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && budgetPending === undefined && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
+    : !emailOpen && !modelOpen && !helpOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && budgetPending === undefined && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
+  const transcriptVisible = !btwOpen && !emailOpen && !modelOpen && !helpOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && budgetPending === undefined && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
 
   // Human questions outrank local inspectors. Close the lower modal instead
   // of leaving an approval/question visible but keyboard-locked behind it.
@@ -6761,7 +6752,6 @@ export function App(props: AppProps): ReactElement {
     setProviderAction(undefined)
     setEffortFor(undefined)
     setHelpOpen(false)
-    setModeOpen(false)
     setPermissionOpen(false)
     setResumeOpen(false)
     setPluginOpen(false)
@@ -6881,12 +6871,12 @@ export function App(props: AppProps): ReactElement {
     setMenuRows(current => (current === rows ? current : rows))
   }, [])
   // The status footer's exact row count, reported one-way by StatusLine (the
-  // second row renders only while it has content). The IME cursor anchor
+  // extra rows render only while they have content). The IME cursor anchor
   // counts every row between the composer caret and Ink's parked cursor: the
   // status footer plus Ink's own below-frame row. The gutter rows sit ABOVE
   // the composer and never enter this distance.
-  const [statusBarRows, setStatusBarRows] = useState<1 | 2>(1)
-  const handleStatusRows = useCallback((rows: 1 | 2): void => {
+  const [statusBarRows, setStatusBarRows] = useState<1 | 2 | 3>(1)
+  const handleStatusRows = useCallback((rows: 1 | 2 | 3): void => {
     setStatusBarRows(current => (current === rows ? current : rows))
   }, [])
   const imeRowsBelowComposer = statusBarRows + 1
@@ -6974,7 +6964,7 @@ export function App(props: AppProps): ReactElement {
   const auditedReasoningRows = liveAudit.allocation.reasoning
   const auditedAnswerRows = liveAudit.allocation.answer
   const inspectorVisible = verboseOpen && !approvalPending && !questionPending
-  const modalVisible = budgetPending !== undefined || emailOpen || modelOpen || helpOpen && modeOpen || permissionOpen || resumeOpen || pluginOpen || updateOpen || scheduleOpen || jobsOpen || statuslineOpen || themeOpen || languageOpen || historyOpen || queueOpen || agentsOpen || subagentOpen || todosOpen || usageOpen || inspectorVisible || diffView !== undefined || reviewPickerOpen || approvalPending || questionPending
+  const modalVisible = budgetPending !== undefined || emailOpen || modelOpen || helpOpen || permissionOpen || resumeOpen || pluginOpen || updateOpen || scheduleOpen || jobsOpen || statuslineOpen || themeOpen || languageOpen || historyOpen || queueOpen || agentsOpen || subagentOpen || todosOpen || usageOpen || inspectorVisible || diffView !== undefined || reviewPickerOpen || approvalPending || questionPending
   // The surface that currently owns the keyboard, named in the frozen band:
   // an empty composer under a panel must not advertise typing it cannot
   // accept — every key actually feeds the panel (which may or may not
@@ -6991,8 +6981,6 @@ export function App(props: AppProps): ReactElement {
           ? '/model'
           : helpOpen
             ? '/help'
-            : modeOpen
-              ? '/mode'
               : permissionOpen
                 ? '/permission'
                 : resumeOpen
@@ -7093,7 +7081,9 @@ export function App(props: AppProps): ReactElement {
     try {
       const label = props.selectModel(row, effortId)
       setModelLabel(label)
-      setEffortLabel(effortId)
+      // Keep the selected model's display default separate from the previous
+      // request's effort. An empty label explicitly means no advertised default.
+      setEffortLabel(resolveModelEffort(row, effortId) ?? '')
       setUltraPulse(effortId === 'ultra' && animations ? Date.now() : 0)
       const selected = `${label}${effortId === undefined || effortId === '' ? '' : `@${effortId}`}`
       if (sessionHasImages && row.inputModalities !== undefined && !row.inputModalities.includes('image')) {
@@ -7570,19 +7560,6 @@ export function App(props: AppProps): ReactElement {
         onClose: closeInspector,
       })
       : undefined,
-    modeOpen && !approvalPending && !questionPending
-      ? createElement(ModePanel, {
-        current: props.mode,
-        load: props.loadPresets,
-        select: (id: string) => {
-          void props.switchMode(id).then(label => {
-            notify(t('notice.modeChangedSimple', { value: label }))
-            setModeOpen(false)
-          }, (reason: unknown) => notify(t('notice.modeSwitchFailed', { message: reason instanceof Error ? reason.message : String(reason) }), 'error'))
-        },
-        close: () => setModeOpen(false),
-      })
-      : undefined,
     permissionOpen && !approvalPending && !questionPending
       ? createElement(PermissionPanel, {
         current: props.permission,
@@ -7850,7 +7827,6 @@ export function App(props: AppProps): ReactElement {
         openHelp: () => {
           setHelpOpen(true)
         },
-        openMode: () => setModeOpen(true),
         openPermission: () => setPermissionOpen(true),
         openResume: () => { setResumeDelete({ mode: false }); setResumeOpen(true) },
         openSearch: (query: string) => {
@@ -7957,7 +7933,7 @@ export function App(props: AppProps): ReactElement {
         facts: {
           fullSessionId: props.sessionKey,
           model: modelLabel,
-          effort: effortLabel,
+          effort: effortLabel ?? (modelLabel === view.model ? view.stats.reasoningEffort : undefined),
           mode: props.mode,
           cwd: props.cwd,
           branch: props.branch,

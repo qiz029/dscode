@@ -1,6 +1,8 @@
 // Investigation fixture: real Harness, local model, no production feature changes.
 import assert from 'node:assert/strict';
 import { LlmAdapter, createUserMessage } from '@deepseek-ai/dsh-llm';
+import { mountDscodePreset } from '../packages/tui/src/dscode/preset.ts';
+import { resolvePreset } from '../packages/tui/src/presets.ts';
 import { installModelSelection } from '@deepseek-ai/dsh-agent';
 export const name = 'runtime-foundations-probe';
 export const inject = ['agents', 'agentPresets', 'llm', 'sessions', 'sessionPersistence'];
@@ -11,6 +13,37 @@ const message = text => createUserMessage({ content: [{ type: 'text', text }], s
 async function probe(ctx) {
   await ctx.get('loader').await();
   const mode = process.env.DSCODE_FOUNDATIONS_MODE;
+  if (mode === 'preset') {
+    class PresetAdapter extends LlmAdapter {
+      async resolveModel(provider, model) { return { provider, id: model, name: model, context: { contextWindow: 100000 } }; }
+      async *stream() {
+        yield { type: 'block-start', index: 0, blockType: 'text' };
+        yield { type: 'block-end', index: 0, block: { type: 'text', text: 'LEGACY_PRESET_HISTORY' } };
+        yield { type: 'finish', reason: { kind: 'stop' } };
+      }
+    }
+    ctx.llm.registerAdapter(['preset-fixture'], new PresetAdapter());
+    const sessionId = 'legacy-preset-fixture';
+    const old = await ctx.agents.create({ sessionId, meta: { cwd: process.cwd(), agentPreset: 'minimal' }, agentOptions: { provider: 'preset-fixture', model: 'fixture' }, setup: async (agentCtx, agent) => {
+      await ctx.agentPresets.mount(agentCtx, 'minimal');
+      installModelSelection(agentCtx, { get current() { return agent.options; }, assembled: undefined });
+    } });
+    old.agent.followup(message('LEGACY_USER_INPUT')); await old.agent.whenIdle();
+    assert(JSON.stringify(old.agent.session.snapshotEvents()).includes('LEGACY_PRESET_HISTORY'));
+    await ctx.sessions.flush(old.agent.session); await old.dispose();
+    const setup = async (agentCtx, agent) => { await mountDscodePreset(ctx.agentPresets, agentCtx, agent.session); };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const resumed = await ctx.agents.resume({ resumeSessionId: sessionId, setup });
+      assert.equal(resolvePreset(resumed.agent.session), 'dscode');
+      assert(JSON.stringify(resumed.agent.session.snapshotEvents()).includes('LEGACY_PRESET_HISTORY'));
+      assert.equal(resumed.agent.session.snapshotEvents().filter(e => e.type === 'agent-preset/selected' && e.data.agentPreset === 'dscode').length, 1);
+      const tools = ctx.get('tools').schemas(resumed.agent);
+      assert(tools.some(t => t.name === 'trigger_manage'), 'DSCODE tools must be mounted on the legacy session');
+      await ctx.sessions.flush(resumed.agent.session); await resumed.dispose();
+    }
+    console.log('FOUNDATIONS_PRESET_LOCK: legacy history retained; DSCODE mounted; migration persisted once across resumes');
+    ctx.get('appExit')(0); return;
+  }
   if (mode === 'contender') {
     await assert.rejects(ctx.agents.resume({ resumeSessionId: ID }), error => {
       assert.match(error.message, /already owned by an active write handle/); return true;

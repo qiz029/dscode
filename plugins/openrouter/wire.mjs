@@ -219,6 +219,9 @@ export function errorCode(status, error) {
   const code = Number.isInteger(status) ? status : Number(error?.code);
   // A 402 names token counts ("fewer max_tokens"); its status decides before any wording does.
   if (code === 402) return QUOTA_EXCEEDED_CODE;
+  // OpenRouter can reject a replay before generation without typed metadata.
+  // Keep this narrow: an ordinary permission-denied 403 still means AUTH.
+  if (code === 403 && typeof error?.message === 'string' && /^Request blocked by content filter\b/i.test(error.message)) return 'CONTENT_POLICY';
   const detail = [error?.message, error?.metadata?.raw].filter(value => typeof value === 'string').join(' ');
   if (isContextWindowExceededError(detail)) return CONTEXT_WINDOW_EXCEEDED_CODE;
   if (isQuotaExceededError(detail)) return QUOTA_EXCEEDED_CODE;

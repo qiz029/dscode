@@ -98,6 +98,7 @@ export function environment(home = runtimeHome, cwd = process.cwd()) {
     DSCODE_SKILL_ANCESTOR_DIRS: JSON.stringify(ancestorSkillDirs({ cwd, home: userHome })),
     DSCODE_INSTRUCTION_HOME: instructions ?? home,
     DSCODE_SANDBOX_RUNNER: join(root, 'plugins/tui-tools/sandbox-runner.mjs'),
+    DSCODE_CLI_PATH: join(root, 'bin/dscode.mjs'),
     DSH_TUI_REVIEW_ENTRY: join(root, 'plugins/auto-review/index.mjs'),
   };
 }

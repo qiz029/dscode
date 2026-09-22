@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, symlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
@@ -20,7 +20,7 @@ function fixture(t) {
   put(join(profile, 'node_modules/@deepseek-ai/dsh/package.json'), { version: release.runtime });
   put(join(profile, 'node_modules/@deepseek-ai/dsh/lib/bin.js'), `
     process.on('SIGTERM',()=>process.exit(0));
-    console.log(JSON.stringify({ready:true,pid:process.pid,args:process.argv.slice(2)}));
+    console.log(JSON.stringify({ready:true,pid:process.pid,args:process.argv.slice(2),cliPath:process.env.DSCODE_CLI_PATH}));
     setInterval(()=>{},1000);
   `);
   const launcher = join(home, 'launcher');
@@ -74,6 +74,7 @@ test('real launcher admits two sessions and blocks profile mutations until both 
   const one = f.start(['--resume', 'session-one']), two = f.start(['--resume', 'session-two']);
   const hosts = await Promise.all([one.ready, two.ready]);
   assert.notEqual(hosts[0].pid, hosts[1].pid);
+  assert.equal(hosts[0].cliPath, join(realpathSync(f.home), 'launcher/cli.mjs'), 'scheduler tools receive the owning launcher even when run() is imported');
   assert(hosts[0].args.includes('session-one'));
   assert(hosts[1].args.includes('session-two'));
   for (const command of ['install', 'update', 'rollback']) {

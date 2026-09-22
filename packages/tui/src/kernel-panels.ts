@@ -2,7 +2,7 @@
 
 import { createElement, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { Box, Text, useInput, useStdout } from 'ink'
-import type { ModelDirectory, ModelRow } from './models.ts'
+import { resolveModelEffort, type ModelDirectory, type ModelRow } from './models.ts'
 import type { SubagentRow } from './subagents.ts'
 import type { ScheduleRow } from './render/projection.ts'
 import type { PermissionRow } from './permissions.ts'
@@ -989,8 +989,8 @@ export function EffortPanel({ row, current, select, back, onExit }: {
     : hasDefaultRow
       ? [{ id: '', name: 'Default' }, ...advertised]
       : advertised
-  // An absent or cleared effort is the Default row's current state.
-  const effective = current === undefined || current === '' ? '' : current
+  // A different model's effort must not override this model's default.
+  const effective = resolveModelEffort(row, current) ?? ''
   // The list opens ON the effective level (or the model's default row), so a
   // quick re-pick never restarts the cursor from the top.
   const wanted = effective === '' ? row.reasoning?.defaultEffort ?? '' : effective

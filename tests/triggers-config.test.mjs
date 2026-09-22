@@ -145,33 +145,33 @@ test('the /triggers command lists definitions and reports a bad file beside them
 
   const { apply } = await import('../plugins/triggers/index.mjs');
   let registered;
-  apply({ commands: { register: entry => { registered = entry } } });
+  apply({ inject() {}, commands: { register: entry => { registered = entry } } });
   assert.equal(registered.name, 'triggers');
   const agent = { session: { header: { cwd: workspace } } };
 
-  const listed = registered.handler({ agent, rawInput: '' });
+  const listed = await registered.handler({ agent, rawInput: '' });
   assert.equal(listed.kind, 'success');
   assert.match(listed.text, /nightly-review/);
   assert.match(listed.text, /keep the build green \(max 3 rounds\)/);
   assert.match(listed.text, /Unreadable definitions:/);
   assert.match(listed.text, /absolute path/);
 
-  const shown = registered.handler({ agent, rawInput: 'show nightly-review' });
+  const shown = await registered.handler({ agent, rawInput: 'show nightly-review' });
   assert.equal(shown.kind, 'success');
   assert.match(shown.text, /file: +\S*nightly-review\.yml/);
   assert.match(shown.text, /prompt: {4}p/);
 
-  const missing = registered.handler({ agent, rawInput: 'show nope' });
+  const missing = await registered.handler({ agent, rawInput: 'show nope' });
   assert.equal(missing.kind, 'error');
   assert.match(missing.text, /No trigger "nope"/);
 
   // An unknown action or a stray argument is refused, never read as "list".
   for (const raw of ['delete nightly-review', 'show nightly-review extra']) {
-    const refused = registered.handler({ agent, rawInput: raw });
+    const refused = await registered.handler({ agent, rawInput: raw });
     assert.equal(refused.kind, 'error', raw);
-    assert.match(refused.text, /Usage: \/triggers/);
+    assert.match(refused.text, /Usage: \/trigger/);
   }
-  assert.equal(registered.handler({ agent, rawInput: 'list' }).kind, 'success');
+  assert.equal((await registered.handler({ agent, rawInput: 'list' })).kind, 'success');
 });
 
 test('a multi-line objective is folded so it cannot forge a listing row', () => {
@@ -188,8 +188,8 @@ test('an empty state says how to add a definition', async t => {
   t.after(() => { if (previous === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previous; });
   const { apply } = await import('../plugins/triggers/index.mjs');
   let registered;
-  apply({ commands: { register: entry => { registered = entry } } });
-  const text = registered.handler({ agent: { session: { header: { cwd: workspace } } }, rawInput: '' }).text;
+  apply({ inject() {}, commands: { register: entry => { registered = entry } } });
+  const text = (await registered.handler({ agent: { session: { header: { cwd: workspace } } }, rawInput: '' })).text;
   assert.match(text, /No triggers defined/);
   assert.match(text, /\.dsh\/triggers/);
 });
@@ -209,26 +209,26 @@ test('/triggers shows the last outcome, the run history and pending events', asy
 
   const { apply } = await import('../plugins/triggers/index.mjs');
   let registered;
-  apply({ commands: { register: entry => { registered = entry } } });
+  apply({ inject() {}, commands: { register: entry => { registered = entry } } });
   const agent = { session: { header: { cwd: workspace } } };
 
-  const listed = registered.handler({ agent, rawInput: 'list' });
+  const listed = await registered.handler({ agent, rawInput: 'list' });
   assert.match(listed.text, /last: {6}2026-09-21 09:00:00 completed · exit 0/);
 
-  const runs = registered.handler({ agent, rawInput: 'runs nightly-review' });
+  const runs = await registered.handler({ agent, rawInput: 'runs nightly-review' });
   assert.equal(runs.kind, 'success');
   assert.match(runs.text, /2026-09-21 09:00:00 completed exit 0 \$0\.42 3r/);
 
-  const events = registered.handler({ agent, rawInput: 'events nightly-review' });
+  const events = await registered.handler({ agent, rawInput: 'events nightly-review' });
   assert.equal(events.kind, 'success');
   assert.match(events.text, /\[ci\] build-123 — build: the build failed/);
 
   for (const raw of ['runs', 'events', 'runs nightly-review extra']) {
-    const refused = registered.handler({ agent, rawInput: raw });
+    const refused = await registered.handler({ agent, rawInput: raw });
     assert.equal(refused.kind, 'error', raw);
-    assert.match(refused.text, /Usage: \/triggers/);
+    assert.match(refused.text, /Usage: \/trigger/);
   }
-  assert.match(registered.handler({ agent, rawInput: 'runs other' }).text, /No runs recorded for other/);
+  assert.match((await registered.handler({ agent, rawInput: 'runs other' })).text, /No trigger/);
 });
 
 test('a trigger directory that cannot be read is reported, not read as empty', t => {

@@ -1,4 +1,4 @@
-// Host-side half of one trigger run: the clean session an event starts. Unlike
+// Host-side half of one trigger run: the fresh or resumed session an event uses. Unlike
 // `dscode exec`, which runs exactly one turn, this one keeps going while the
 // goal is active — the round driver supplies the continuation — and stops on the
 // goal's own end, a cap, the timeout, or a needed approval.
@@ -6,7 +6,7 @@
 // It owns the agent, the goal and the transcript; the parent process owns the
 // lock, the limits and the run record. The two swap files: `DSCODE_TRIGGER_OPTIONS`
 // in, `<options>.result.json` out.
-import { randomUUID } from 'node:crypto';
+import { openTriggerSession } from './session.mjs';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { decideStop } from './run.mjs';
 import { readRunSpec, writeRunResult } from './options.mjs';
@@ -17,10 +17,10 @@ import { triggerOverlay } from './overlay.mjs';
 export { triggerOverlay };
 
 export const name = 'dscode-trigger-host';
-export const inject = ['agents', 'agentPresets', 'agentDefaultModel', 'permissionPresets', 'llm', 'goals', 'appExit'];
+export const inject = ['agents', 'sessions', 'agentPresets', 'agentDefaultModel', 'permissionPresets', 'llm', 'goals', 'appExit'];
 
 export function apply(ctx) {
-  void run(ctx).catch(error => { process.stderr.write(`dscode trigger run: ${error.message}\n`); ctx.get('appExit')(1); });
+  void runTriggerHost(ctx).catch(error => { process.stderr.write(`dscode trigger run: ${error.message}\n`); ctx.get('appExit')(1); });
 }
 
 function splitRoute(value) {
@@ -29,9 +29,8 @@ function splitRoute(value) {
   return [value.slice(0, at), value.slice(at + 1)];
 }
 
-async function run(ctx) {
+export async function runTriggerHost(ctx, { optionsPath = process.env.DSCODE_TRIGGER_OPTIONS, home = process.env.DSH_HOME, spend = sessionSpend } = {}) {
   await ctx.get('loader').await();
-  const optionsPath = process.env.DSCODE_TRIGGER_OPTIONS;
   if (!optionsPath) throw new Error('DSCODE_TRIGGER_OPTIONS is missing');
   const spec = readRunSpec(optionsPath);
   const resultPath = `${optionsPath}.result.json`;
@@ -42,12 +41,7 @@ async function run(ctx) {
   const agentOptions = { provider, model, ...(effort ? { reasoningEffort: effort } : {}) };
   const setup = async agentCtx => { await ctx.agentPresets.mount(agentCtx, spec.preset ?? 'dscode'); };
 
-  const handle = await ctx.agents.create({
-    sessionId: randomUUID(),
-    meta: { cwd: spec.workspace, agentPreset: spec.preset ?? 'dscode' },
-    agentOptions,
-    setup,
-  });
+  const handle = await openTriggerSession(ctx, spec, { home, agentOptions, setup });
   const agent = handle.agent;
   const session = agent.session;
   if (spec.permission) {
@@ -58,6 +52,17 @@ async function run(ctx) {
   // The goal is created through the SERVICE, not the `create_goal` tool: the tool
   // requires a direct human turn, and an unattended run has none. The service is
   // the same path the human-facing /goal command uses.
+  // Every event gets a new goal, including after a blocked/timed-out run. Clear
+  // through the service so the previous goal remains in the durable history.
+  const previousGoal = ctx.goals.get(agent);
+  if (previousGoal) ctx.goals.clear(agent, { id: previousGoal.id, revision: previousGoal.revision });
+  const initialCost = spend(session.id).cost;
+  const runCost = () => {
+    try {
+      const total = spend(session.id).cost;
+      return Number.isFinite(initialCost) && Number.isFinite(total) ? Math.max(0, total - initialCost) : undefined;
+    } catch { return undefined; }
+  };
   ctx.goals.create(agent, { objective: spec.goal.objective, maxGoalRounds: spec.goal.maxRounds });
 
   let finished = false;
@@ -65,16 +70,19 @@ async function run(ctx) {
   let lastText = '';
   const limiter = spec.limits ?? {};
 
-  const finish = (result, tail) => {
+  const finish = async (result, tail) => {
     if (finished) return;
     finished = true;
     if (tail !== undefined && tail.trim() !== '') {
-      try { writeRunTail(process.env.DSH_HOME ?? '.', spec.triggerId, spec.runId, tail); } catch { /* the record still explains the run */ }
+      try { writeRunTail(home ?? '.', spec.triggerId, spec.runId, tail); } catch { /* the record still explains the run */ }
     }
     try {
+      await ctx.sessions.flush(session);
       writeRunResult(resultPath, { ...result, sessionId: session.id });
     } catch (error) {
-      process.stderr.write(`dscode trigger run: could not write the result file: ${error.message}\n`);
+      process.stderr.write(`dscode trigger run: could not persist the run result: ${error.message}\n`);
+      ctx.get('appExit')(1);
+      return;
     }
     ctx.get('appExit')(result.exitCode);
   };
@@ -84,11 +92,10 @@ async function run(ctx) {
     if (finished) return;
     let goal;
     try { goal = ctx.goals.get(agent); } catch { goal = undefined; }
-    let costUsd;
-    try { costUsd = sessionSpend(session.id).cost; } catch { costUsd = undefined; }
+    const costUsd = runCost();
     const decision = decideStop({ goal, costUsd, limits: limiter, approvalsRejected });
     if (!decision.stop) return;
-    finish({
+    void finish({
       outcome: decision.outcome,
       reason: decision.reason ?? null,
       exitCode: decision.exitCode,
@@ -110,7 +117,7 @@ async function run(ctx) {
   });
   ctx.on('session/disposed', source => {
     if (source.id !== session.id) return;
-    finish({ outcome: 'failed', reason: 'model_error', exitCode: 1, cost: null, rounds: null }, lastText);
+    void finish({ outcome: 'failed', reason: 'model_error', exitCode: 1, cost: null, rounds: null }, lastText);
   });
   // No human is present: an approval request is refused, and the run is marked
   // as having needed one so the operator sees it in the record.
@@ -124,11 +131,11 @@ async function run(ctx) {
   if (Number.isFinite(limiter.timeoutSeconds) && limiter.timeoutSeconds > 0) {
     setTimeout(() => {
       const goal = (() => { try { return ctx.goals.get(agent); } catch { return undefined; } })();
-      finish({
+      void finish({
         outcome: 'timedout',
         reason: approvalsRejected ? 'approval_required' : 'timeout',
         exitCode: 124,
-        cost: (() => { try { return sessionSpend(session.id).cost; } catch { return null; } })(),
+        cost: runCost() ?? null,
         rounds: Number.isFinite(goal?.roundsStarted) ? goal.roundsStarted : null,
       }, lastText);
     }, limiter.timeoutSeconds * 1000).unref();

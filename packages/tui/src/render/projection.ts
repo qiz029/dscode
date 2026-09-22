@@ -752,6 +752,15 @@ function estimateTokens(text: string): number {
   return wide + Math.ceil(narrow / 4)
 }
 
+/** Recovery text shared by live events and replayed history. */
+function failureRecovery(code: string): string {
+  if (code === 'MISSING_CREDENTIAL') return ' · open /model to add an API key'
+  if (code === 'CONTENT_POLICY' || code === 'CONTENT_FILTER') {
+    return ' · turn stopped by provider content filtering; review the request and context before continuing'
+  }
+  return ''
+}
+
 /** A fresh, empty transcript view. */
 export function createTranscriptView(): TranscriptView {
   return {
@@ -1194,9 +1203,7 @@ export function projectEvent(view: TranscriptView, event: SessionEvent): Transcr
       const reason = event.data.reason
       const appended: TranscriptEntry[] = []
       if (reason.kind === 'error') {
-        const recovery = reason.error.code === 'MISSING_CREDENTIAL'
-          ? ' · open /model to add an API key'
-          : ''
+        const recovery = failureRecovery(reason.error.code)
         appended.push({ kind: 'error', text: `${reason.error.code}: ${reason.error.message}${recovery}` })
       } else {
         // Non-error outcomes deserve their own durable row (the web renders
@@ -2008,9 +2015,7 @@ export function replayProjectEvent(acc: ReplayAccumulator, event: SessionEvent):
       acc.streamingReasoning = ''
       acc.streaming = ''
       if (reason.kind === 'error') {
-        const recovery = reason.error.code === 'MISSING_CREDENTIAL'
-          ? ' · open /model to add an API key'
-          : ''
+        const recovery = failureRecovery(reason.error.code)
         appended.push({ kind: 'error', text: `${reason.error.code}: ${reason.error.message}${recovery}` })
       } else {
         const userCancelled = reason.kind === 'aborted' && reason.reason.kind === 'user'

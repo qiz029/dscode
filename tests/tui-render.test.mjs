@@ -15,15 +15,16 @@ import {
 import { stripVTControlCharacters } from 'node:util';
 
 import { visibleColumns } from '../packages/tui/src/render/markdown.ts';
+import { liveRegionBudget } from '../packages/tui/src/render/inspector.ts';
 import { createTranscriptView } from '../packages/tui/src/render/projection.ts';
 import { DEFAULT_STATUSLINE_ITEMS, STATUS_ITEMS, layoutStatusBar } from '../packages/tui/src/render/status.ts';
-import { formatFooter } from '../plugins/session-metrics/view.mjs';
+import { formatFooter, setMetricSource } from '../plugins/session-metrics/view.mjs';
 import { watchSkills } from '../packages/tui/src/skills.ts';
 import { dscodeTelemetryParts } from '../packages/tui/src/dscode/telemetry.ts';
 import { createBtwFeed } from '../packages/tui/src/btw.ts';
 import { setTheme } from '../packages/tui/src/theme.ts';
 
-import { mount, assertFits } from './fixtures/tui-mount.mjs';
+import { mount, assertFits, tick } from './fixtures/tui-mount.mjs';
 
 const deepseekRow = {
   provider: 'deepseek-official',
@@ -63,7 +64,45 @@ test('the effort bar renders four detents and moves the cursor between them', as
   setTheme('dark');
 });
 
-test('the status line names the session and model on row 1 and closes row 2 with the live figures', async () => {
+test('switching from MiMo medium opens the target effort picker at its own default', async () => {
+  const targets = [
+    deepseekRow,
+    { ...deepseekRow, reasoning: { defaultEffort: 'high', efforts: ['off', 'low', 'high'].map(id => ({ id, name: id })) } },
+  ];
+  for (const row of targets) {
+    const selected = [];
+    const ui = await mount(DscodeEffortPanel, {
+      row, current: 'medium', animations: false,
+      select: id => selected.push(id), back: () => {}, onExit: () => {},
+    });
+    try {
+      assert.doesNotMatch(ui.frame(), /medium/);
+      await ui.write('\r');
+      assert.deepEqual(selected, ['high']);
+    } finally {
+      ui.close();
+    }
+  }
+});
+
+test('the footer never borrows MiMo effort from the previous request after a model switch', async () => {
+  for (const effort of [undefined, 'high']) {
+    const ui = await mount(StatusLine, {
+      facts: { model: 'deepseek-official/deepseek-flash', effort, title: '', cwd: '', branch: '', sessionId: '', sandbox: '', permission: '', fullSessionId: '' },
+      stats: { ...createTranscriptView().stats, reasoningEffort: 'medium' },
+      busy: false, columns: 120, items: ['model'], animated: false,
+    }, { columns: 120 });
+    try {
+      assert.match(ui.frame(), /deepseek-flash/);
+      assert.doesNotMatch(ui.frame(), /medium/);
+      if (effort) assert.match(ui.frame(), /deepseek-flash @ high/);
+    } finally {
+      ui.close();
+    }
+  }
+});
+
+test('the status line names the session on row 1 and right-aligns finances on row 2', async () => {
   const facts = {
     model: 'deepseek-official/deepseek-flash',
     effort: 'ultra',
@@ -104,15 +143,56 @@ test('the status line names the session and model on row 1 and closes row 2 with
     assert.match(row1, /Migrating the TUI · deepseek-flash @ ultra · context/, row1);
     assert.ok(row1.trimEnd().endsWith('(shift+tab to cycle) · accept-edits'), row1);
     assert.equal(visibleColumns(row1), 120, 'row 1 fills the terminal');
-    // Row 2 closes with the live figures as one left-hand cluster (this fixture
-    // has no metrics ledger, so every figure reads its placeholder): no empty gap
-    // opens between the cluster and the row above, and it never stretches to the
-    // terminal width the way a right-pinned slot did.
-    assert.match(row2, /-- tps · {5}-- tps avg · {3}-- ctx · \$0\.00 (?:🔥|❄️) · {5}-- cache$/, row2);
-    assert.ok(visibleColumns(row2) < 80, 'the figures sit as one cluster, not a pinned stretch');
+    assert.match(row2, /-- tps · {5}-- tps avg · {3}-- ctx\s{3,}\$0\.00 (?:🔥|❄️) · {5}-- cache$/, row2);
+    assert.equal(visibleColumns(row2), 120, 'the financial group reaches the right edge');
   } finally {
     ui.close();
   }
+});
+
+test('the footer keeps skills and the complete financial group when narrow widths add a third row', async () => {
+  const dispose = setMetricSource(() => ({ events: [], currentTps: 80, requestActive: true, used: 43, capacity: 100 }));
+  try {
+    for (const columns of [48, 60, 80, 120]) {
+      const reported = [];
+      const ui = await mount(StatusLine, {
+        facts: { model: 'deepseek-official/deepseek-flash', effort: 'high', title: 'Trigger', cwd: '', branch: '', sessionId: '', sandbox: '', permission: 'auto', fullSessionId: 'split-footer', skills: 28 },
+        stats: createTranscriptView().stats,
+        busy: true, columns, items: DEFAULT_STATUSLINE_ITEMS, animated: false,
+        onRows: rows => reported.push(rows),
+      }, { columns });
+      try {
+        assertFits(ui);
+        const rows = ui.frame().split('\n');
+        assert.match(rows[1], /80\.0 tps.*43% ctx.*skills\s+28/);
+        assert.match(rows.at(-1), /\$0\.00 (?:🔥|❄️) ·\s+-- cache$/);
+        assert.equal(visibleColumns(rows.at(-1)), columns, 'finances stay right-aligned on either physical row');
+        assert.equal(rows.length, columns === 120 ? 2 : 3);
+        assert.equal(reported.at(-1), rows.length, 'IME and viewport receive the actual row count');
+      } finally {
+        ui.close();
+      }
+    }
+  } finally {
+    dispose();
+  }
+});
+
+test('balance, peak/off-peak and cache move together while a third footer row reduces the transcript budget', () => {
+  const facts = {
+    model: 'deepseek-official/deepseek-flash', title: '', cwd: '', branch: '', sessionId: '', sandbox: '', permission: 'auto', fullSessionId: '', skills: 28,
+    telemetryFigures: { current: '◌   80.0 tps', average: '  65.0 tps avg', context: ' 43% ctx', money: '$0.12 / $9.86 ❄️', cache: '  90.0% cache', turn: '' },
+  };
+  const stats = createTranscriptView().stats;
+  for (const columns of [48, 80, 120]) {
+    const layout = layoutStatusBar(facts, stats, columns - 2);
+    const financial = layout.row3 ?? layout.row2;
+    assert.equal(financial.right.map(span => span.text).join(''), '$0.12 / $9.86 ❄️ ·   90.0% cache');
+    assert.equal(layout.row3 !== undefined, columns < 120);
+    assert.ok(layout.row2.left.some(group => group.id === 'skills'));
+  }
+  const chrome = { terminalRows: 30, composerRows: 1, menuRows: 0, gutterRows: 0, notice: false, todo: false, agents: false };
+  assert.equal(liveRegionBudget({ ...chrome, statusBarRows: 3 }), liveRegionBudget({ ...chrome, statusBarRows: 2 }) - 1);
 });
 
 test('the footer keeps its geometry while a turn changes the live figures', () => {
@@ -182,13 +262,52 @@ test('the telemetry tint keeps every figure and label, tinting only the readings
   const parts = dscodeTelemetryParts(value);
   assert.equal(parts.map(part => part.text).join(''), value, 'the tint keeps every character');
   assert.deepEqual(parts.filter(part => part.tone !== null), [
-    { text: '~24.6 tps', tone: 'yellow' },
+    { text: '24.6 tps', tone: 'yellow' },
     { text: '18.2 tps', tone: 'yellow' },
     { text: '87.3%', tone: 'red' },
   ], 'only the readings carry a tier');
   assert.deepEqual(dscodeTelemetryParts(' 99.0% cache').filter(part => part.tone !== null), [{ text: '99.0%', tone: 'blue' }]);
-  assert.deepEqual(dscodeTelemetryParts('~260.0 tps').filter(part => part.tone !== null), [{ text: '~260.0 tps', tone: 'purple' }]);
+  assert.deepEqual(dscodeTelemetryParts('260.0 tps').filter(part => part.tone !== null), [{ text: '260.0 tps', tone: 'purple' }]);
   assert.deepEqual(dscodeTelemetryParts('    -- tps ·     -- cache').filter(part => part.tone !== null), [], 'an unknown reading keeps the surrounding colour');
+});
+
+test('TPS activity animates independently while numbers stay exact and stops during tool waits', async () => {
+  for (const animated of [false, true]) {
+    let requestActive = true;
+    const dispose = setMetricSource(() => ({ events: [], currentTps: 80, requestActive }));
+    const ui = await mount(StatusLine, {
+      facts: { model: 'deepseek-official/deepseek-flash', title: '', cwd: '', branch: '', sessionId: '', sandbox: '', permission: '', fullSessionId: 'tps-activity' },
+      stats: createTranscriptView().stats,
+      busy: true, columns: 120, items: ['model'], animated,
+    }, { columns: 120 });
+    try {
+      await tick(300);
+      assertFits(ui);
+      const frames = ui.frames.map(frame => stripVTControlCharacters(frame)).filter(frame => frame.includes('80.0 tps'));
+      assert.ok(frames.length > 0);
+      for (const frame of frames) {
+        assert.match(frame, /80\.0 tps/);
+        assert.doesNotMatch(frame, /~/);
+      }
+      if (animated) {
+        const markers = new Set(frames.map(frame => frame.match(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/)?.[0]).filter(Boolean));
+        assert.ok(markers.size >= 2, 'request activity moves even with a constant measured TPS');
+      } else {
+        assert.match(ui.frame(), /◌ +80\.0 tps/, 'animations off retains a static activity marker');
+        assert.doesNotMatch(ui.frame(), /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+      }
+      // The turn remains busy (for example, a tool is running), but the model
+      // request has ended. The footer's regular poll must remove the marker.
+      requestActive = false;
+      await tick(1100);
+      assert.match(ui.frame(), /80\.0 tps/);
+      assert.doesNotMatch(ui.frame(), /[◌⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+      assertFits(ui);
+    } finally {
+      ui.close();
+      dispose();
+    }
+  }
 });
 
 test('the footer reports the loaded skill count from the live catalog', () => {

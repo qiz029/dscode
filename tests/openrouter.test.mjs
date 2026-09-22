@@ -203,6 +203,22 @@ test('errors route on OpenRouter codes: upstream stream failures retry as SERVER
 
 const adapter = ({ fetch, key = 'sk-or-test' } = {}) => new OpenRouterAdapter({ options: () => resolveOptions({}), resolveApiKey: async () => key, ensureModels: async () => {}, fetch });
 
+test('a content-filter rejection of tool arguments is terminal content policy, not authentication', async () => {
+  const message = 'Request blocked by content filter: Content filter redaction would produce invalid tool call arguments';
+  const error = { code: 403, message };
+  const fetch = async () => new Response(JSON.stringify({ error }), { status: 403, headers: { 'content-type': 'application/json' } });
+  const route = adapter({ fetch });
+  await assert.rejects(collect(route.stream({ provider: 'openrouter', model: 'xiaomi/mimo-v2.6-pro', messages: conversation })), caught =>
+    caught.code === 'CONTENT_POLICY' && caught.failure.status === 403 && caught.message === message);
+  await assert.rejects(collect(stream('xiaomi/mimo-v2.6-pro', { error })), caught =>
+    caught.code === 'CONTENT_POLICY' && caught.failure.status === 403 && caught.message === message);
+  assert(!route.providerRetryPolicy().retryableCodes.includes('CONTENT_POLICY'), 'the default policy does not repeat a rejected request');
+  assert(!route.providerRetryPolicy().retryableCodes.includes('CONTENT_FILTER'));
+  assert.equal(errorCode(403, { message: 'Permission denied' }), 'AUTH');
+  assert.equal(errorCode(401, { message }), 'AUTH', 'an explicit authentication status remains authoritative');
+  assert.equal(errorCode(403, { message, metadata: { error_type: 'authentication' } }), 'AUTH', 'typed provider metadata takes precedence');
+});
+
 test('the adapter resolves models from the listing and sends OpenRouter headers and attribution', async t => {
   withModels(t);
   const requests = [];

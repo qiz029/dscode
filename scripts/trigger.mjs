@@ -33,7 +33,7 @@ export function watchSignals(child) {
  * @param options - `{ spec, home, cwd, stdio }`.
  * @returns `{ code, result }`; `result` is undefined when the Host died first.
  */
-export async function spawnTriggerHost({ spec, home, cwd, stdio = 'inherit' }) {
+export async function spawnTriggerHost({ spec, home, cwd, stdio = 'inherit', triggerLease }) {
   const scratch = mkdtempSync(join(tmpdir(), 'dscode-trigger-'));
   try {
     const specPath = join(scratch, 'run.json');
@@ -48,7 +48,7 @@ export async function spawnTriggerHost({ spec, home, cwd, stdio = 'inherit' }) {
     // The run's cwd is the trigger's workspace: the session binds there and the
     // shell starts there, which is the folder rule the terminal also enforces.
     provision(home, { cwd });
-    const child = runDsh([...overlays, '--patch', overlay], { home, cwd, stdio: ['ignore', stdio, stdio], env: { DSCODE_TRIGGER_OPTIONS: specPath } });
+    const child = runDsh([...overlays, '--patch', overlay], { home, cwd, stdio: ['ignore', stdio, stdio, ...(triggerLease ? [triggerLease.fd] : [])], env: { DSCODE_TRIGGER_OPTIONS: specPath } });
     const release = watchSignals(child);
     try {
       const code = await new Promise((resolveExit, reject) => {
@@ -87,7 +87,7 @@ export function runLaunchctl(args, { ignoreFailure = false } = {}) {
 export function runTriggerCli(argv, deps = {}) {
   return runTriggerCore(argv, {
     home: deps.home ?? process.env.DSH_HOME ?? process.env.DSCODE_HOME ?? runtimeHome,
-    dscodePath: deps.dscodePath ?? resolve(process.argv[1] ?? 'dscode'),
+    dscodePath: deps.dscodePath ?? join(root, 'bin/dscode.mjs'),
     launchctl: deps.launchctl ?? runLaunchctl,
     spawnRun: deps.spawnRun ?? spawnTriggerHost,
     ...deps,

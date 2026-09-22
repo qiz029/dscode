@@ -4,10 +4,11 @@
 // validates that the payload is *data* and never carries authority, and it does
 // not know what a session, a goal or a model is.
 //
-// Delivery is at-most-once: an event file is consumed when a run is started, and
-// the run record carries its identity, so a re-emitted event needs a new id.
+// Recorded runs are deduplicated. A parent crash before consuming an event
+// and recording its result can replay it; producers must tolerate that window.
 
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
 /** The only keys an event body may carry; anything else is a producer mistake. */
@@ -42,7 +43,7 @@ const eventFile = (triggerId, eventId) => `${encodeURIComponent(eventId)}.json`;
  * @returns the stored event.
  * @throws {SpoolError} on an unknown field, a non-scalar value, an oversized body or a missing id.
  */
-export function emitEvent(home, triggerId, payload, { eventId, now = Date.now() } = {}) {
+export function normalizeEvent(triggerId, payload, { eventId, now = Date.now() } = {}) {
   if (typeof triggerId !== 'string' || !TRIGGER_ID_PATTERN.test(triggerId)) fail('triggerId must be the definition id');
   if (typeof eventId !== 'string' || eventId.trim() === '') fail('eventId is required: it is how a repeated delivery is recognised');
   if (eventId.trim().length > MAX_EVENT_ID_CHARS) fail(`eventId is longer than ${MAX_EVENT_ID_CHARS} characters`);
@@ -73,10 +74,26 @@ export function emitEvent(home, triggerId, payload, { eventId, now = Date.now() 
     ...(payload.fields === undefined ? {} : { fields: payload.fields }),
     receivedAt: now,
   };
+  return event;
+}
+
+export function emitEvent(home, triggerId, payload, options) {
+  const event = normalizeEvent(triggerId, payload, options);
   const directory = spoolPath(home, triggerId);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
-  writeFileSync(join(directory, eventFile(triggerId, event.eventId)), JSON.stringify(event) + '\n', { mode: 0o600 });
-  return event;
+  const path = join(directory, eventFile(triggerId, event.eventId));
+  const scratch = join(directory, `.${randomUUID()}.tmp`);
+  writeFileSync(scratch, JSON.stringify(event) + '\n', { mode: 0o600 });
+  try {
+    // Atomic publication: readers never see half an event, and a producer retry
+    // cannot replace an event another process is already executing.
+    try { linkSync(scratch, path); }
+    catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      return JSON.parse(readFileSync(path, 'utf8'));
+    }
+    return event;
+  } finally { rmSync(scratch, { force: true }); }
 }
 
 /**

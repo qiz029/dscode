@@ -31,7 +31,7 @@ export interface LiveRegionChrome {
   /** Editor rows inside the composer band (frozen reports 1). */
   readonly composerRows: number
   /** Status footer rows. */
-  readonly statusBarRows: 1 | 2
+  readonly statusBarRows: 1 | 2 | 3
   /** Completion menu rows (0 when closed). */
   readonly menuRows: number
   /** Transcript-to-composer gutter. */
@@ -54,7 +54,7 @@ export function liveRegionBudget(chrome: LiveRegionChrome): number {
   const terminal = Math.max(1, Math.floor(chrome.terminalRows))
   const editor = Math.max(1, Math.floor(chrome.composerRows))
   const band = editor + 2
-  const status = chrome.statusBarRows === 2 ? 2 : 1
+  const status = chrome.statusBarRows
   const menu = Math.max(0, Math.floor(chrome.menuRows))
   const gutter = chrome.gutterRows
   const notice = chrome.notice ? 1 : 0

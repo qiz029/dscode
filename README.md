@@ -55,13 +55,15 @@ The [90-second demo script](docs/demo.md) has the shot list, the exact commands,
 
 ## 🆕 What's new
 
+**0.7.26** — Triggers now support fresh or persistent sessions, durable cron and delay jobs, and supervised script sources. Manage them from `/trigger`, the CLI or agent tools with the same workspace and approval boundaries. The TUI stays in DSCODE mode and model switches reset unsupported effort values to the target default. TPS uses API-reported tokens with request-count exponential smoothing; runtime metrics and skills sit on the left, while cost, DeepSeek balance, peak/off-peak and cache align right or move together onto a third row. OpenRouter content-policy rejections now explain why the turn stopped.
+
 **0.7.25** — Running the installer again now keeps a tar installation current instead of refusing: an older one is updated through its own `dscode update` (state migrated, the old tree kept as `.dscode-backup-<version>`), an equal or newer one is reported and left alone, and anything the installer did not create is still refused with the path it found. A Homebrew formula joins the install paths — `brew tap qiz029/tap && brew trust qiz029/tap && brew install dscode` installs the same launcher, and there `dscode update` moves only the Hub profile because `brew upgrade dscode` owns the launcher.
 
 **0.7.24** — An event can start a session unattended: trigger definitions live in `<state>/triggers/` and `<workspace>/.dsh/triggers/`, an event carries only data under a required `eventId`, and `dscode trigger` / `/triggers` run and inspect them, with `trigger install` writing a launchd LaunchAgent — a failed run notifies nobody yet. `/goal[20]` sets or re-caps the goal's round cap from the command plane. On OpenRouter, MiMo V2.6 (pro, flash and ultraspeed) joins the models that pass thinking back, and `/model` now offers a curated 28-model list — the five tuned labs plus the flagship line of Anthropic, OpenAI, Google and xAI — instead of all 373 tool-calling models, while a session already on a trimmed model keeps running.
 
 **0.7.23** — A session now stays in the folder it was created in: resuming it from anywhere else runs it in that folder and prints one warning naming both, while `--cwd` still decides where a new session binds. Cross-session traffic became visible — the activity line reads `⇄ sending to` / `⇄ waiting for`, a notice line records every settled send and inbound relay in its own violet, and `/tasks` lists the messages. The footer shows the last completed turn's cost beside the session total and `/usage` prices every turn. Streaming no longer re-wraps the whole live region per frame (3.12 → 0.001 ms on 16 long entries), ancestor skill discovery is on by default, and the Ink repaint ledger stops leaving a blank band above the composer.
 
-Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.25 notes](docs/releases/0.7.25.md) have the long version.
+Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.26 notes](docs/releases/0.7.26.md) have the long version.
 
 ## 🚀 Quick start
 
@@ -120,7 +122,7 @@ npm start -- --cwd /path/to/project
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh
-curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.25
+curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.26
 ```
 
 **From a tar package** — download the prebuilt `dscode-<version>-darwin-arm64.tar.gz` (Apple silicon) or `dscode-<version>-darwin-x64.tar.gz` (Intel) from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
@@ -136,14 +138,14 @@ The command lands in `~/.local/bin/dscode` by default—make sure that directory
 **If the npm name lookup returns 404**, install the same version straight from the official registry tarball:
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.25.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.26.tgz
 ```
 
 **Upgrade** — `dscode update [exact-version]` updates the whole installation in one step, and requires no running DSCODE sessions. On the npm/Hub install it replaces the launcher binary with npm and then upgrades the installed profile to the same version. On a tar install it downloads the release tarball (the prebuilt one for this platform when the release has it, so the update needs no npm either), verifies it against the release's sha256 digest, swaps the installation directory in place and migrates `.runtime`, `.env` and local `config/`; the previous installation is kept as a sibling backup directory. A source checkout updates itself the same way: `git pull --ff-only` on the branch it tracks, then `npm ci --ignore-scripts` and `npm run setup`; uncommitted changes in tracked files refuse before anything runs, so a failed update never half-applies.
 
 ```sh
 dscode update                  # latest release
-dscode update 0.7.25           # an exact version
+dscode update 0.7.26           # an exact version
 ```
 
 `dscode history` lists retained versions and `dscode rollback` returns to the previous preset revision (npm/Hub install). Tar installs older than the first release with `dscode update` upgrade by installing the new tarball into a fresh directory and migrating the state once. Source, tar and npm/Hub installs use different data directories, and sessions and credentials are not migrated between them. See the [tar distribution notes](docs/distribution.md) and the [npm + Hub guide](docs/hub-distribution.md).
@@ -156,7 +158,7 @@ dscode update 0.7.25           # an exact version
 |---|---|
 | `/login` | Paste the DeepSeek API key into a hidden input; saved under `~/.dscode/` and loaded at startup |
 | `/model`, `/effort` | Choose a model (type to search) or configure other credentials; models with four levels use a horizontal effort bar |
-| `/mode` | Select an Agent Preset; new sessions default to `dscode` |
+| `/new` | Start a fresh session; the TUI is fixed to the `dscode` preset, including resumed conversations |
 | `/status`, `/doctor` | Session state and runtime diagnostics |
 | `/memories` | Global memory state, background usage, switches and cleanup |
 | `/session` | Current session id, its card, and the external access entry point |
@@ -216,7 +218,7 @@ The bundle generates its modified modules at build time and never rewrites third
 |---|---|
 | [Changelog](docs/CHANGELOG.md) | Every release, newest first |
 | [Non-interactive runs](docs/exec.md) | `dscode exec`, JSON output, resume and effort/model/permission flags |
-| [Triggers](docs/triggers.md) | Events that start a fresh session: definitions, sources, scheduling with launchd, the run log |
+| [Triggers](docs/triggers.md) | Event-driven runs with fresh or persistent sessions: cron, delay jobs, supervised script loops, `/trigger` TUI management, agent tools, the run log |
 | [Session bridge](docs/session-bridge.md) | `dscode sessions`, `send`, `read`, `watch` against a live session |
 | [Session communication](docs/session-communication.md) | Agent-side messaging, delivery modes, budgets and de-duplication |
 | [Session cards](docs/session-cards.md) | Project, workspace and topic fields, and how they are derived |
@@ -238,7 +240,7 @@ Design records do not repeat the guides above:
 |---|---|
 | [Session messaging design](docs/session-messaging-design.md) | Rationale, boundaries and fixed limits behind agent-to-agent tasks |
 | [Cloud web app host](docs/cloud-webapp-host.md) | Design baseline and trust model for browser access; not implemented |
-| [Triggers](docs/triggers-design.md) | Why the trigger mechanism is shaped this way: the ingress, the OS-owned clock, the run log as a contract |
+| [Triggers](docs/triggers-design.md) | Why the trigger mechanism is shaped this way: the ingress, the supervised scheduler, the run log as a contract |
 | [Verification](docs/verification.md) | What the maintained checks cover, and what cannot run inside a session |
 | [Maintainability](docs/maintainability.md) | What checks the forked terminal, and what stays unverified |
 | [Upgrading the vendored terminal](docs/vendored-tui-upgrade.md) | Taking a new upstream dsh-code release: the merge procedure, and what only a smoke test catches |

@@ -91,7 +91,8 @@ import {
 } from './git-workflow.ts'
 import type { TuiStartup } from './startup.ts'
 import { SessionSwitchQueue } from './session-switch.ts'
-import { agentPresetsFrom, normalizePresetId, resolvePreset, selectPreset } from './presets.ts'
+import { agentPresetsFrom } from './presets.ts'
+import { DSCODE_PRESET, requireDscodePreset, mountDscodePreset } from './dscode/preset.ts'
 import {
   applyPendingPermission,
   effectivePermission,
@@ -626,6 +627,7 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
   // Early process shutdown can dispose the tree while settlement is pending.
   if (agents === undefined || defaultModel === undefined || sessions === undefined) return
 
+  if (startup.kind === 'fresh' || startup.kind === 'named') requireDscodePreset(startup.mode)
   const cwd = process.cwd()
   // Live deployment default (web selectModel parity): read on every use, not
   // snapshotted at launch, so a /model pick this process saves becomes the
@@ -673,19 +675,12 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     const selectionState: { picked?: ModelSelection } = pendingSelection === undefined
       ? {}
       : { picked: pendingSelection }
-    let mode = next.resume ? next.mode : next.mode ?? pendingMode
-    // An explicit `--mode` or the settings-layer service default may still name
-    // an id an upstream rename retired (code → ptc); normalize both.
-    if (!next.resume) mode = (await presets.resolve(normalizePresetId(mode ?? presets.defaultId))).id
+    const mode = requireDscodePreset(next.mode)
     // 0.1.5 AgentSetup passes the composed agent as its second argument (the
     // former `ctx.agent` accessor is gone); the preset mount still needs the
     // agent-scoped context.
     const setup = async (agentCtx: Context, agent: Agent): Promise<void> => {
-      const sessionPreset = next.resume
-        ? resolvePreset(agent.session)
-        : mode
-      const mounted = await presets.mount(agentCtx, sessionPreset)
-      mode = mounted.id
+      await mountDscodePreset(presets, agentCtx, agent.session)
       const selection: ModelSelectionRef = {
         get current(): ModelSelection | undefined {
           return resolveEffectiveSelection(selectionState.picked, agent.session.requestHeader()?.config, currentDefaults())
@@ -755,7 +750,7 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
       session,
       store: createTranscriptStore(seedEvents),
       mentions: createMentions(ctx, handle.agent, session.header.cwd ?? nextCwd),
-      mode: mode ?? 'standard',
+      mode,
       selection: selectionState,
       resumed: next.resume,
       ...(folderWarning === undefined ? {} : { folderWarning }),
@@ -845,10 +840,6 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
   let mentions: MentionsApi = createMentions(ctx, undefined, cwd)
   /** Explicit model pick made before any session exists (a bare launch). */
   let pendingSelection: ModelSelection | undefined
-  /** Agent preset selected before the first session exists. */
-  let pendingMode: string | undefined
-  /** Ordered pre-session preset resolutions; first composition awaits them. */
-  let pendingModeWork: Promise<void> = Promise.resolve()
   /** Permission preset selected before the first session exists. */
   let pendingPermission: string | undefined
   /**
@@ -881,7 +872,7 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     }
     preSessionPlanKnown = false
     void presets.compositionInventory().then(inventory => {
-      const id = pendingMode ?? normalizePresetId(presets.defaultId)
+      const id = DSCODE_PRESET
       preSessionPlanAvailable = inventory.some(composition => composition.id === id
         && composition.rows.some(row => row.moduleName === '@deepseek-ai/dsh-plan-mode' && row.enabled !== false))
       preSessionPlanKnown = true
@@ -1445,9 +1436,6 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     creating = true
     void compose(async () => {
       try {
-        // A direct `/mode <preset>` resolves asynchronously. Preserve submit
-        // order so the first composition cannot race ahead with the old mode.
-        await pendingModeWork
         // Another composition (e.g. a /resume activated while this creation
         // waited its turn) may have published a session already: deliver the
         // queued lines there instead of minting a competing fresh session
@@ -1475,7 +1463,6 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
           mentions = next.mentions
           subagents.reset()
           for (const event of next.catalogSeed) subagents.apply(event.data.childId, event)
-          pendingMode = undefined
           pendingPermission = undefined
           commands.setAgent(agent)
           skills.setAgent(agent)
@@ -1532,11 +1519,8 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     // exact whitespace unless the line is a syntactic slash command.
     const line = submissionPayload(text)
     if (line.trim() === '' && images.length === 0) return
-    if (images.length === 0 && line.startsWith('/mode ')) {
-      void switchModeAction(line.slice(6).trim()).then(
-        selected => bridge.notify(`mode → ${selected}`),
-        error => bridge.notify(`mode switch failed: ${error instanceof Error ? error.message : String(error)}`, 'error'),
-      )
+    if (images.length === 0 && (line === '/mode' || line.startsWith('/mode '))) {
+      bridge.notify('DSCODE mode is fixed to dscode.', 'info')
       return
     }
     if (images.length === 0 && line.startsWith('/permission ')) {
@@ -1962,51 +1946,6 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     })
   }
 
-  const switchModeAction = async (id: string): Promise<string> => {
-    if (id === '') throw new Error('usage: /mode <preset>')
-    const currentAgent = agent
-    if (currentAgent === undefined) {
-      const choice = pendingModeWork.then(async () => {
-        const preset = await selectPreset(presets, undefined, id)
-        // A resume may have won while this roster read was in flight; never
-        // leak the old pending choice into a later /new session.
-        if (agent === undefined) {
-          pendingMode = preset.id
-          renderCurrent()
-        }
-        return preset.id
-      })
-      pendingModeWork = choice.then(() => {}, () => {})
-      return choice
-    }
-
-
-    // Serialize the recomposition with session activations: a /mode that
-    // interleaves a switch must not rebind the shared command/skill
-    // registries while the switch is composing the next agent.
-    const currentActive = active
-    const atEpoch = epoch
-    let selected: string | undefined
-    await compose(async () => {
-      const preset = await selectPreset(presets, currentAgent, id)
-      // A switch/quit landed while the recomposition ran: applying here
-      // would write the old choice into the new session's state and rebind
-      // the registries back to a disposed agent. The preset-selection log
-      // entry rode the old agent's session; only the local application is
-      // dropped.
-      if (epoch !== atEpoch || agent !== currentAgent || active !== currentActive) {
-        throw new Error('session changed while switching mode — nothing applied; retry in the active session')
-      }
-      if (active === undefined) throw new Error('active Agent has no session state')
-      active.mode = preset.id
-      commands.setAgent(currentAgent)
-      skills.setAgent(currentAgent)
-      selected = preset.id
-      renderCurrent()
-    })
-    return selected!
-  }
-
   interface PendingSwitch { readonly target: Target; readonly label: string }
 
   const activate = (nextTarget: Target): Promise<void> => {
@@ -2046,12 +1985,11 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
         renderCurrent()
         // Only a successful handoff may clear the transient per-session
         // surfaces: a rolled-back switch keeps the previous session's
-        // subagent feed plus the user's pre-session /mode and permission
+        // subagent feed plus the user's pre-session model and permission
         // picks (the bare-launch promise: explicit choices survive until
         // composition takes them). The in-flight cycle intent belonged to
         // the previous session's presses; the new session's committed fold
         // decides from here.
-        pendingMode = undefined
         pendingPermission = undefined
         pendingPlan = false
         planIntent = undefined
@@ -2163,6 +2101,8 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
   }
 
   const createSession = (mode?: string): void => {
+    try { requireDscodePreset(mode) }
+    catch (error) { bridge.notify(error instanceof Error ? error.message : String(error), 'error'); return }
     // /new before any input is the first-session creation itself, not a switch.
     if (session === undefined) {
       ensureSession(mode)
@@ -2353,16 +2293,13 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
     const sessionCwd = session?.header.cwd ?? cwd
     const currentView = store.getView()
     const defaults = currentDefaults()
-    const model = currentView.model !== ''
-      ? currentView.model
-      : pendingSelection !== undefined
-        ? `${pendingSelection.provider}/${pendingSelection.model}`
-        : `${defaults.provider}/${defaults.model}`
-    const effort = resolveEffectiveSelection(
+    const selection = resolveEffectiveSelection(
       active?.selection.picked ?? pendingSelection,
       session?.requestHeader()?.config,
       defaults,
-    ).reasoningEffort
+    )
+    const model = `${selection.provider}/${selection.model}`
+    const effort = selection.reasoningEffort
     const permission = permissionPresets === undefined
       ? currentView.permission
       : effectivePermission(permissionPresets, session, pendingPermission)
@@ -2385,7 +2322,7 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
       branch: gitBranch(sessionCwd),
       sessionId: session === undefined ? '' : session.id.slice(-8),
       resumed: active?.resumed ?? false,
-      mode: active?.mode ?? pendingMode ?? normalizePresetId(presets.defaultId),
+      mode: active?.mode ?? DSCODE_PRESET,
       permission,
       /** Pre-session plan choice for the status badge until a session composes. */
       pendingPlan: session === undefined && pendingPlan,
@@ -2437,8 +2374,6 @@ async function run(ctx: Context, startup: TuiStartup, io: TuiIo): Promise<void> 
       listReviewBranches: (signal?: AbortSignal) => listReviewBranches(session?.header.cwd ?? cwd, signal),
       listReviewCommits: (signal?: AbortSignal) => listReviewCommits(session?.header.cwd ?? cwd, signal),
       reviewChanges,
-      loadPresets: () => presets.list(),
-      switchMode: switchModeAction,
       loadPermissions: () => permissionPresets === undefined
         ? Promise.reject(new Error('permission presets are not mounted in this composition'))
         : Promise.resolve(listPermissionRows(permissionPresets)),

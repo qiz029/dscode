@@ -1,69 +1,34 @@
-const WINDOW_MS = 5000;
-// A pause longer than this (tool execution, the wait for the first token) ends
-// the current output burst: the next chunk starts a fresh window instead of
-// averaging over the silence.
-const GAP_MS = 1500;
-const MIN_SPAN_MS = 500;
-
-// Providers report exact output tokens only when a request settles. During
-// streaming, estimate from UTF-8 bytes without rounding each small chunk.
-export function estimatedDeltaTokens(chunk) {
-  const text = chunk.type === 'text-delta' || chunk.type === 'reasoning-delta'
-    ? chunk.text
-    : chunk.type === 'tool-call-delta' ? chunk.argumentsDelta : undefined;
-  return typeof text === 'string' ? Buffer.byteLength(text, 'utf8') / 4 : 0;
-}
+// Each valid completed request halves every older sample's weight.
+const DECAY = 0.5;
 
 /**
- * Live output rate: tokens seen in the last five seconds divided by the time
- * that window actually spans, so the rate is right from the first second of a
- * burst. Settled usage calibrates the byte-based estimate per session.
+ * Normalized exponential average of per-request TPS, from final API usage.
+ * New samples have weight 1; existing weights multiply by DECAY. Normalizing
+ * the startup weights keeps newer requests more influential from sample two.
+ * Idle time and unusable samples do not age the history.
  */
-export function createWindowRate() {
-  const samples = new WeakMap();
-  const stateOf = session => {
-    let state = samples.get(session);
-    if (!state) { state = { values: [], head: 0, sum: 0, factor: 1, pending: 0 }; samples.set(session, state); }
-    return state;
-  };
-  const prune = (state, now) => {
-    while (state.head < state.values.length && state.values[state.head].time <= now - WINDOW_MS) {
-      state.sum -= state.values[state.head++].tokens;
-    }
-    if (state.head > 128 && state.head * 2 > state.values.length) {
-      state.values.splice(0, state.head);
-      state.head = 0;
-    }
-  };
+export function createSmoothedRate() {
+  const sessions = new WeakMap();
   return {
-    add(session, chunk, now = Date.now()) {
-      const tokens = estimatedDeltaTokens(chunk);
-      if (!(tokens > 0)) return;
-      const state = stateOf(session);
-      const last = state.values.at(-1);
-      if (last && now - last.time > GAP_MS) { state.values = []; state.head = 0; state.sum = 0; }
-      state.values.push({ time: now, tokens });
-      state.sum += tokens;
-      state.pending += tokens;
-      prune(state, now);
+    begin(session, route) {
+      let state = sessions.get(session);
+      if (!state || state.route !== route) {
+        state = { route, weightedRate: 0, weight: 0 };
+        sessions.set(session, state);
+      }
+      // A late completion from an older model must not contaminate the new one.
+      return ({ start, end, outputTokens }) => {
+        if (sessions.get(session) !== state || !Number.isFinite(start) || !Number.isFinite(end)
+          || end <= start || !Number.isFinite(outputTokens) || outputTokens < 0) return;
+        const rate = outputTokens / ((end - start) / 1000);
+        if (!Number.isFinite(rate)) return;
+        state.weightedRate = state.weightedRate * DECAY + rate;
+        state.weight = state.weight * DECAY + 1;
+      };
     },
-    /** Feed the provider's settled output count for the request whose chunks were just added. */
-    calibrate(session, outputTokens) {
-      const state = samples.get(session);
-      if (!state) return;
-      const pending = state.pending;
-      state.pending = 0;
-      if (!(pending > 0) || !Number.isFinite(outputTokens) || outputTokens <= 0) return;
-      const ratio = Math.min(2, Math.max(0.5, outputTokens / pending));
-      state.factor = state.factor * 0.5 + ratio * 0.5;
-    },
-    get(session, now = Date.now()) {
-      const state = samples.get(session);
-      if (!state) return null;
-      prune(state, now);
-      if (state.head >= state.values.length) return 0;
-      const span = Math.min(WINDOW_MS, Math.max(MIN_SPAN_MS, now - state.values[state.head].time));
-      return Math.max(0, state.sum) * state.factor / (span / 1000);
+    get(session) {
+      const state = sessions.get(session);
+      return state?.weight > 0 ? state.weightedRate / state.weight : null;
     },
   };
 }

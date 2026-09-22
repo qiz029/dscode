@@ -54,6 +54,14 @@ export interface ModelRow {
   reasoning?: ModelReasoning
 }
 
+/** Preserve an advertised effort, otherwise use the target model's own default. */
+export function resolveModelEffort(row: ModelRow, current?: string): string | undefined {
+  const reasoning = row.reasoning
+  const offered = reasoning?.efforts ?? []
+  if (current && offered.some(effort => effort.id === current)) return current
+  return offered.find(effort => effort.id === reasoning?.defaultEffort)?.id
+}
+
 /** The resolved directory: rows plus per-provider discovery failures. */
 export interface ModelDirectory {
   /** Advisory rows, provider-major in registry order. */

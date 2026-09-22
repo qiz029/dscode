@@ -8,6 +8,13 @@
 // injected, which is also what makes the whole command testable.
 
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { acquireTriggerLease } from './lease.mjs';
+import { handleJobCommand, JOB_COMMANDS, executeJob } from './job-cli.mjs';
+import { emitToSource } from './source-ingress.mjs';
+import { JobStore } from './jobs.mjs';
+import { schedulerService } from './scheduler-service.mjs';
 import { dirname, join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { loadTriggerDefinitions, formatTrigger } from './config.mjs';
@@ -23,17 +30,25 @@ export const USAGE = `Usage: dscode trigger <command> [options]
 Commands:
   run <id>              Start one run now (respecting the trigger's limits)
   fire <id>             Post an event and run it: --text "..." or --event FILE
-  emit <id>             Only post an event for the next drain
+  emit <id>             Commit an event to the scheduler queue
   events [id]           Print the events waiting in a trigger's spool
   list                  List the trigger definitions and their last outcome
   show <id>             Print one definition
   log [id]              Print recorded runs, newest first (--failed for failures only)
   new <id>              Write a starter definition into the project
   enable|disable <id>   Set the definition's enabled flag in its own file
-  install <id>          Schedule the trigger with launchd (or print the crontab)
+  schedule <id>         Schedule one event: --after 30m or --at ISO_TIMESTAMP
+  jobs [id]             List scheduled jobs and their state
+  cancel <jobId>        Cancel a pending job (never stops a running one)
+  source <id> <action>  status | start | stop | restart | logs
+  scheduler <action>    start | tick | install | uninstall | status
+  run-job <jobId>       Execute one due job (used by the scheduler)
+  install <id>          Register a recurring source and install the scheduler
   uninstall <id>        Remove the schedule
 
 Options:
+  --after DURATION     Delay such as 30s, 10m, 2h or 1d (schedule only)
+  --at TIMESTAMP       ISO timestamp with an explicit offset (schedule only)
   --event FILE          Event body as JSON; "-" reads stdin
   --text TEXT           Event body text (with "fire"/"emit")
   --event-id ID         Identity of the posted event; retry with the same one
@@ -45,7 +60,7 @@ Exit codes are the run's: 0 completed, skipped or nothing to do; 1 failed;
 2 round or cost cap; 3 the goal is blocked or paused; 124 timeout; 130 interrupted.
 An orderly stop writes a result file; only a Host that died leaves none behind.`;
 
-const COMMANDS = ['run', 'fire', 'emit', 'events', 'list', 'show', 'log', 'new', 'enable', 'disable', 'install', 'uninstall'];
+const COMMANDS = ['source', 'run', 'fire', 'emit', 'events', 'list', 'show', 'log', 'new', 'enable', 'disable', 'install', 'uninstall', ...JOB_COMMANDS];
 
 /** Parse the arguments after `trigger`. */
 export function parseTriggerArgs(argv) {
@@ -54,16 +69,18 @@ export function parseTriggerArgs(argv) {
   options.command = words.shift() ?? '';
   if (options.command === '' || options.command === '--help' || options.command === '-h') { options.help = true; return options; }
   if (!COMMANDS.includes(options.command)) { options.error = `unknown command "${options.command}"`; return options; }
-  if (['list', 'log'].includes(options.command)) {
+  if (['list', 'log', 'events', 'jobs'].includes(options.command)) {
     if (words.length > 0 && !words[0].startsWith('-')) options.id = words.shift();
   } else {
     const id = words.shift() ?? '';
     if (id === '' || id.startsWith('-')) { options.error = `${options.command} needs a trigger id`; return options; }
     options.id = id;
   }
+  if (options.command === 'source') options.action = words.shift() ?? 'status';
   while (words.length > 0) {
     const flag = words.shift();
     const value = () => { const next = words.shift(); if (next === undefined) { options.error = `${flag} needs a value`; return undefined; } return next; };
+    if (flag === '--after' || flag === '--at') { const next = value(); if (next === undefined) return options; options[flag.slice(2)] = next; continue; }
     if (flag === '--event') { const next = value(); if (next === undefined) return options; options.event = next; continue; }
     if (flag === '--text') { const next = value(); if (next === undefined) return options; options.text = next; continue; }
     if (flag === '--event-id') { const next = value(); if (next === undefined) return options; options.eventId = next; continue; }
@@ -74,6 +91,7 @@ export function parseTriggerArgs(argv) {
     options.error = `unknown option "${flag}"`;
     return options;
   }
+  if (options.command !== 'schedule' && (options.after !== undefined || options.at !== undefined)) options.error = '--after and --at are only accepted by schedule';
   return options;
 }
 
@@ -112,6 +130,7 @@ export function scaffoldTrigger(id, { workspace }) {
     `workspace: ${workspace}`,
     'prompt: describe what this run should do',
     'source: { kind: interval, seconds: 300 }',
+    'session: { mode: new }',
     'goal: { objective: describe the finished state, maxRounds: 20 }',
     'limits: { timeoutSeconds: 1800, maxRunsPerDay: 24, minIntervalSeconds: 60 }',
     '',
@@ -257,6 +276,28 @@ export async function runTriggerCli(argv, deps = {}) {
   // A CLI function returns an exit code: an unknown id, an unreadable definition
   // or a missing workspace is a user-facing message, not a thrown stack.
   try {
+    if (process.env.DSCODE_SOURCE_SOCKET) {
+      if (options.command !== 'emit') throw new Error('script source ingress only supports emit');
+      const payload = (await readEventBody(options, deps.stdin ?? process.stdin)) ?? {};
+      out(JSON.stringify(await emitToSource({ triggerId: options.id, eventId: options.eventId, payload })));
+      return 0;
+    }
+    if (options.command === 'source') {
+      const definition = findDefinition(home, project, options.id);
+      if (definition.source.kind !== 'script') throw new Error('source management requires a script source');
+      const store = new JobStore(home);
+      try {
+        if (['status', 'logs'].includes(options.action)) {
+          const source = store.source(definition.id, project);
+          out(options.action === 'logs' ? source?.log || '(no source output)' : JSON.stringify(source ?? { status: 'unregistered' }));
+        } else { out(JSON.stringify(store.controlSource(definition, project, options.action))); out('The shared scheduler must be running to supervise sources.'); }
+      } finally { store.close(); }
+      return 0;
+    }
+    if (JOB_COMMANDS.includes(options.command)) return await handleJobCommand(options, {
+      home, project, now, platform, dscodePath, launchctl, out, err, deps,
+      findDefinition, readEventBody, executeEvent,
+    });
     if (options.command === 'list') {
       const { definitions, problems } = loadTriggerDefinitions({ home, workspace: project });
       if (definitions.length === 0 && problems.length === 0) { out('No triggers defined.'); return 0; }
@@ -277,15 +318,23 @@ export async function runTriggerCli(argv, deps = {}) {
       return 0;
     }
     if (options.command === 'events') {
+      let durableCount = 0;
+      const store = new JobStore(home);
+      try {
+        for (const job of store.list(options.id || undefined).filter(j => j.project === project && j.kind === 'event' && ['pending', 'running'].includes(j.state))) {
+          durableCount += 1;
+          out(`${job.triggerId} ${job.state} ${store.eventIdentity(job.id)} ${JSON.parse(job.payload).text}`);
+        }
+      } finally { store.close(); }
       if (options.id === '') {
         const { definitions } = loadTriggerDefinitions({ home, workspace: project });
         let total = 0;
         for (const definition of definitions) for (const event of listEvents(home, definition.id)) { out(`${definition.id} ${formatEvent(event)}`); total += 1; }
-        if (total === 0) out('No pending events.');
+        if (total === 0 && durableCount === 0) out('No pending events.');
         return 0;
       }
       const pending = listEvents(home, options.id);
-      if (pending.length === 0) out(`No pending events for ${options.id}.`);
+      if (pending.length === 0 && durableCount === 0) out(`No pending events for ${options.id}.`);
       else for (const event of pending) out(formatEvent(event));
       return 0;
     }
@@ -314,6 +363,8 @@ export async function runTriggerCli(argv, deps = {}) {
       const definition = findDefinition(home, project, options.id);
       const path = agentPath(home, definition.id);
       if (options.command === 'uninstall') {
+        const store = new JobStore(home);
+        try { store.unregister(definition.id, project, now); } finally { store.close(); }
         if (launchctl !== undefined && platform === 'darwin') await launchctl(['bootout', `gui/${process.getuid?.() ?? ''}/${'ai.dscode.trigger.' + definition.id}`], { ignoreFailure: true });
         rmSync(path, { force: true });
         out(`removed the schedule for ${options.id} (${path})`);
@@ -331,6 +382,15 @@ export async function runTriggerCli(argv, deps = {}) {
       if (!runnable) {
         err(`cannot install ${options.id}: ${dscodePath} is not an executable file, and launchd runs no shell profile`);
         return 1;
+      }
+      if (['calendar', 'interval', 'poll', 'script'].includes(definition.source.kind)) {
+        const store = new JobStore(home);
+        try { store.register(definition, project, now); } finally { store.close(); }
+        if (platform === 'darwin' && launchctl) await launchctl(['bootout', `gui/${process.getuid()}/ai.dscode.trigger.${definition.id}`], { ignoreFailure: true });
+        rmSync(path, { force: true });
+        out(`registered ${definition.id} with the scheduler`);
+        await schedulerService('install', { home, dscodePath, platform, launchctl, agentsDirectory: deps.agentsDirectory, out });
+        return 0;
       }
       const plist = launchAgent(definition, { home, dscodePath, project });
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -350,14 +410,26 @@ export async function runTriggerCli(argv, deps = {}) {
     const definition = findDefinition(home, project, options.id);
     if (options.command === 'emit') {
       const body = (await readEventBody(options, deps.stdin ?? process.stdin)) ?? {};
-      const event = emitEvent(home, definition.id, { source: 'cli', ...body }, { eventId: options.eventId ?? deps.eventId ?? `manual-${new Date(now).toISOString()}`, now });
-      out(`posted ${event.eventId} to ${definition.id} (${listEvents(home, definition.id).length} pending)`);
+      const store = new JobStore(home);
+      try {
+        const job = store.acceptEvent({ definition, project, payload: { source: 'cli', ...body }, eventId: options.eventId ?? deps.eventId ?? `manual-${randomUUID()}`, now });
+        out(`queued ${store.eventIdentity(job.id)} to ${definition.id}: ${job.id} (${job.state})`);
+        out('Delivery requires the shared scheduler, or dscode trigger run ' + definition.id);
+      } finally { store.close(); }
       return 0;
+    }
+    if (options.command === 'run') {
+      const store = new JobStore(home);
+      try {
+        const wanted = options.eventId ?? deps.eventId;
+        const job = store.list(definition.id).reverse().find(j => j.project === project && j.kind === 'event' && (wanted === undefined ? j.state === 'pending' : store.eventIdentity(j.id) === wanted));
+        if (job) return await executeJob(store, job.id, { home, project, now, deps, out, err, executeEvent, findDefinition });
+      } finally { store.close(); }
     }
     let fired;
     if (options.command === 'fire') {
       const body = (await readEventBody(options, deps.stdin ?? process.stdin)) ?? {};
-      fired = emitEvent(home, definition.id, { source: 'cli', ...body }, { eventId: options.eventId ?? deps.eventId ?? `fire-${new Date(now).toISOString()}`, now });
+      fired = emitEvent(home, definition.id, { source: 'cli', ...body }, { eventId: options.eventId ?? deps.eventId ?? `fire-${randomUUID()}`, now });
     }
 
     const pending = listEvents(home, definition.id);
@@ -369,21 +441,80 @@ export async function runTriggerCli(argv, deps = {}) {
       err(`no pending event "${wanted}" for ${definition.id}; post it with "emit", or omit --event-id`);
       return 1;
     }
-    const chosen = fired ?? matching ?? (wanted === undefined ? pending[0] : undefined);
+    const scheduled = definition.session.mode === 'persistent' && definition.source.kind !== 'external' && options.command === 'run' && wanted === undefined;
+    const chosen = fired ?? matching ?? (!scheduled && wanted === undefined ? pending[0] : undefined);
     const eventId = chosen?.eventId ?? wanted ?? firingIdentity(definition, now);
-    const plan = planTriggerRun(definition, { home, now, eventId });
-    if (plan.action === 'skip') {
-      err(`skipped ${definition.id}: ${plan.reason}`);
-      return recordSkip(home, definition, { reason: plan.reason, eventId, now });
+    const persistent = definition.session.mode === 'persistent';
+    // Scheduled invocations also become durable events when a session is reused.
+    // An explicit external drain processes the backlog without inventing a tick.
+    if (persistent && chosen === undefined) {
+      emitEvent(home, definition.id, { source: definition.source.kind }, { eventId, now });
     }
+    const triggerLease = await acquireTriggerLease(home, definition.id, { wait: persistent });
+    if (!triggerLease) {
+      err(`skipped ${definition.id}: already_running`);
+      return recordSkip(home, definition, { reason: 'already_running', eventId, now });
+    }
+    try {
+      if (!persistent) return (await executeEvent(definition, { home, now, eventId, chosen, deps, out, err, triggerLease })).code;
+      let exitCode = 0;
+      const clock = deps.clock ?? (() => deps.now ?? Date.now());
+      for (;;) {
+        const next = listEvents(home, definition.id, { limit: 1 })[0];
+        if (!next) {
+          const own = readRuns(home, { triggerId: definition.id, limit: 0 }).find(run => run.eventId === eventId && run.outcome !== 'skipped');
+          return exitCode || own?.exitCode || 0;
+        }
+        const current = findDefinition(home, project, definition.id);
+        if (current.session.mode !== 'persistent') return exitCode;
+        const result = await executeEvent(current, { home, now: clock(), eventId: next.eventId, chosen: next, deps, out, err, triggerLease });
+        if (result.skip === 'duplicate') {
+          consumeEvent(home, definition.id, next.eventId);
+          continue;
+        }
+        if (result.skip === 'too_soon') {
+          const previous = readRuns(home, { triggerId: definition.id, limit: 0 }).find(run => run.outcome !== 'skipped');
+          const remaining = previous.startedAt + current.limits.minIntervalSeconds * 1000 - clock();
+          await (deps.delay ?? sleep)(Math.max(1, Math.min(remaining, 1000)));
+          continue;
+        }
+        if (result.skip) return exitCode; // disabled, daily cap, or a legacy run: leave events pending
+        if (result.code !== 0) exitCode = result.code;
+        if (result.code === 130) return exitCode;
+      }
+    } finally { triggerLease.release(); }
+  } catch (error) {
+    err(error?.message ?? String(error));
+    return 1;
+  }
+}
 
+/** The launcher and the source driver both must inject a spawn. */
+function missingSpawn() {
+  throw new Error('this build has no way to start a run: inject spawnRun');
+}
+
+/** Execute one event while the caller holds the cross-process trigger lease. */
+async function executeEvent(definition, { home, now, eventId, chosen, deps, out, err, triggerLease, beforeRun, jobId, quietSkips = false }) {
+  const plan = planTriggerRun(definition, { home, now, eventId });
+  if (plan.action === 'skip') {
+    if (quietSkips || definition.session.mode === 'persistent' && plan.reason === 'too_soon') return { code: 0, skip: plan.reason };
+    err(`skipped ${definition.id}: ${plan.reason}`);
+    recordSkip(home, definition, { reason: plan.reason, eventId, now });
+    return { code: 0, skip: plan.reason };
+  }
+
+  try {
+    if (beforeRun && !beforeRun(plan.handle)) return { code: 0, skip: 'cancelled' };
     // A poll source only runs when its predicate says there is work; without a
     // resident listener this scheduled invocation IS the poll.
     if (definition.source.kind === 'poll') {
-      const check = await evaluateCheck(definition.source.check, { cwd: definition.workspace, timeoutMs: 60000, ...(deps.spawnCheck === undefined ? {} : { spawn: deps.spawnCheck }) });
+      const check = await evaluateCheck(definition.source.check, { home, permission: definition.permission, cwd: definition.workspace, timeoutMs: 60000, ...(deps.spawnCheck === undefined ? {} : { spawn: deps.spawnCheck }) });
       if (!check.matched) {
         err(`nothing to do for ${definition.id} (${check.code === null ? 'the check did not finish' : `check exited ${check.code}`})`);
-        return recordLockedSkip(home, definition, plan.handle, { reason: 'no_match', eventId, details: check.output, now });
+        recordLockedSkip(home, definition, plan.handle, { reason: 'no_match', eventId, details: check.output, now });
+        if (chosen !== undefined) consumeEvent(home, definition.id, chosen.eventId);
+        return { code: 0 };
       }
     }
 
@@ -391,6 +522,7 @@ export async function runTriggerCli(argv, deps = {}) {
       triggerId: definition.id,
       runId: plan.handle.runId,
       workspace: definition.workspace,
+      session: definition.session,
       prompt: renderPrompt(definition.prompt, chosen),
       preset: definition.preset,
       permission: definition.permission,
@@ -399,17 +531,9 @@ export async function runTriggerCli(argv, deps = {}) {
       goal: { objective: definition.goal.objective, maxRounds: definition.goal.maxRounds },
       limits: definition.limits,
       eventId,
+      ...(jobId ? { jobId } : {}),
     };
-    let code;
-    let result;
-    try {
-      ({ code, result } = await (deps.spawnRun ?? missingSpawn)({ spec, home, cwd: definition.workspace }));
-    } catch (error) {
-      // The Host never ran, so the event is still pending and the lock must not
-      // outlive the attempt: a later drain should be free to try it again.
-      releaseTriggerRun(home, plan.handle);
-      throw error;
-    }
+    const { code, result } = await (deps.spawnRun ?? missingSpawn)({ spec, home, cwd: definition.workspace, triggerLease });
     // Consumed only once the Host has actually run: a failure before that leaves
     // the event pending rather than dropping it.
     if (chosen !== undefined) consumeEvent(home, definition.id, chosen.eventId);
@@ -424,16 +548,11 @@ export async function runTriggerCli(argv, deps = {}) {
       rounds: result?.rounds ?? null,
       eventId,
       endedAt: Date.now(),
+      cwd: definition.workspace,
+      source: chosen?.source ?? definition.source.kind,
+      ...(jobId ? { jobId } : {}),
     });
     out(`${definition.id} ${formatRun(record)}${record.sessionId === null ? '' : ` · ${record.sessionId}`}`);
-    return record.exitCode;
-  } catch (error) {
-    err(error?.message ?? String(error));
-    return 1;
-  }
-}
-
-/** The launcher and the source driver both must inject a spawn. */
-function missingSpawn() {
-  throw new Error('this build has no way to start a run: inject spawnRun');
+    return { code: record.exitCode, record };
+  } finally { releaseTriggerRun(home, plan.handle); }
 }

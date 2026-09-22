@@ -1,6 +1,6 @@
 # DSCODE preset and Ultra
 
-Restart `dscode` and create a new session. The default preset is now `dscode`; `dscode --mode dscode` explicitly selects it. Existing conversations retain their old preset on resume. `/mode` changes only an empty session; use `/new dscode` for a new conversation.
+The interactive TUI is fixed to the `dscode` preset. `/new` starts a DSCODE conversation; the preset picker is absent from slash completion and help. Typing `/mode` reports that the preset is fixed, and `/new <other-preset>` or `--mode <other-preset>` is refused. The hidden compatibility flag `--mode dscode` still works. Resuming an older conversation mounts DSCODE while preserving its transcript and recording the new effective preset; the original session header is retained. Model, reasoning effort, permissions and plan mode keep their separate controls.
 
 ## Execution through a persistent shell
 

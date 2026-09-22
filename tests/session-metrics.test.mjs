@@ -9,7 +9,7 @@ import { summarize, formatFooter, footerFor, displayWidth, setMetricSource } fro
 import { apply } from '../plugins/session-metrics/index.mjs';
 import { appendMetric, ledgerPath, readMetrics } from '../plugins/session-metrics/store.mjs';
 import { chargeTo } from '../plugins/session-metrics/attribution.mjs';
-import { createWindowRate, estimatedDeltaTokens, sessionAverageTps } from '../plugins/session-metrics/rate.mjs';
+import { createSmoothedRate, sessionAverageTps } from '../plugins/session-metrics/rate.mjs';
 const usage = { inputTokens: 1e6, outputTokens: 1e6, cacheReadTokens: 1e6 };
 test('official prices use UTC weekday windows and announced Pro migration', () => {
   const price = (model, time) => estimateCost('deepseek-official', model, usage, Date.parse(time));
@@ -101,37 +101,57 @@ test('session totals weight input tokens, retain unknowns and survive replay', (
   for (const columns of [20, 32, 48, 80, 120]) assert(formatFooter(summary, 43.2, columns).length <= columns);
   assert.match(formatFooter(summary, 43.2), /43% ctx · \$0\.00.*9\.0% cache$/);
 });
-test('live TPS divides by the time the window actually spans, restarts after a pause, and calibrates to settled usage', () => {
+test('smoothed TPS gives newer API-derived request rates more weight without an idle expiry', () => {
   const session = {}, other = {};
-  const rate = createWindowRate();
-  assert.equal(rate.get(session, 10000), null);
-  assert.equal(estimatedDeltaTokens({ type: 'usage', usage }), 0);
-  assert.equal(estimatedDeltaTokens({ type: 'text-delta', text: '你好' }), 1.5);
-  rate.add(session, { type: 'text-delta', text: 'a'.repeat(40) }, 10000);
-  assert.equal(rate.get(session, 10000), 20, 'the first sample is rated over the half-second minimum span, not five seconds');
-  rate.add(session, { type: 'reasoning-delta', text: 'b'.repeat(40) }, 11000);
-  assert.equal(rate.get(session, 11000), 20, '20 tokens over one second');
-  rate.add(session, { type: 'tool-call-delta', argumentsDelta: 'c'.repeat(20) }, 12000);
-  assert.equal(rate.get(session, 12000), 12.5, '25 tokens over two seconds');
-  assert.equal(rate.get(other, 12000), null);
-  assert.ok(Math.abs(rate.get(session, 14500) - 25 / 4.5) < 1e-9, '25 tokens over the 4.5 seconds the window spans');
-  assert.equal(rate.get(session, 16000), 1.25, 'samples older than five seconds fall out: 5 tokens over four seconds');
-  assert.equal(rate.get(session, 19000), 0, 'silence decays to zero');
-  rate.calibrate(session, 25);
-  assert.equal(rate.get(session, 19000), 0, 'a settled count equal to the estimate leaves the factor at one');
-  // A tool call pauses output; the next chunk rates only its own burst, not the silence.
-  rate.add(session, { type: 'text-delta', text: 'd'.repeat(80) }, 30000);
-  assert.equal(rate.get(session, 30500), 40, '20 tokens over the half-second minimum span after a gap');
-  rate.add(session, { type: 'text-delta', text: 'e'.repeat(80) }, 31000);
-  assert.equal(rate.get(session, 31000), 40, '40 tokens over one second');
-  // Settled usage says the byte estimate undercounted by half: later readings scale up.
-  rate.calibrate(session, 80);
-  assert.equal(rate.get(session, 31000), 60, 'the factor moves halfway toward the measured ratio');
-  rate.calibrate(session, 0); rate.calibrate(session, NaN);
-  assert.equal(rate.get(session, 31000), 60, 'zero or missing usage never changes the factor');
-  rate.add(session, { type: 'text-delta', text: 'f'.repeat(4000) }, 31500);
-  rate.calibrate(session, 10);
-  assert(rate.get(session, 31500) > 0, 'ratios are clamped so one odd response cannot zero the rate');
+  const rate = createSmoothedRate();
+  const record = sample => rate.begin(session, 'deepseek/high')(sample);
+  const decay = 0.5;
+  assert.equal(rate.get(session), null);
+  record({ start: 1000, end: 3000, outputTokens: 100 });
+  assert.equal(rate.get(session), 50, 'the first request supplies the initial rate');
+  record({ start: 4000, end: 7000, outputTokens: 300 });
+  const expected = (50 * decay + 100) / (decay + 1);
+  assert.equal(rate.get(session), expected);
+  assert.ok(expected > 75 && expected < 100, 'the newer 100 TPS sample outweighs the older 50 TPS sample');
+  assert.equal(rate.get(other), null, 'sessions stay separate');
+  rate.begin(session, 'deepseek/high');
+  assert.equal(rate.get(session), expected, 'starting a request on the same route keeps the display');
+  record({ start: 1000000, end: 1030000, outputTokens: 600 });
+  assert.equal(rate.get(session), ((50 * decay + 100) * decay + 20) / ((decay + 1) * decay + 1),
+    'a long idle gap does not expire history; a long request uses its full duration');
+});
+test('each newer valid request halves old weight, and invalid samples do not age it', () => {
+  const session = {};
+  const rate = createSmoothedRate();
+  const record = sample => rate.begin(session, 'same-route')(sample);
+  for (const outputTokens of [undefined, NaN, Infinity, -1]) {
+    record({ start: 1000, end: 2000, outputTokens });
+    assert.equal(rate.get(session), null);
+  }
+  for (const start of [2000, 3000, NaN, Infinity]) {
+    record({ start, end: 2000, outputTokens: 10 });
+    assert.equal(rate.get(session), null);
+  }
+  record({ start: 1000, end: 2000, outputTokens: 100 });
+  record({ start: 2000, end: 3000 });
+  assert.equal(rate.get(session), 100, 'missing usage does not decay previous samples');
+  for (let index = 0; index < 3; index++) {
+    record({ start: 2000 + index * 1000, end: 3000 + index * 1000, outputTokens: 0 });
+    assert.ok(Math.abs(rate.get(session) - [100 / 3, 100 / 7, 100 / 15][index]) < 1e-12,
+      'each reported zero halves all older weights before normalization');
+  }
+});
+test('changing the model starts fresh and ignores late usage from a previous route', () => {
+  const session = {};
+  const rate = createSmoothedRate();
+  const old = rate.begin(session, 'model-a');
+  old({ start: 1000, end: 2000, outputTokens: 100 });
+  const next = rate.begin(session, 'model-b');
+  assert.equal(rate.get(session), null);
+  old({ start: 1000, end: 3000, outputTokens: 1000 });
+  assert.equal(rate.get(session), null, 'an old stream cannot restore the old model rate');
+  next({ start: 3000, end: 4000, outputTokens: 20 });
+  assert.equal(rate.get(session), 20);
 });
 test('session average is output tokens over summed LLM call time, excluding tool waits and idle', () => {
   const events = [
@@ -155,25 +175,30 @@ test('session average is output tokens over summed LLM call time, excluding tool
 test('footer protects the money and the context, dropping the rates first', () => {
   const metrics = { cost: 0.003, unknown: false, pending: 0, cache: 90 };
   const rates = { current: 12.3, average: 2.4 };
-  for (const columns of [20, 24, 28, 36, 40, 46, 56, 80, 100]) assert(formatFooter(metrics, 43, columns, rates).length <= columns);
+  for (const columns of [20, 24, 28, 36, 40, 46, 56, 80, 100]) {
+    for (const active of [false, true]) assert(formatFooter(metrics, 43, columns, { ...rates, active }).length <= columns);
+  }
   assert.match(formatFooter(metrics, 43, 20, rates), /^\$0\.00/, 'a very narrow footer keeps the money alone');
   assert.match(formatFooter(metrics, 43, 24, rates), /^\$0\.00.*90\.0% cache$/, 'the cache rate survives next to the money');
   assert.match(formatFooter(metrics, 43, 34, rates), /^ 43% ctx · \$0\.00.*90\.0% cache$/, 'context returns before the rates');
-  assert.match(formatFooter(metrics, 43, 50, rates), /^ ~12\.3 tps · {2}43% ctx · \$0\.00.*90\.0% cache$/, 'the live rate returns before the average');
-  assert.match(formatFooter(metrics, 43, 100, rates), /^ ~12\.3 tps · {4}2\.4 tps avg · {2}43% ctx · \$0\.00.*90\.0% cache$/, 'both rates fit on a wide terminal');
+  assert.match(formatFooter(metrics, 43, 50, rates), /^ {4}12\.3 tps · {2}43% ctx · \$0\.00.*90\.0% cache$/, 'the live rate returns before the average');
+  assert.match(formatFooter(metrics, 43, 100, rates), /^ {4}12\.3 tps · {4}2\.4 tps avg · {2}43% ctx · \$0\.00.*90\.0% cache$/, 'both rates fit on a wide terminal');
 });
 test('a growing live figure never moves the segment after it', () => {
   const columns = 140;
   const at = (rates, context, cache) => formatFooter({ cost: 0.01, unknown: false, pending: 0, cache }, context, columns, rates);
   const small = at({ current: 9.9, average: 2.4 }, 1, 9);
+  const active = at({ current: 9.9, average: 2.4, active: true }, 1, 9);
   const grown = at({ current: 124.5, average: 99.9 }, 100, 100);
-  assert.match(small, /^ {2}~9\.9 tps · {4}2\.4 tps avg · {3}1% ctx · \$0\.01/);
-  assert.match(grown, /^~124\.5 tps · {3}99\.9 tps avg · 100% ctx · \$0\.01/);
+  assert.match(small, /^ {5}9\.9 tps · {4}2\.4 tps avg · {3}1% ctx · \$0\.01/);
+  assert.match(grown, /^ {3}124\.5 tps · {3}99\.9 tps avg · 100% ctx · \$0\.01/);
   // Reserved columns are what keeps these two readings aligned: the separators and
   // the segments after them sit at the same column whatever the figures say.
   for (const segment of ['avg', 'ctx', '$0.01', 'cache']) {
     assert.equal(small.indexOf(segment), grown.indexOf(segment), `${segment} keeps its column`);
+    assert.equal(small.indexOf(segment), active.indexOf(segment), `${segment} stays aligned when request activity changes`);
   }
+  assert.equal(small.indexOf('9.9 tps'), active.indexOf('9.9 tps'));
 });
 
 test('the budget slot rides the money figure and only appears when a limit is set', () => {
@@ -233,7 +258,7 @@ test('the provider decides the money slot and the peak marker', () => {
   assert.match(line(80, 'openrouter'), /^ 43% ctx · \$0\.00 · {2}90\.0% cache$/, 'another route keeps the plain spend');
   assert.doesNotMatch(line(80, 'openrouter'), /🔥|❄️/);
 });
-test('collector streaming deltas reach the live footer', async () => {
+test('collector smooths completed API usage without estimating streams or counting aborted calls', async t => {
   const home = mkdtempSync(join(tmpdir(), 'dscode-live-rate-'));
   const old = process.env.DSH_HOME; process.env.DSH_HOME = home;
   const start = Date.now() - 10000;
@@ -243,24 +268,78 @@ test('collector streaming deltas reach the live footer', async () => {
     { type: 'assistant/message', time: start + 5000, data: { turn: 1, step: 1, usage: { outputTokens: 20 } } },
     { type: 'turn/end', time: start + 10000, data: { turn: 1 } },
   ] };
-  let wrapper, dispose;
+  let now = start + 20000;
+  t.mock.method(Date, 'now', () => now);
+  let wrapper;
+  const disposers = [];
   apply({
-    effect: fn => { dispose = fn(); }, logger: { warn() {} },
+    effect: fn => { disposers.push(fn()); }, logger: { warn() {} },
     on: (_name, fn) => { wrapper = fn; },
     agents: { get: id => id === 'root' ? { session } : undefined },
     sessionProjections: { stateOf: () => ({ contextWindow: 100 }) },
     tokenMeter: { measure: () => ({ totalTokens: 43 }) },
   });
   try {
-    for await (const _ of wrapper({ provider: 'deepseek-official', model: 'deepseek-flash', sessionId: 'root' }, async function* () {
-      yield { type: 'text-delta', text: 'a'.repeat(40) };
-      yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 10, cacheReadTokens: 0 } };
+    const options = { provider: 'deepseek-official', model: 'deepseek-flash', sessionId: 'root' };
+    const footer = () => footerFor('root', { contextWindow: 100 }, 100);
+    for await (const _ of wrapper(options, async function* () {
+      assert.match(footer(), /^◌ /, 'the indicator is active before the first output or usage');
+      yield { type: 'text-delta', text: '你好'.repeat(4000) };
+      yield { type: 'reasoning-delta', text: 'reasoning'.repeat(1000) };
+      yield { type: 'tool-call-delta', argumentsDelta: '{"hello":"world"}' };
+      assert.match(footer(), /-- tps/, 'text, reasoning and tool bytes produce no rate');
+      now += 2000;
+      yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 20, cacheReadTokens: 0 } };
+      assert.match(footer(), /-- tps/, 'intermediate cumulative usage is not counted as a completed request');
+      now += 3000;
+      yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 40, cacheReadTokens: 0 } };
     })) {}
-    const line = footerFor('root', { contextWindow: 100 }, 100);
-    assert.match(line, / ~20\.0 tps · {4}4\.0 tps avg/, 'ten estimated tokens over the half-second minimum span; 20 settled tokens over a five-second call');
-    assert.match(line, / 43% ctx/);
+    now += 1000;
+    assert.match(footer(), /8\.0 tps · {4}4\.0 tps avg/, '40 reported tokens / 5 seconds, unchanged by idle time');
+    assert.doesNotMatch(footer(), /[~◌]/, 'completion stops activity without altering the measured rate');
+    assert.match(footer(), / 43% ctx/);
+    for await (const _ of wrapper({ ...options, purpose: 'title' }, async function* () {
+      now += 1000;
+      assert.doesNotMatch(footer(), /◌/, 'auxiliary requests do not animate the main request indicator');
+      yield { type: 'usage', usage: { outputTokens: 500 } };
+    })) {}
+    assert.match(footer(), /8\.0 tps/, 'auxiliary usage does not replace the main request rate');
+    for await (const _ of wrapper(options, async function* () {
+      assert.match(footer(), /8\.0 tps/, 'a new request retains the smoothed rate');
+      now += 1000;
+      yield { type: 'usage', usage: { outputTokens: 100 } };
+    })) {}
+    assert.match(footer(), /69\.3 tps/, 'the newer 100 TPS sample outweighs the older 8 TPS sample');
+    for await (const _ of wrapper(options, async function* () {
+      yield { type: 'text-delta', text: 'no usage' };
+    })) {}
+    assert.match(footer(), /69\.3 tps/, 'a response without usage adds no sample');
+    await assert.rejects(async () => {
+      for await (const _ of wrapper(options, async function* () {
+        yield { type: 'text-delta', text: 'interrupted' };
+        now += 1000;
+        yield { type: 'usage', usage: { outputTokens: 9999 } };
+        throw new Error('aborted fixture');
+      })) {}
+    }, /aborted fixture/);
+    assert.match(footer(), /69\.3 tps/, 'an aborted call adds no sample even with partial usage');
+    assert.doesNotMatch(footer(), /◌/, 'aborting also clears the activity indicator');
+    now += 10000;
+    assert.match(footer(), /69\.3 tps/, 'idle time does not expire the smoothed rate');
+    for await (const _ of wrapper({ ...options, model: 'deepseek-v4-pro' }, async function* () {
+      assert.match(footer(), /-- tps/, 'a different model clears the previous smoothed rate');
+      now += 2000;
+      yield { type: 'usage', usage: { outputTokens: 40 } };
+    })) {}
+    assert.match(footer(), /20\.0 tps/, 'the new model starts from its own usage');
+    for await (const _ of wrapper({ ...options, model: 'deepseek-v4-pro', reasoningEffort: 'max' }, async function* () {
+      assert.match(footer(), /-- tps/, 'a different effort also starts fresh');
+      now += 1000;
+      yield { type: 'usage', usage: { outputTokens: 30 } };
+    })) {}
+    assert.match(footer(), /30\.0 tps/);
   } finally {
-    dispose?.();
+    for (const dispose of disposers.reverse()) dispose?.();
     if (old === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = old;
     rmSync(home, { recursive: true, force: true });
   }
@@ -319,8 +398,8 @@ test('footer labels follow the interface language and wide characters count as t
   assert.equal(displayWidth('90.0% 缓存'), 10);
   assert.equal(displayWidth(' · '), 3);
   const zh = formatFooter(metrics, 43, 240, rates, 'zh-CN');
-  assert.match(zh, /^ ~12\.3 tps · {4}2\.4 tps 平均 · {2}43% ctx · \$0\.00.*90\.0% 缓存$/);
-  assert.match(formatFooter(metrics, 43, 104, rates, 'ja'), /^ ~12\.3 tps · {4}2\.4 tps 平均 · {2}43% ctx/);
+  assert.match(zh, /^ {4}12\.3 tps · {4}2\.4 tps 平均 · {2}43% ctx · \$0\.00.*90\.0% 缓存$/);
+  assert.match(formatFooter(metrics, 43, 104, rates, 'ja'), /^ {4}12\.3 tps · {4}2\.4 tps 平均 · {2}43% ctx/);
   for (const columns of [20, 24, 30, 40, 60]) assert(displayWidth(formatFooter(metrics, 43, columns, rates, 'ko')) <= columns, `fits ${columns}`);
   assert.equal(formatFooter(metrics, 43, 80, rates, 'xx'), formatFooter(metrics, 43, 80, rates), 'unknown locale falls back to English');
 });

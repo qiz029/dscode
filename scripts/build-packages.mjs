@@ -108,11 +108,11 @@ copy('plugins/exec/cli.mjs', join(launcher, 'exec', 'cli.mjs'));
 // schedule without the profile's Harness. Every module here must stay free of
 // dependencies the launcher does not carry.
 mkdirSync(join(launcher, 'trigger'), { recursive: true });
-for (const file of ['cli.mjs', 'config.mjs', 'spool.mjs', 'log.mjs', 'run.mjs', 'options.mjs', 'poll.mjs', 'launchd.mjs', 'overlay.mjs']) {
+for (const file of ['cli.mjs', 'config.mjs', 'spool.mjs', 'log.mjs', 'run.mjs', 'options.mjs', 'poll.mjs', 'launchd.mjs', 'overlay.mjs', 'lease.mjs', 'schedule.mjs', 'jobs.mjs', 'job-cli.mjs', 'scheduler.mjs', 'scheduler-service.mjs', 'sources.mjs', 'source-host.mjs', 'source-ingress.mjs', 'source-sandbox.mjs', 'source-emit.mjs']) {
   copy('plugins/triggers/' + file, join(launcher, 'trigger', file));
 }
 write(launcher, 'cli.mjs', read('packages/launcher/cli.mjs').replace('../../plugins/session-bridge/client.mjs', './session-bridge/client.mjs').replace('../../plugins/email/cli.mjs', './email/cli.mjs'));
-write(launcher, 'package.json', { ...shared, name:'@toddzheng024/dscode', description:'One-command launcher for the DSCODE Hub coding harness preset.', bin:{dscode:'./cli.mjs'}, files:['cli.mjs','manager.mjs','locks.mjs','release.json','tools','session-bridge','email','exec','trigger'], dependencies:{imapflow:original.dependencies.imapflow,mailparser:original.dependencies.mailparser,yaml:'2.9.1','@dsh-plugin-hub/cli': original.devDependencies['@dsh-plugin-hub/cli'].replace(/^[^0-9]*/, ''),'@deepseek-ai/node-addon-system':'0.1.2',pnpm:'10.15.1'}, });
+write(launcher, 'package.json', { ...shared, name:'@toddzheng024/dscode', description:'One-command launcher for the DSCODE Hub coding harness preset.', bin:{dscode:'./cli.mjs'}, files:['cli.mjs','manager.mjs','locks.mjs','release.json','tools','session-bridge','email','exec','trigger'], dependencies:{'cron-parser':original.dependencies['cron-parser'],imapflow:original.dependencies.imapflow,mailparser:original.dependencies.mailparser,yaml:'2.9.1','@dsh-plugin-hub/cli': original.devDependencies['@dsh-plugin-hub/cli'].replace(/^[^0-9]*/, ''),'@deepseek-ai/node-addon-system':'0.1.2',pnpm:'10.15.1'}, });
 write(launcher, 'release.json', {slug:'dscode',version,runtime:dependencies['@deepseek-ai/dsh'],bundle:name});
 for (const dir of [bundle,launcher]) {
   copy('packages/LICENSE', join(dir,'LICENSE'));
