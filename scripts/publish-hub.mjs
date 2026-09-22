@@ -15,7 +15,7 @@ if (!['bundle','profile','launcher'].includes(phase)) throw Error('Usage: npm ru
 const pack = read(join(out,'bundle-pack.json'))[0];
 const launcher = read(join(out,'launcher-pack.json'))[0];
 const verified = read(join(root,'artifacts/local/hub-verification.json'));
-if (!verified.install || !verified.rollback || verified.integrity !== pack.integrity || verified.launcherIntegrity !== launcher.integrity) throw Error('Run npm run verify:hub against these exact packages before publishing.');
+if (!verified.install || !verified.nativeInstall || !verified.launcherFirstStart || !verified.hubDoctor || !verified.rollback || verified.integrity !== pack.integrity || verified.launcherIntegrity !== launcher.integrity) throw Error('Run npm run verify:hub against these exact packages before publishing.');
 await validatePackageDirectory(join(out,'bundle'));
 const client = new HubApiClient(undefined, () => getAccessToken());
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));

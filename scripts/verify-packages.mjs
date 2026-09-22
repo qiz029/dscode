@@ -24,6 +24,8 @@ try {
       assert.equal(check.status, 0, check.stderr);
     }
     if (name === 'launcher') {
+      assert(existsSync(join(destination, 'vendor/hub-cli/LICENSE')));
+      assert.match(readFileSync(join(destination, 'vendor/hub-cli/dist/profile-dependency-install.js'), 'utf8'), /dscode-hub-generated-root-v1/);
       assert.equal(pkg.dependencies['@deepseek-ai/node-addon-system'], '0.1.2');
       assert.match(readFileSync(join(destination, 'manager.mjs'), 'utf8'), /'\.\/exec\/cli\.mjs'/, 'the launcher loads its own exec CLI');
       assert.match(readFileSync(join(destination, 'manager.mjs'), 'utf8'), /trigger\/cli\.mjs/, 'the launcher loads its own trigger CLI');

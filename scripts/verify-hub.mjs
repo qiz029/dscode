@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, cpSync, readdirSyn
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { canonical } from './release.mjs';
 import { installResolvedProfile, rollbackProfile, listProfileRevisions } from '@dsh-plugin-hub/cli';
@@ -50,7 +51,7 @@ registry='http://127.0.0.1:'+server.address().port;
 const npmrc=join(home,'registry.npmrc');
 writeFileSync(npmrc,`registry=${registry}\n@toddzheng024:registry=${registry}\nignore-scripts=true\n`);
 process.env.DSH_HOME=home;process.env.DSH_AGENTS_HOME=join(home,'agents');
-const env={...process.env,DSH_HOME:home,DSH_AGENTS_HOME:join(home,'agents'),PATH:pnpm+':'+process.env.PATH,npm_config_userconfig:npmrc,NPM_CONFIG_USERCONFIG:npmrc,npm_config_registry:registry,NPM_CONFIG_REGISTRY:registry,npm_config_ignore_scripts:'true',DSH_HUB_NO_TELEMETRY:'1'};
+const env={...process.env,DSH_HOME:home,DSH_AGENTS_HOME:join(home,'agents'),PATH:pnpm+':'+process.env.PATH,npm_config_userconfig:npmrc,NPM_CONFIG_USERCONFIG:npmrc,npm_config_registry:registry,NPM_CONFIG_REGISTRY:registry,npm_config_ignore_scripts:'true',DSH_HUB_TELEMETRY:'off'};
 const exec=(entry,args,extra={},program=false)=>new Promise((resolve,reject)=>{
  const child=spawn(program ? entry : process.execPath,program ? args : [entry,...args],{cwd:home,env:{...env,...extra},stdio:['ignore','pipe','pipe']});let output='';
  child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>output+=b);
@@ -60,6 +61,19 @@ const exec=(entry,args,extra={},program=false)=>new Promise((resolve,reject)=>{
 const execute=async command=>{const output=await exec(command.command,command.args,{},true); if(/patch: .*skipping/.test(output)) throw Error(output);};
 const options={profile:'dscode',dshHome:home,hubProfileSlug:'dscode',release,resolved:{profileVersion:release.version,bundles:release.bundles},execute,validate:execute};
 try {
+  // Exercise the native locked installer used by the launcher, not only the
+  // legacy external-executor seam below (which has no effective-lock receipt).
+  const nativeHome = join(home, 'native');
+  mkdirSync(nativeHome);
+  const nativeProbe = join(home, 'native-install.mjs');
+  const hub = join(launcherRoot, 'node_modules/@toddzheng024/dscode/vendor/hub-cli/dist');
+  writeFileSync(nativeProbe, `import assert from 'node:assert/strict';\nimport {readFileSync} from 'node:fs';\nimport {installResolvedProfile} from ${JSON.stringify(pathToFileURL(join(hub, 'index.js')).href)};\nimport {doctorProfile} from ${JSON.stringify(pathToFileURL(join(hub, 'profile-lifecycle.js')).href)};\nconst release=JSON.parse(readFileSync(${JSON.stringify(join(out, 'hub-release.json'))},'utf8'));\nconst result=await installResolvedProfile({profile:'dscode',dshHome:process.env.DSH_HOME,release,resolved:{profileVersion:release.version,bundles:release.bundles}});\nassert(result.lockfile.effectiveLock);\nconst doctor=await doctorProfile({profile:'dscode',dshHome:process.env.DSH_HOME});\nassert(doctor.healthy,JSON.stringify(doctor));\nconsole.log('NATIVE_HUB_INSTALL_PASSED');\n`);
+  const nativeEnv = { DSH_HOME: nativeHome, DSCODE_HOME: nativeHome, DSH_AGENTS_HOME: join(nativeHome, 'agents') };
+  assert((await exec(nativeProbe, [], nativeEnv)).includes('NATIVE_HUB_INSTALL_PASSED'));
+  assert((await exec(join(launcherRoot, 'node_modules/@toddzheng024/dscode/cli.mjs'), ['--dump-config'], nativeEnv)).includes('dscode-bootstrap'));
+  const nativeDoctor = JSON.parse(await exec(join(hub, 'bin.js'), ['profile', 'doctor', '--profile', 'dscode', '--json'], nativeEnv));
+  assert.equal(nativeDoctor.healthy, true);
+  console.log('PASS native locked Hub install, launcher first start and Hub doctor');
   await installResolvedProfile(options);
   console.log('PASS real Hub install + DSH compose:',home);
   const profile=join(home,'profiles/dscode');
@@ -119,5 +133,5 @@ try {
   assert(composed.includes('dscode-bootstrap'));
   console.log(`PASS failed upgrade preserves old profile; ${pkg.version} -> ${upgradePackage.version} -> rollback preserves state and restores a runnable profile`);
   mkdirSync(join(root,'artifacts/local'),{recursive:true});
-  writeFileSync(join(root,'artifacts/local/hub-verification.json'),JSON.stringify({home,package:pkg.name,version:pkg.version,integrity:pack.integrity,launcherIntegrity:launcherPack.integrity,install:true,agentProbe:read(join(home,'probe.json')),rollback:true,fixture:'Loopback npm registry for unpublished bundle; Version 0.1.1-test exercises failed upgrade, successful upgrade and rollback transactions. Public Hub discovery and npm publication not exercised.'},null,2));
+  writeFileSync(join(root,'artifacts/local/hub-verification.json'),JSON.stringify({home,package:pkg.name,version:pkg.version,integrity:pack.integrity,launcherIntegrity:launcherPack.integrity,install:true,nativeInstall:true,launcherFirstStart:true,hubDoctor:true,agentProbe:read(join(home,'probe.json')),rollback:true,fixture:'Loopback npm registry for unpublished bundle; native locked installation and launcher first start, plus external-executor probes for failed upgrade, successful upgrade and rollback. Public Hub discovery and npm publication not exercised.'},null,2));
 } finally {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

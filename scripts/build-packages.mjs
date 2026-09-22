@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { replaceOnce } from './patch-util.mjs';
 import { patchRuntime } from './patch-runtime.mjs';
 import { buildTui } from './build-tui.mjs';
+import { vendorHub } from './vendor-hub.mjs';
 const root = resolve(import.meta.dirname, '..');
 const read = path => readFileSync(join(root, path), 'utf8');
 const original = JSON.parse(read('package.json'));
@@ -99,6 +100,7 @@ write(bundle, 'README.md', '# DSCODE bundle\n\nInstall through the DSCODE Hub pr
 const launcher = join(out, 'launcher');
 rmSync(launcher, { recursive:true, force:true }); mkdirSync(launcher);
 copy('packages/launcher', launcher);
+const hubDependencies = vendorHub(join(root, 'node_modules/@dsh-plugin-hub/cli'), join(launcher, 'vendor/hub-cli'));
 copy('plugins/email', join(launcher, 'email'));
 mkdirSync(join(launcher, 'session-bridge'), { recursive: true });
 for (const file of ['client.mjs', 'paths.mjs']) copy('plugins/session-bridge/' + file, join(launcher, 'session-bridge', file));
@@ -112,7 +114,7 @@ for (const file of ['cli.mjs', 'config.mjs', 'spool.mjs', 'log.mjs', 'run.mjs', 
   copy('plugins/triggers/' + file, join(launcher, 'trigger', file));
 }
 write(launcher, 'cli.mjs', read('packages/launcher/cli.mjs').replace('../../plugins/session-bridge/client.mjs', './session-bridge/client.mjs').replace('../../plugins/email/cli.mjs', './email/cli.mjs'));
-write(launcher, 'package.json', { ...shared, name:'@toddzheng024/dscode', description:'One-command launcher for the DSCODE Hub coding harness preset.', bin:{dscode:'./cli.mjs'}, files:['cli.mjs','manager.mjs','locks.mjs','release.json','tools','session-bridge','email','exec','trigger'], dependencies:{'cron-parser':original.dependencies['cron-parser'],imapflow:original.dependencies.imapflow,mailparser:original.dependencies.mailparser,yaml:'2.9.1','@dsh-plugin-hub/cli': original.devDependencies['@dsh-plugin-hub/cli'].replace(/^[^0-9]*/, ''),'@deepseek-ai/node-addon-system':'0.1.2',pnpm:'10.15.1'}, });
+write(launcher, 'package.json', { ...shared, name:'@toddzheng024/dscode', description:'One-command launcher for the DSCODE Hub coding harness preset.', bin:{dscode:'./cli.mjs'}, files:['cli.mjs','manager.mjs','locks.mjs','release.json','tools','session-bridge','email','exec','trigger','vendor'], dependencies:{...hubDependencies,'cron-parser':original.dependencies['cron-parser'],imapflow:original.dependencies.imapflow,mailparser:original.dependencies.mailparser,yaml:'2.9.1','@dsh-plugin-hub/cli': original.devDependencies['@dsh-plugin-hub/cli'].replace(/^[^0-9]*/, ''),'@deepseek-ai/node-addon-system':'0.1.2',pnpm:'10.15.1'}, });
 write(launcher, 'release.json', {slug:'dscode',version,runtime:dependencies['@deepseek-ai/dsh'],bundle:name});
 for (const dir of [bundle,launcher]) {
   copy('packages/LICENSE', join(dir,'LICENSE'));

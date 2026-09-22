@@ -213,7 +213,8 @@ export async function run(args, release) {
   const home = stateHome();
   const envFile = join(home, '.env');
   if (existsSync(envFile)) process.loadEnvFile(envFile);
-  const hub = join(dirname(require.resolve('@dsh-plugin-hub/cli')), 'bin.js');
+  const vendoredHub = fileURLToPath(new URL('./vendor/hub-cli/dist/bin.js', import.meta.url));
+  const hub = existsSync(vendoredHub) ? vendoredHub : join(dirname(require.resolve('@dsh-plugin-hub/cli')), 'bin.js');
   const pnpm = join(dirname(fileURLToPath(import.meta.url)), 'tools');
   const env = { ...process.env, DSH_HOME: home, DSH_AGENTS_HOME: join(home, 'agents'), DSCODE_CLI_PATH: dscodePath, PATH: process.env.PATH };
   // `stdout: 'stderr'` keeps installer output off a pipeable exec stdout.
