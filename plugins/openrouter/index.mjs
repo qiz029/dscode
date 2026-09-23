@@ -1,27 +1,33 @@
 import z from '@deepseek-ai/schemastery';
 import { LlmError, RetryPolicySchema, assertUsableApiKey, resolveImageAttachmentAccess, resolveRetryPolicy } from '@deepseek-ai/dsh-llm';
 import { credentialRef } from '@deepseek-ai/dsh-credentials';
+import { deepEqualJson } from '@deepseek-ai/dsh-util-values';
+import { plainConfig } from '../cordis-config/plain.mjs';
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment';
 import { OpenRouterAdapter, PROVIDER } from './adapter.mjs';
 import { ensureOpenRouterModels } from './models.mjs';
 import { OpenRouterSearchProvider, RoutedSearchProvider } from './search.mjs';
 
 // The `openrouter` route: DSCODE's own OpenRouter adapter over its live model
-// listing, configured by the `llm-openrouter` settings section, plus web search
-// that follows the session's route.
+// listing, configured by this entry's own profile row, plus web search that
+// follows the session's route.
 export const name = 'dscode-openrouter';
 export const inject = ['llm'];
 const NS = 'llm-openrouter';
 const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
 
+// DSH 0.1.7 replaced settings sections with volatile configuration: a field marked
+// `.volatile()` reaches the plugin as a reference the Settings form and a profile edit
+// both write, so each read below sees the current value without a change callback.
 export const Config = z.object({
-  apiKeyEnv: z.string().role('credential-ref').default('OPENROUTER_API_KEY'),
-  baseURL: z.string().default(DEFAULT_BASE_URL),
-  streamIdleTimeoutMs: z.number().min(1).default(300000),
-  maxRequestImageBytes: z.number().step(1).min(1).default(20 * 1024 * 1024),
-  searchModel: z.string().default('deepseek/deepseek-v4-flash'),
-  retryPolicy: RetryPolicySchema,
+  apiKeyEnv: z.string().role('credential-ref').default('OPENROUTER_API_KEY').volatile(),
+  baseURL: z.string().default(DEFAULT_BASE_URL).volatile(),
+  streamIdleTimeoutMs: z.number().min(1).default(300000).volatile(),
+  maxRequestImageBytes: z.number().step(1).min(1).default(20 * 1024 * 1024).volatile(),
+  searchModel: z.string().default('deepseek/deepseek-v4-flash').volatile(),
+  retryPolicy: RetryPolicySchema.volatile(),
 });
+
 
 /** Validated connection facts from one config snapshot. */
 export function resolveOptions(config = {}) {
@@ -40,18 +46,18 @@ export function resolveOptions(config = {}) {
 }
 
 export function apply(ctx, config = {}) {
-  let current = () => config, lastRaw, lastGood;
+  // The TUI renders this route's own page, so Settings must not generate a form for it.
+  ctx.inject(['settings'], settingsCtx => {
+    settingsCtx.effect(() => settingsCtx.settings.configure({ auto: false }, ctx.fiber));
+  });
+  let lastGood;
   const options = () => {
-    const raw = current();
-    if (raw === lastRaw && lastGood !== undefined) return lastGood;
     try {
-      lastGood = resolveOptions(raw);
-      lastRaw = raw;
+      lastGood = resolveOptions(plainConfig(config));
       return lastGood;
     } catch (error) {
       if (lastGood === undefined) throw error;
-      lastRaw = raw;
-      ctx.logger.error(`${name}: keeping the last good configuration after an invalid settings section`);
+      ctx.logger.error(`${name}: keeping the last good configuration after an invalid edit`);
       ctx.logger.error(error);
       return lastGood;
     }
@@ -75,20 +81,17 @@ export function apply(ctx, config = {}) {
     resolveAttachments: () => ctx.get('attachments'),
     resolveImageAccess: (attachments, ref) => resolveImageAttachmentAccess(attachments, hostPath => ctx.get('fs')?.processPathFromHostPath(hostPath), ref),
   });
-  ctx.llm.registerConfigurableProviders([{ provider: PROVIDER, displayName: 'OpenRouter', settingsNs: NS, settingsPath: [] }]);
+  ctx.llm.registerConfigurableProviders([{ provider: PROVIDER, displayName: 'OpenRouter', settingsNs: ctx.fiber.entry?.options.id ?? NS, settingsPath: [] }]);
   const registration = ctx.llm.registerAdapter([PROVIDER], adapter);
-  let registeredPolicy = JSON.stringify(options().retryPolicy);
-  ctx.inject(['settings'], settingsCtx => {
-    settingsCtx.settings.installSection(ctx, NS, Config, config, {
-      setSource: source => { current = source; },
-      // The retry policy is captured at registration: re-register the route when it changes.
-      onChange: () => {
-        const policy = JSON.stringify(options().retryPolicy);
-        if (policy === registeredPolicy) return;
-        registration.replace([PROVIDER]);
-        registeredPolicy = policy;
-      },
-    });
+  // The retry policy is captured at registration, and a reference carries no change
+  // callback: re-register the route when an edit lands on a different policy.
+  let registeredPolicy = options().retryPolicy;
+  ctx.on('loader/volatile-update', () => {
+    let policy;
+    try { policy = options().retryPolicy; } catch (error) { ctx.logger.warn(error); return; }
+    if (deepEqualJson(policy, registeredPolicy)) return;
+    registration.replace([PROVIDER]);
+    registeredPolicy = policy;
   });
   ctx.inject(['web'], webCtx => {
     const openrouter = new OpenRouterSearchProvider(() => {

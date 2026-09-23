@@ -53,7 +53,7 @@ Before you hit record:
 
 Two beats worth keeping if you have the seconds:
 
-- `/permission auto` then `/review-usage`: the approval layer is a model that
+- `/permission auto-review` then `/review-usage`: the approval layer is a model that
   scores whether **your instruction** authorized the exact action, and the panel
   shows what that cost. Hard to stage reliably on camera; describe it in the
   closing card instead if the demo must be shot in one take.
@@ -72,5 +72,5 @@ dscode watch <id>                        # subscribe to it instead
 ```
 
 In the TUI: `/btw <question>` (side question), `/review` (independent review of
-the diff), `/permission auto` + `/review-usage` (approval policy and its cost),
+the diff), `/permission auto-review` + `/review-usage` (approval policy and its cost),
 `/agents` (every child session), `/mailbox` (messages between sessions).

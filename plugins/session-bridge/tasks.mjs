@@ -21,6 +21,8 @@ const MAX_WAITING_REQUESTS = 16
 const MAX_PREVIEW_CHARS = 72
 
 /** The plugin name the session bridge stamps on its relayed messages. */
+import { producerKind } from '../message-source/kind.mjs'
+
 const BRIDGE_PLUGIN = 'dscode-session-bridge'
 
 /** Tool names that address another session. */
@@ -67,7 +69,7 @@ function relayFields(data) {
   if (data === null || typeof data !== 'object') return undefined
   const source = data.source
   if (source === null || typeof source !== 'object') return undefined
-  if (source.kind !== 'plugin' || source.plugin !== BRIDGE_PLUGIN || source.form !== 'relay') return undefined
+  if (producerKind(source) !== BRIDGE_PLUGIN || source.form !== 'relay') return undefined
   const label = typeof source.label === 'string' && source.label !== '' ? source.label : undefined
   const id = typeof source.communicationId === 'string' && source.communicationId !== '' ? source.communicationId : undefined
   if (label === undefined && id === undefined) return undefined

@@ -14,7 +14,8 @@ for (const providerName of ['spawn', 'fork']) test(`${providerName}: effort-only
   const ctx = {
     sessionProjections: { register() {} }, on() {}, systemPrompt: { section() {}, getSectionOrder() { return 0; } },
     tools: { register(tool) { registered.set(tool.name, tool); return () => {}; } },
-    subagents: { getProvider: () => provider, async startContinuable({ request }) { starts.push(request); return { childId: 'child' }; } },
+    // DSH 0.1.7 resolves the configured recursion budget through the registry.
+    subagents: { getProvider: () => provider, resolveMaxDepth: depth => (typeof depth === 'number' ? depth : undefined), async startContinuable({ request }) { starts.push(request); return { childId: 'child' }; } },
     get(name) { if (name === 'llm') return { async resolveCallConfig(config) { preflights.push(config); if (!['low', 'high', 'max', 'ultra'].includes(config.reasoningEffort)) throw Error('unsupported effort'); } }; }
   };
   apply(ctx, { provider: providerName, toolName: 'delegate', maxDepth: 1, backgroundMode: 'continuable', modelSelectionSettings: false });

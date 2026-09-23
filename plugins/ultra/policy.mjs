@@ -24,3 +24,19 @@ export function ultraRequest(options, messages) {
   else copy.unshift({ role: 'system', content: ULTRA_POLICY });
   return copy;
 }
+
+/**
+ * DSH 0.1.7 rewrote the DeepSeek adapter onto the Messages API, where the system
+ * prompt is a request field rather than a leading message. These two carry the same
+ * gates as the message-shaped pair above, which the OpenRouter and Grok adapters
+ * still use, and stay self-contained: `patch-runtime` embeds them by `toString()`.
+ */
+export function ultraSystem(options, system) {
+  if (options.reasoningEffort !== 'ultra' || options.purpose || !options.tools?.some(t => t.name === 'subagent' || t.name === 'subagent_fork')) return system;
+  return system.length === 0 ? ULTRA_POLICY : system + '\n\n' + ULTRA_POLICY;
+}
+
+export function flashSystem(options, system) {
+  if (options.model !== 'deepseek-flash' || options.purpose || !options.sessionId) return system;
+  return system.length === 0 ? FLASH_POLICY : system + '\n\n' + FLASH_POLICY;
+}

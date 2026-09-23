@@ -32,7 +32,7 @@ limits: { timeoutSeconds: 1800, maxRunsPerDay: 4, minIntervalSeconds: 300 }
 | `prompt` | what the session is asked to do; `{{event.text}}`, `{{event.title}}`, `{{event.source}}`, `{{event.eventId}}` and `{{event.fields.NAME}}` are substituted, and an event whose text the template never mentions is appended |
 | `session.mode` | `new` (default): a fresh session for every run; `persistent`: create once, then resume the same session |
 | `preset` | agent preset (default `dscode`) |
-| `permission` | `auto`, `workspace-write` (default), `read-only` or `danger-full-access` — `ask` is refused, because nobody is there to answer |
+| `permission` | `auto-review`, `workspace-write` (default), `read-only` or `danger-full-access` — `ask` is refused, because nobody is there to answer |
 | `model`, `effort` | optional route and reasoning level for the run |
 | `goal` | the objective plus `maxRounds`: the run continues toward it and stops when it is reached or the rounds are spent |
 | `limits` | `timeoutSeconds` (1800), `maxRunsPerDay` (24), `minIntervalSeconds` (60), optional `maxCostUsd` |

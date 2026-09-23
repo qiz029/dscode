@@ -27,7 +27,7 @@ Exit codes: 0 completed, 1 model or runtime error, 2 output-token ceiling, 3 blo
 | `--cwd DIR` | Workspace for the agent. Default: current directory. |
 | `--model PROVIDER/ID` | Model route. Default: the saved default model. |
 | `--effort LEVEL` | `low`, `high`, `max` or `ultra`. Default: the saved default effort. |
-| `--permission PRESET` | `auto`, `ask`, `workspace-write`, `read-only` or `danger-full-access`. Default: the profile default. |
+| `--permission PRESET` | `auto-review`, `ask`, `workspace-write`, `read-only` or `danger-full-access`. Default: the profile default. |
 | `--approve-all` | Answer every approval request with allow. Without it a request that reaches the human fallback is rejected, since nobody is watching. |
 | `--resume SESSION_ID` | Continue an existing session; the id is printed at the end of every run. The session stays bound to the folder it was created in: a resume from another directory still writes the session's log there and reports it there, while this run's own working directory remains the one it was launched in, so run it from the session's folder (or pass `--cwd DIRECTORY`) when the turn must touch that folder. |
 | `--timeout SECONDS` | Give up and exit 124. |

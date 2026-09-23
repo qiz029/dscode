@@ -6,9 +6,10 @@ import { readFile, readdir, access, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
-import { standingMountFor } from '@deepseek-ai/dsh-agent-presets';
+import { standingMountFor } from '@deepseek-ai/dsh-agent-preset-registry';
 import { hookEvents, validateHooks } from './hooks.mjs';
 import { redact } from '../auto-review/policy.mjs';
+import { plainConfig } from '../cordis-config/plain.mjs';
 import { analyzeDoctorEvidence, collectDoctorEvidence, recordRuntimeLog } from './doctor.mjs';
 
 export const name = 'dscode-tui-tools';
@@ -18,6 +19,14 @@ const ok = text => ({ kind: 'success', text });
 const fail = text => ({ kind: 'error', text });
 const show = value => typeof value === 'string' ? value : JSON.stringify(value ?? null);
 const exists = path => access(path).then(() => true, () => false);
+
+/** Ancestor skill roots the preset's own expression reads, for a reader that cannot evaluate it. */
+function ancestorDirsFrom(env) {
+  try {
+    const parsed = JSON.parse(env.DSCODE_SKILL_ANCESTOR_DIRS ?? '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
 
 export async function findConflicts(cwd, configs, winners, env = process.env) {
   let project = resolve(cwd);
@@ -33,7 +42,10 @@ export async function findConflicts(cwd, configs, winners, env = process.env) {
       if (typeof dshHome === 'string') { const path = resolve(dshHome, 'skills'); roots.push(path); skipSystemRoots.add(path); }
       if (typeof agentsHome === 'string') roots.push(resolve(agentsHome, 'skills'));
     }
-    roots.push(...(config.customSkillDirs ?? []).filter(x => typeof x === 'string').map(x => resolve(x)));
+    // A preset declares its ancestor roots as a `!!js` expression over this variable, which
+    // a reader of the row cannot evaluate; the environment it reads is the same here.
+    const custom = Array.isArray(config.customSkillDirs) ? config.customSkillDirs : ancestorDirsFrom(env);
+    roots.push(...custom.filter(x => typeof x === 'string').map(x => resolve(x)));
     const bundled = config.bundledSkillDir ?? (config.includeDefaultRoots !== false ? env.DSH_BUNDLED_SKILL_DIR : undefined);
     if (typeof bundled === 'string') roots.push(resolve(bundled));
   }
@@ -107,7 +119,7 @@ export function apply(ctx) {
     // are handed to the agent, which then gets a turn to react to them.
     const handover = redact(`[shell] $ ${rawInput.trim()}\n${result.text}`).slice(0, 8000);
     try {
-      agent.followup(createUserMessage({ content: [{ type: 'text', text: handover }], source: { kind: 'plugin', plugin: 'dscode-shell-exec' } }));
+      agent.followup(createUserMessage({ content: [{ type: 'text', text: handover }], source: { kind: 'dscode-shell-exec' } }));
       await ctx.get('sessions')?.flush?.(agent.session);
     } catch (error) {
       return fail(`shell: the command ran, but its output could not reach the agent (${error.message})`);
@@ -182,7 +194,7 @@ export function apply(ctx) {
     const options = { cwd: agent.session.header.cwd ?? process.cwd(), scope: agent, signal };
     const { skills, complete } = await ctx.skills.snapshot(options);
     const arg = rawInput.trim();
-    if (arg === 'conflicts') return ok(await findConflicts(options.cwd, entries(agent).filter(e => !e.disabled && e.options.name === '@deepseek-ai/dsh-skill-filesystem').map(e => e.options.config ?? {}), skills));
+    if (arg === 'conflicts') return ok(await findConflicts(options.cwd, entries(agent).filter(e => !e.disabled && e.options.name === '@deepseek-ai/dsh-skill-filesystem').map(e => plainConfig(e.options.config)), skills));
     if (arg && arg !== 'list') {
       const skill = await ctx.skills.get(arg, options);
       return skill ? ok(`${skill.name}\n${skill.description}\nsource: ${skill.source}\nprovider: ${skill.provider}\npath: ${skill.path ?? '(provider managed)'}\ninvocation: ${show(skill.invocation)}`) : fail(`Unknown skill: ${arg}`);

@@ -48,7 +48,7 @@ export function apply(ctx, options = {}) {
       await chargeTo(live.has(lastSession) ? lastSession : undefined, 'memory', async () => {
         for await (const chunk of ctx.llm.stream({
           ...target, ...(reasoningEffort ? { reasoningEffort } : {}),
-          system, messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(input) }], source: { kind: 'plugin', plugin: name } })],
+          system, messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(input) }], source: { kind: name } })],
           maxTokens: 12000, signal: deadline,
         })) {
           deadline.throwIfAborted(); assembler.push(chunk);

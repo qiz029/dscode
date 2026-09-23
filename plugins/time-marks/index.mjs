@@ -12,6 +12,7 @@
 import z from '@deepseek-ai/schemastery';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { arrivalMark, resolveTimeZone, turnEndMark } from './marks.mjs';
+import { producerKind } from '../message-source/kind.mjs';
 export const name = 'dscode-time-marks';
 export const Config = z.object({
   /** Fallback display zone; empty uses the host zone. */
@@ -42,7 +43,7 @@ export function apply(ctx, config = {}) {
     for (const message of payload.messages) {
       // Marks are injected context, never an inbox arrival; skipping our own
       // producer keeps a future delivery path from marking itself.
-      if (message.source?.plugin === name) continue;
+      if (producerKind(message.source) === name) continue;
       const line = arrivalMark(message, at, timeZone);
       if (line !== null && lines.length < MARK_LIMIT) lines.push(line);
     }
@@ -60,7 +61,7 @@ export function apply(ctx, config = {}) {
       // the prompt there, not this mark.
       messages: [createUserMessage({
         content: [{ type: 'text', text: lines.join('\n') }],
-        source: { kind: 'plugin', plugin: name, form: 'snapshot' },
+        source: { kind: name, form: 'snapshot' },
       }), ...decision.messages],
     };
   }, { prepend: true });

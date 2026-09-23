@@ -16,7 +16,7 @@ export function apply(ctx, config = {}) {
     const reasoningEffort = await effortFor(ctx.llm, base, 'low', signal);
     await chargeTo(sessionId, 'session-card', async () => {
       for await (const chunk of ctx.llm.stream({ ...base, ...(reasoningEffort ? { reasoningEffort } : {}), system: TOPIC_PROMPT,
-        messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(input) }], source: { kind: 'plugin', plugin: name } })],
+        messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(input) }], source: { kind: name } })],
         maxTokens: 2000, signal })) {
         signal.throwIfAborted(); assembler.push(chunk);
         if (chunk.type === 'finish') finished = true;

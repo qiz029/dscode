@@ -26,16 +26,19 @@ test('elapsed time reads in tenths, minutes and hours', () => {
 test('an arrival mark names its source and any queue wait', () => {
   assert.equal(arrivalMark({ source: { kind: 'user' } }, AT, ZONE),
     'Time mark: 2026-09-19T01:58:34-07:00[America/Los_Angeles] — user message arrived.');
-  const relay = { source: { kind: 'plugin', plugin: 'dscode-session-bridge', form: 'relay', label: 'session:abc', mode: 'steer', composedAt: Date.parse('2026-09-19T08:52:10Z') } };
+  const relay = { source: { kind: 'dscode-session-bridge', form: 'relay', label: 'session:abc', mode: 'steer', composedAt: Date.parse('2026-09-19T08:52:10Z') } };
   assert.equal(arrivalMark(relay, AT, ZONE),
     'Time mark: 2026-09-19T01:58:34-07:00[America/Los_Angeles] — steer relay from session:abc arrived, waited 6m24s (composed 2026-09-19T01:52:10-07:00[America/Los_Angeles]).');
   // A wait under the floor, and a relay that never carried a compose time, stay quiet about it.
   assert.equal(arrivalMark({ source: { ...relay.source, composedAt: AT - 400 } }, AT, ZONE),
     'Time mark: 2026-09-19T01:58:34-07:00[America/Los_Angeles] — steer relay from session:abc arrived.');
+  assert.equal(arrivalMark({ source: { kind: 'dscode-shell-exec' } }, AT, ZONE),
+    'Time mark: 2026-09-19T01:58:34-07:00[America/Los_Angeles] — message from dscode-shell-exec arrived.');
+  // Sessions recorded before DSH 0.1.7 retired the shared `plugin` kind still read.
   assert.equal(arrivalMark({ source: { kind: 'plugin', plugin: 'dscode-shell-exec' } }, AT, ZONE),
     'Time mark: 2026-09-19T01:58:34-07:00[America/Los_Angeles] — message from dscode-shell-exec arrived.');
   // Injected context is not an arrival.
-  assert.equal(arrivalMark({ source: { kind: 'plugin', plugin: 'time-context', form: 'snapshot' } }, AT, ZONE), null);
+  assert.equal(arrivalMark({ source: { kind: 'time-context', form: 'snapshot' } }, AT, ZONE), null);
 });
 
 test('a mark stays one line whatever a source field contains', () => {
@@ -68,12 +71,12 @@ test('an admitted message earns one hidden mark beside the prompt', async () => 
   const { hooks, step } = fixture();
   assert.deepEqual(hooks['agent/pre-step'].options, { prepend: true });
   const relay = { id: 'm1', content: [{ type: 'text', text: 'work' }],
-    source: { kind: 'plugin', plugin: 'dscode-session-bridge', form: 'relay', label: 'cli', mode: 'queue', composedAt: Date.now() - 5_000 } };
+    source: { kind: 'dscode-session-bridge', form: 'relay', label: 'cli', mode: 'queue', composedAt: Date.now() - 5_000 } };
   const decision = await step([relay]);
   assert.equal(decision.messages.length, 2, 'the prompt is untouched and one mark precedes it');
   const mark = decision.messages[0];
   assert.equal(decision.messages[1], relay, 'the admitted prompt stays the newest user message');
-  assert.equal(mark.source.plugin, name);
+  assert.equal(mark.source.kind, name);
   assert.equal(mark.source.form, 'snapshot');
   assert.match(mark.content[0].text, /^Time mark: .+ — queue relay from cli arrived, waited \d+(\.\d+)?s \(composed .+\)\.$/);
 });

@@ -5,6 +5,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { normalizeSessionTitle } from '@deepseek-ai/dsh-session-title';
 import { ensureSocketDirectory } from './paths.mjs';
+import { producerKind } from '../message-source/kind.mjs';
 
 export const BRIDGE_SOURCE = 'dscode-session-bridge';
 const MAX_REQUEST = 128 * 1024, MAX_BUFFER = 8 * 1024 * 1024;
@@ -51,7 +52,7 @@ export class SessionBridge {
     if (!cache) { cache = { seq: 0, values: new Map() }; this.receipts.set(session, cache); }
     for (const event of session.snapshotEvents(cache.seq)) {
       const messages = event.type === 'agent/inbox/spliced' ? event.data.inserted : event.type === 'user/message' ? [event.data] : [];
-      for (const message of messages) if (message.source.kind === 'plugin' && message.source.plugin === BRIDGE_SOURCE && message.source.requestId) {
+      for (const message of messages) if (producerKind(message.source) === BRIDGE_SOURCE && message.source.requestId) {
         cache.values.set(message.source.requestId, { digest: message.source.digest, messageId: message.id });
       }
     }
@@ -82,7 +83,7 @@ export class SessionBridge {
     let messageId = previous?.messageId;
     if (!previous) {
       const message = createUserMessage({ content: [{ type: 'text', text: `[External source: ${source}]\n${text}` }],
-        source: { kind: 'plugin', plugin: BRIDGE_SOURCE, form: 'relay', requestId, digest, label: source, mode } });
+        source: { kind: BRIDGE_SOURCE, form: 'relay', requestId, digest, label: source, mode } });
       // Explicit naming uses the native title service, including sanitization,
       // persistence, UI events and cancellation of stale automatic title work.
       // A duplicate request must never undo a newer title.

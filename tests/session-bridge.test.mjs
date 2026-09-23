@@ -31,7 +31,7 @@ test('concurrent sources share one agent, retry deduplicates, read remains avail
   const replies = await Promise.all([request(bridge.path, { ...base, requestId: 'one' }), request(bridge.path, { ...base, requestId: 'one' }), request(bridge.path, { ...base, source: 'editor', requestId: 'two', mode: 'steer' })]);
   assert.equal(replies.filter(r => r.duplicate).length, 1);
   assert.equal(agent.inbox.nextTurn.length, 1); assert.equal(agent.inbox.nextStep.length, 1);
-  assert.equal(agent.inbox.nextTurn[0].source.kind, 'plugin');
+  assert.equal(agent.inbox.nextTurn[0].source.kind, 'dscode-session-bridge', 'the bridge is its own producer kind');
   assert.match(agent.inbox.nextTurn[0].content[0].text, /External source: script/);
   await assert.rejects(request(bridge.path, { ...base, requestId: 'one', text: 'different' }), /different message/);
   // Rebuild receipt cache as a new bridge would after a process restart.

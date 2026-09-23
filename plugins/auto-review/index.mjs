@@ -24,6 +24,9 @@ export function apply(ctx, config) {
   const calls = new WeakMap();
   const budgets = new WeakMap();
   const mode = agent => ctx.permissionPresets.current(agent.session);
+  // The preset this plugin reviews for. DSH 0.1.7 reserved `auto` for its own
+  // integration, so the reviewed preset carries DSCODE's own name.
+  const REVIEWED = 'auto-review';
   const stateFor = agent => {
     const events = agent.session.snapshotEvents();
     const turn = events.findLast(e => e.type === 'turn/start')?.seq;
@@ -54,7 +57,7 @@ export function apply(ctx, config) {
   });
 
   const announce = (agent, text) => agent.inject(createUserMessage({
-    content: [{ type: 'text', text }], source: { kind: 'plugin', plugin: name },
+    content: [{ type: 'text', text }], source: { kind: name },
   }));
   const record = (req, data) => {
     audit.append(req.agent.session.id, { sessionSeq: req.agent.session.seq, callId: req.callId ?? null, toolName: req.toolName, ...data });
@@ -64,7 +67,7 @@ export function apply(ctx, config) {
   async function review(req, next, state) {
     if (req.signal?.aborted) return 'cancelled';
     // A user can switch to ask while a prior review waits in the queue.
-    if (mode(req.agent) !== 'auto') return ctx.approval?.effectivePolicy?.(req.agent.session) === 'never' ? 'rejected' : next();
+    if (mode(req.agent) !== REVIEWED) return ctx.approval?.effectivePolicy?.(req.agent.session) === 'never' ? 'rejected' : next();
     const exec = calls.get(req.agent)?.get(req.callId);
     const fallback = async (reason, details = {}) => {
       record(req, { decision: 'human', reason, ...details });
@@ -82,7 +85,7 @@ export function apply(ctx, config) {
         record(req, { decision: 'cancelled', reason: 'Caller cancelled review.', ...details });
         return 'cancelled';
       }
-      if (mode(req.agent) !== 'auto') return fallback('Permission mode changed while review was pending.', details);
+      if (mode(req.agent) !== REVIEWED) return fallback('Permission mode changed while review was pending.', details);
       if (decision.decision === 'human') return fallback(decision.reason, details);
       // Bind approval to the still-pending immutable invocation; no grant cache.
       if (calls.get(req.agent)?.get(req.callId) !== exec || fingerprint(action) !== actionHash) return fallback('Pending action changed during review.', details);
@@ -174,7 +177,7 @@ export function apply(ctx, config) {
           ...(effort === undefined ? {} : { reasoningEffort: effort }),
           messages: [createSystemMessage(REVIEW_POLICY, name), createUserMessage({
             content: [{ type: 'text', text: JSON.stringify({ action, context }) }],
-            source: { kind: 'plugin', plugin: name },
+            source: { kind: name },
           })],
           maxTokens: config.maxOutputTokens, signal,
         })) {
@@ -231,7 +234,7 @@ export function apply(ctx, config) {
       }
       announce(req.agent, `Escalation budget reached (${grantBudget} per turn); asking the user.`);
     }
-    if (mode(req.agent) !== 'auto') return next();
+    if (mode(req.agent) !== REVIEWED) return next();
     const state = stateFor(req.agent);
     // Serialize per agent so simultaneous calls cannot race the denial budget.
     const pending = state.tail.then(() => review(req, next, state));

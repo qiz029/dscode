@@ -33,7 +33,7 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 |---|---|
 | `/btw 第一轮为什么缓存是冷的？` | 旁支问题在独立、只读的子会话里跑，答案只在面板里出现，不进入主线对话。 |
 | `dscode send <会话 id> --steer "review parser.ts 的改动并回复"` | 把活交给同一台机器上的另一个会话；它能读你的 transcript、回复、把结论交回来。 |
-| `/permission auto` · `/review-usage` | 由独立审核模型按你的指令决定放行，并留下它放行了什么、花了多少的记录。 |
+| `/permission auto-review` · `/review-usage` | 由独立审核模型按你的指令决定放行，并留下它放行了什么、花了多少的记录。 |
 
 [90 秒演示脚本](docs/demo.md) 里有分镜、确切命令与录制方法。
 
@@ -166,7 +166,7 @@ dscode update 0.7.27           # 指定版本
 | `/status`、`/doctor` | 会话状态与运行时诊断 |
 | `/memories` | 全局记忆状态、后台用量、开关与清理 |
 | `/session` | 当前 session ID、名片与外部接入入口 |
-| `/permission auto`、`/permission ask` | 切换自动审核或人工审批 |
+| `/permission auto-review`、`/permission ask` | 切换自动审核或人工审批 |
 | `/review-usage` | 查看自动审核的额外 token 与耗时 |
 | `/shell`、`/shell reset` | 检查或重置持久终端 |
 | `/mcp`、`/skills`、`/hooks` | 管理 MCP、检查 skill 来源、查看或重载 hooks |
@@ -213,7 +213,7 @@ npm run dist                # 构建备用 tar 安装包
 | `@toddzheng024/dscode-bundle` | 基础层、Computer Use、自定义插件与修改后的 TUI/runtime |
 | Hub profile `dscode` | 固定 bundle/runtime 版本与完整性哈希 |
 
-Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第三方源码。DSH 依赖统一固定到 `0.1.5-rc.2`；TUI 基于 `dsh-code@1.2.0`，Computer Use 为 `0.3.2`。完整流程——先发布 bundle，再上线 Hub release，最后发布 launcher——见 [分发指南](docs/hub-distribution.md)。上下文压缩评测位于 [`eval/`](eval/README.md)，用 `npm run eval:compaction` 运行。
+Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第三方源码。DSH 依赖统一固定到 `0.1.7-alpha.2`；TUI 基于 `dsh-code@1.2.0`，Computer Use 为 `0.3.2`。完整流程——先发布 bundle，再上线 Hub release，最后发布 launcher——见 [分发指南](docs/hub-distribution.md)。上下文压缩评测位于 [`eval/`](eval/README.md)，用 `npm run eval:compaction` 运行。
 
 ## 📚 文档
 

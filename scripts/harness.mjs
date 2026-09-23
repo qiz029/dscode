@@ -5,7 +5,7 @@ import { writeHookConfig } from '../plugins/tui-tools/hook-sources.mjs';
 import { ancestorSkillDirs, writeWorkspaceInstructions } from '../plugins/tui-tools/workspace-discovery.mjs';
 import { patchRuntime, patchAppBootPackage } from './patch-runtime.mjs';
 import { patchInkFrame } from './patch-ink.mjs';
-import { provisionPreset } from './preset.mjs';
+import { dscodeComposition, presetDeclaration } from './preset.mjs';
 import { existsSync, mkdirSync, chmodSync, readFileSync, writeFileSync, symlinkSync, lstatSync, realpathSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { homedir } from 'node:os';
@@ -26,7 +26,6 @@ export function provision(home = runtimeHome, { cwd = root, env = process.env } 
   patchInkFrame(root);
   patchRuntime(root);
   patchAppBootPackage(root);
-  const presets = provisionPreset(root, home);
   const hooksPath = join(root, 'config/hooks.local.json');
   if (!existsSync(hooksPath)) writeFileSync(hooksPath, '{"hooks": {}}\n', { mode: 0o600, flag: 'wx' });
   validateHooks(JSON.parse(readFileSync(hooksPath, 'utf8')));
@@ -43,11 +42,12 @@ export function provision(home = runtimeHome, { cwd = root, env = process.env } 
     name: 'todd-dsh-tui-profile', private: true, type: 'module',
     dependencies: manifest.dependencies, dsh: manifest.dsh,
   }, null, 2) + '\n');
-  const plugins = composePlugins({ root, hooks: hookConfig.path, presets });
+  const plugins = composePlugins({ root, hooks: hookConfig.path });
   writeFileSync(join(profile, 'cordis.patch.yml'), [
     readFileSync(join(root, 'config/cordis.patch.yml'), 'utf8'),
     readFileSync(join(root, 'config/auto-review.patch.yml'), 'utf8'),
     plugins,
+    presetDeclaration(root, dscodeComposition(root)),
   ].join('\n'));
   return profile;
 }

@@ -141,7 +141,7 @@ export async function independentReview(ctx, agent, options = {}, signal, collec
         for await (const chunk of ctx.llm.stream({
           provider: route.provider, model: route.model, reasoningEffort, purpose: 'review',
           maxTokens: tokens,
-          system: POLICY, messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(request) }], source: { kind: 'plugin', plugin: name } })], signal: deadline,
+          system: POLICY, messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(request) }], source: { kind: name } })], signal: deadline,
         })) {
           deadline.throwIfAborted();
           assembler.push(chunk);

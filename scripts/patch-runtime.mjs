@@ -4,33 +4,48 @@ import { replaceOnce } from './patch-util.mjs';
 import { patchMacStdin } from './patch-mac-stdin.mjs';
 import { patchStdinStall } from './patch-stdin-stall.mjs';
 import { patchShellCapture, patchTerminalCapture } from './patch-shell-capture.mjs';
-import { ULTRA_POLICY, ultraRequest, FLASH_POLICY, flashRequest } from '../plugins/ultra/policy.mjs';
+import { ULTRA_POLICY, ultraSystem, FLASH_POLICY, flashSystem } from '../plugins/ultra/policy.mjs';
 
+/**
+ * dscode: the Ultra effort and the Flash policy, carried into the DeepSeek adapter.
+ *
+ * DSH 0.1.7 serialises one Messages request in `serialize()`: the system prompt is a
+ * request field instead of a leading message, and the effort string reaches the wire
+ * directly, so `ultra` is advertised in the catalog and normalised to `max` here.
+ * The policy text lives in `plugins/ultra/policy.mjs`, and the prefix is rebuilt on
+ * every run so an edited policy reaches an already patched tree.
+ */
 export function patchDeepSeek(text) {
-  const marker = '// dscode-ultra-v1';
-  const prefix = marker + '\nconst ULTRA_POLICY = ' + JSON.stringify(ULTRA_POLICY) + ';\n' + ultraRequest.toString() + '\nconst FLASH_POLICY = ' + JSON.stringify(FLASH_POLICY) + ';\n' + flashRequest.toString() + '\n';
-  // Delegation tools are offered at every effort; workflow and ralph never are. Earlier builds hid delegation below Ultra.
-  const toolFilter = 'options.tools?.filter((tool) => tool.name !== "workflow" && tool.name !== "ralph").map((tool) => ({';
-  const ultraOnlyFilter = 'options.tools?.filter((tool) => options.reasoningEffort === "ultra" ? tool.name !== "workflow" && tool.name !== "ralph" : !["subagent", "subagent_fork", "workflow", "ralph"].includes(tool.name)).map((tool) => ({';
-  const filterTools = body => replaceOnce(body, 'const tools = options.tools?.map((tool) => ({', 'const tools = ' + toolFilter);
-  const addFlash = body => replaceOnce(body, 'messages = ultraRequest(options, messages);', 'messages = flashRequest(options, messages);\n\tmessages = ultraRequest(options, messages);');
+  const marker = '// dscode-ultra-v2';
+  const prefix = marker + '\nconst ULTRA_POLICY = ' + JSON.stringify(ULTRA_POLICY) + ';\n' + ultraSystem.toString() + '\nconst FLASH_POLICY = ' + JSON.stringify(FLASH_POLICY) + ';\n' + flashSystem.toString() + '\n';
   if (text.startsWith(marker)) {
     const start = text.indexOf('\nimport ');
     if (start < 0) throw new Error('Malformed patched DeepSeek module');
-    const body = text.slice(start + 1);
-    const filtered = body.includes(toolFilter) ? body : body.includes(ultraOnlyFilter) ? replaceOnce(body, ultraOnlyFilter, toolFilter) : filterTools(body);
-    return prefix + (filtered.includes('messages = flashRequest(options, messages);') ? filtered : addFlash(filtered));
+    return prefix + text.slice(start + 1);
   }
-  text = replaceOnce(text, 'function reasoningEffort(effort) {', 'function reasoningEffort(effort) {\n\tif (effort === "ultra") return "max";');
-  text = replaceOnce(text, 'const REASONING_EFFORTS = [', 'const REASONING_EFFORTS = [\n{ id: ReasoningEffortId("ultra"), name: "Ultra", description: "DSCODE: max reasoning plus deliberate subagent collaboration; higher total token use." },');
-  text = replaceOnce(text, 'function requestWithMessages(options, messages, defaults) {', 'function requestWithMessages(options, messages, defaults) {\n\tmessages = flashRequest(options, messages);\n\tmessages = ultraRequest(options, messages);');
-  text = filterTools(text);
+  // The selector reads the adapter's advertised efforts, and dsh-llm rejects an
+  // effort absent from that list, so Ultra is announced ahead of DeepSeek's own.
+  text = replaceOnce(text, 'const REASONING_EFFORTS = [', 'const REASONING_EFFORTS = [\n\t{ id: ReasoningEffortId("ultra"), name: "Ultra", description: "DSCODE: max reasoning plus deliberate subagent collaboration; higher total token use." },');
+  // `effort` is validated against DeepSeek's own four levels below this line and
+  // then sent as `output_config.effort`: Ultra is DSCODE's, and rides on max.
+  text = replaceOnce(
+    text,
+    '\tconst effort = options.purpose === "session-title" ? "off" : options.reasoningEffort ?? connection.defaults.reasoningEffort ?? (connection.defaults.thinking === "disabled" ? "off" : "high");',
+    '\tconst requestedEffort = options.purpose === "session-title" ? "off" : options.reasoningEffort ?? connection.defaults.reasoningEffort ?? (connection.defaults.thinking === "disabled" ? "off" : "high");\n\tconst effort = requestedEffort === "ultra" ? "max" : requestedEffort;',
+  );
+  text = replaceOnce(
+    text,
+    '\tconst system = [options.system, historySystem].filter(Boolean).join("\\n\\n");',
+    '\tconst system = ultraSystem(options, flashSystem(options, [options.system, historySystem].filter(Boolean).join("\\n\\n")));',
+  );
+  // Delegation tools are offered at every effort; workflow and ralph never are.
+  text = replaceOnce(text, '{ tools: options.tools.map((tool) => ({', '{ tools: options.tools.filter((tool) => tool.name !== "workflow" && tool.name !== "ralph").map((tool) => ({');
   return prefix + text;
 }
 export function patchBash(text) {
   text = text.replace('text: "Check the [exit code: N] marker on every bash result; investigate failures before moving on."', 'text: `Check the [exit code: N] marker on every ${config.toolName} result; investigate failures before moving on.`');
   if (text.includes('// dscode-named-shell-v1')) return text;
-  text = replaceOnce(text, 'z.object({ enableRunInBackground:', 'z.object({ toolName: z.string().default("bash"), enableRunInBackground:');
+  text = replaceOnce(text, 'z.object({\n\tenableRunInBackground:', 'z.object({\n\ttoolName: z.string().default("bash"),\n\tenableRunInBackground:');
   text = replaceOnce(text, 'toolName: "bash",', 'toolName: config.toolName,');
   text = replaceOnce(text, 'name: "tool:bash",', 'name: "tool:" + config.toolName,');
   text = replaceOnce(text, 'name: "bash",', 'name: config.toolName,');
@@ -102,7 +117,7 @@ function patchSubagentBase(text) {
   text = replaceOnce(text, 'runId: {\n', 'worktree: { type: "string" },\n\t\t\t\t\trunId: {\n');
   text = replaceOnce(text, ': outputValueText(value.output)\n', ': outputValueText(value.output)) + (value.worktree ? `\nWorktree: ${value.worktree}\nInspect and integrate its changes before removing it.` : "")\n');
   text = replaceOnce(text, 'text: value.kind === "background" ?', 'text: (value.kind === "background" ?');
-  text = replaceOnce(text, 'const maxDepth = typeof config.maxDepth === "number" ? config.maxDepth : void 0;', 'if (args.worktree === true && !(continuable && (config.provider === "spawn" || config.provider === "fork"))) throw new Error("worktree is unavailable for this subagent provider");\n\t\t\t\t\t\tconst childWorktree = args.worktree === true ? await createChildWorktree(parent.session.header.cwd, exec.signal) : void 0;\n\t\t\t\t\t\tconst maxDepth = typeof config.maxDepth === "number" ? config.maxDepth : void 0;');
+  text = replaceOnce(text, 'const maxDepth = runtimeCtx.subagents.resolveMaxDepth(config.maxDepth);', 'if (args.worktree === true && !(continuable && (config.provider === "spawn" || config.provider === "fork"))) throw new Error("worktree is unavailable for this subagent provider");\n\t\t\t\t\t\tconst childWorktree = args.worktree === true ? await createChildWorktree(parent.session.header.cwd, exec.signal) : void 0;\n\t\t\t\t\t\tconst maxDepth = runtimeCtx.subagents.resolveMaxDepth(config.maxDepth);');
   text = replaceOnce(text, 'label: args.description,\n\t\t\t\t\t\t\tprompt:', 'label: args.description,\n\t\t\t\t\t\t\t...childWorktree ? { workspaceCwd: childWorktree.cwd } : {},\n\t\t\t\t\t\t\tprompt:');
   text = replaceOnce(text, 'if (resolveDelegationRun(args, {', 'try {\n\t\t\t\t\t\tif (resolveDelegationRun(args, {');
   text = replaceOnce(text, ')).childId\n', ')).childId,\n\t\t\t\t\t\t\t\t\t...childWorktree ? { worktree: childWorktree.cwd } : {}\n');
@@ -165,7 +180,7 @@ export function patchAppBoot(text) {
  * package cannot carry its own copy of that package.
  */
 /** The upstream DSH release every runtime patch in this file was validated against. */
-export const RUNTIME_VERSION = '0.1.5-rc.2';
+export const RUNTIME_VERSION = '0.1.7-alpha.2';
 
 /**
  * dscode: the round cap is a goal field the model-facing tools can set, and the

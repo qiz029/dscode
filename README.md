@@ -33,7 +33,7 @@ Most coding agents work alone. DSCODE is built on the opposite assumption: sessi
 |---|---|
 | `/btw why is the cache cold on the first turn?` | A side question runs in its own read-only child session and answers in a panel; the exchange never enters the main conversation. |
 | `dscode send <session-id> --steer "review the change in parser.ts and reply"` | Work handed to another session on this machine; it can read your transcript, answer, and hand the result back. |
-| `/permission auto` · `/review-usage` | Approvals decided by an independent reviewer from your instruction, with what it allowed and what it cost. |
+| `/permission auto-review` · `/review-usage` | Approvals decided by an independent reviewer from your instruction, with what it allowed and what it cost. |
 
 The [90-second demo script](docs/demo.md) has the shot list, the exact commands, and how to record it.
 
@@ -164,7 +164,7 @@ dscode update 0.7.27           # an exact version
 | `/status`, `/doctor` | Session state and runtime diagnostics |
 | `/memories` | Global memory state, background usage, switches and cleanup |
 | `/session` | Current session id, its card, and the external access entry point |
-| `/permission auto`, `/permission ask` | Switch between automatic review and human approval |
+| `/permission auto-review`, `/permission ask` | Switch between automatic review and human approval |
 | `/review-usage` | Extra tokens and time spent on automatic review |
 | `/shell`, `/shell reset` | Inspect or reset the persistent terminal |
 | `/mcp`, `/skills`, `/hooks` | Manage MCP, inspect skill sources, view or reload hooks |
@@ -212,7 +212,7 @@ npm run dist                # build the fallback tar installer
 | `@toddzheng024/dscode-bundle` | Base layer, Computer Use, custom plugins and the modified TUI/runtime |
 | Hub profile `dscode` | Pinned bundle and runtime versions with integrity hashes |
 
-The bundle generates its modified modules at build time and never rewrites third-party sources on a user's machine. DSH dependencies are pinned to `0.1.5-rc.2`; the TUI is based on `dsh-code@1.0.6` and Computer Use on `0.3.2`. The full pipeline—bundle, then Hub release, then launcher—is in the [distribution guide](docs/hub-distribution.md). Context-compaction evaluation lives under [`eval/`](eval/README.md) and runs with `npm run eval:compaction`.
+The bundle generates its modified modules at build time and never rewrites third-party sources on a user's machine. DSH dependencies are pinned to `0.1.7-alpha.2`; the TUI is based on `dsh-code@1.2.0` and Computer Use on `0.3.2`. The full pipeline—bundle, then Hub release, then launcher—is in the [distribution guide](docs/hub-distribution.md). Context-compaction evaluation lives under [`eval/`](eval/README.md) and runs with `npm run eval:compaction`.
 
 ## 📚 Documentation
 

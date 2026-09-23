@@ -95,9 +95,10 @@
 # preset became a single-tool composition), so this patch no longer lists it.
 
 - insert:
-    # Code Mode is a core execution capability, not a Web component.
-    - id: code-runtime
-      name: '@deepseek-ai/dsh-code-runtime-worker-thread'
+    # Code Mode is a core execution capability, not a Web component. DSH 0.1.7
+    # renamed the worker-thread runtime to the Node PTC runtime.
+    - id: ptc-runtime
+      name: '@deepseek-ai/dsh-ptc-runtime-node'
 
     # Cross-session @mentions: bounded read-only snapshots of other sessions
     # as sourced model context. Opt-in upstream; the TUI's completion menu
@@ -112,12 +113,15 @@
     - id: file-reference-local
       name: '@deepseek-ai/dsh-file-reference-local'
 
-    # The launcher supplies the shipped preset root beside its own config and
-    # the service also discovers the user's local preset root.
-    - id: agent-presets
-      name: '@deepseek-ai/dsh-agent-presets'
+    # Preset selection. DSH 0.1.7 split the old `agent-presets` service into this
+    # registry plus one `@deepseek-ai/dsh-agent-preset` row per preset, and dropped
+    # discovery from directories: the shipped rows live in the `dsh-web-app` bundle
+    # this profile does not carry, so the DSCODE declaration in the profile patch is
+    # the roster, and that patch also names it the deployment default.
+    - id: agent-preset-registry
+      name: '@deepseek-ai/dsh-agent-preset-registry'
       config:
-        default: standard
+        default: dscode
 
     # Cordis self-inspection (the shipped `cordis` agent preset's toolset):
     # the host runner publishes the `dynamicCordisRunner`/`cordisInspect`

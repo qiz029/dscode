@@ -34,7 +34,7 @@ export const DEFAULTS = Object.freeze({
 });
 
 /** Permission presets an unattended run may use; `ask` can never complete. */
-const UNATTENDED_PERMISSIONS = Object.freeze(['auto', 'workspace-write', 'read-only', 'danger-full-access']);
+const UNATTENDED_PERMISSIONS = Object.freeze(['auto-review', 'auto', 'workspace-write', 'read-only', 'danger-full-access']);
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/u;
 

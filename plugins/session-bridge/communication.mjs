@@ -1,9 +1,10 @@
 import { createUserMessage, freezeMessage } from '@deepseek-ai/dsh-llm';
 import { Mailbox, fail } from './mailbox.mjs';
+import { producerKind } from '../message-source/kind.mjs';
 import { discover, request as socketRequest } from './client.mjs';
 
 const plugin = 'dscode-session-bridge';
-export const communicationId = m => m?.source?.plugin === plugin ? m.source.communicationId : undefined;
+export const communicationId = m => producerKind(m?.source) === plugin ? m.source.communicationId : undefined;
 export const isHuman = m => ['user', 'human'].includes(m?.source?.kind);
 const eligible = a => a?.session.header.agentPreset === 'dscode' || a?.session.header.origin === 'subagent';
 
@@ -17,7 +18,9 @@ export class CommunicationService {
     this.pending = new Set();
     this.closed = false;
     this.disposers = [
-      ctx.on('agent/session-start', ({ agent }) => this.start(agent)),
+      // DSH 0.1.7 retired `agent/session-start`: `agent/created` is awaited at the same
+      // point, once the session is entered and announced.
+      ctx.on('agent/created', ({ agent }) => this.start(agent)),
       ctx.on('agent/pre-step', (payload, next) => this.preStep(payload, next)),
       ctx.on('session/event', (session, event) => this.observe(session, event)),
       ctx.on('agent/inbox/discarded', ({ agent, message }) => {
@@ -102,7 +105,7 @@ export class CommunicationService {
     // Identity must survive retries even when the prior native inbox insertion did not persist.
     return freezeMessage({ ...createUserMessage({ content: [{ type: 'text', text:
       `[External source: ${e.from.kind === 'session' ? `session:${e.from.sessionId}` : e.from.source}] [${e.kind}/${e.mode}]\nMessage ID: ${e.messageId}${e.inReplyTo ? `; reply to: ${e.inReplyTo}` : ''}\n${e.text}` }],
-      source: { kind: 'plugin', plugin, form: 'relay', communicationId: e.messageId, requestId: e.idempotencyKey,
+      source: { kind: plugin, form: 'relay', communicationId: e.messageId, requestId: e.idempotencyKey,
         label: e.from.kind === 'session' ? `session:${e.from.sessionId}` : e.from.source, mode: e.mode, composedAt: e.createdAt } }), id: e.messageId });
   }
   async confirm(state) {

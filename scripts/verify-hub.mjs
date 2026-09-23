@@ -92,7 +92,12 @@ try {
   const quote=value=>"'"+value.replaceAll("'","'\"'\"'")+"'";
   writeFileSync(join(home,'config/hooks.local.json'),JSON.stringify({hooks:{PreToolUse:[{matcher:'^bash$',hooks:[{type:'command',command:quote(process.execPath)+' '+quote(join(home,'hook-fixture.mjs')),timeout:5}]}]}}));
   const overlay=join(home,'probe.patch.yml');
-  writeFileSync(overlay,`- id: dscode-session-cards\n  config:\n    enabled: false\n- id: dscode-memory\n  config:\n    generate: false\n- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- insert:\n    - id: harness-probe\n      name: ${JSON.stringify(join(profile,'probe/probe-plugin.mjs'))}\n`);
+  // The agent probe exercises the shipped `standard` preset beside DSCODE's own. Since DSH
+  // 0.1.7 the registry reads declaration rows and the installed profile declares only
+  // DSCODE's, so the overlay adds `standard` from the exact `dsh-web-app` copy this
+  // installation carries.
+  const shippedStandardPreset=readFileSync(join(profile,'node_modules/@deepseek-ai/dsh-web-app/presets/standard.patch.yml'),'utf8');
+  writeFileSync(overlay,`- id: dscode-session-cards\n  config:\n    enabled: false\n- id: dscode-memory\n  config:\n    generate: false\n- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- insert:\n    - id: harness-probe\n      name: ${JSON.stringify(join(profile,'probe/probe-plugin.mjs'))}\n`+shippedStandardPreset);
   const installedRuntime=join(profile,'node_modules/@deepseek-ai/dsh/lib/bin.js');
   const result=await exec(installedRuntime,['--profile','dscode','--patch',overlay],{DSH_TUI_PROBE_REPORT:join(home,'probe.json')});
   assert(result.includes('HARNESS_PROBE_PASSED'),result);

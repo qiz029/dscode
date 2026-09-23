@@ -9,7 +9,7 @@ Options:
   --cwd DIR             workspace for the agent (default: current directory)
   --model PROVIDER/ID   model route (default: the saved default model)
   --effort LEVEL        reasoning effort the model offers: off, minimal, low, medium, high, xhigh, max or ultra
-  --permission PRESET   permission preset: auto, ask, workspace-write, read-only, danger-full-access
+  --permission PRESET   permission preset: auto-review, ask, workspace-write, read-only, danger-full-access
   --approve-all         answer every approval request with allow (no human is present)
   --resume SESSION_ID   continue an existing session instead of starting a new one
   --json                emit JSON lines (session, text, tool, result) instead of plain text

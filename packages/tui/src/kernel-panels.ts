@@ -144,7 +144,7 @@ export function ModePanel({ current, load, select, close }: {
   })
   return createElement(ListFrame, {
     title: t('panel.mode.title', { current }),
-    rows: visible.map(row => ({ key: row.id, disabled: row.broken !== undefined, text: `${row.id === current ? '●' : '○'} ${row.name ?? row.id} · ${row.description ?? row.trust}${row.broken === undefined ? '' : ` · broken: ${row.broken}`}` })),
+    rows: visible.map(row => ({ key: row.id, disabled: row.broken !== undefined, text: `${row.id === current ? '●' : '○'} ${row.name ?? row.id} · ${row.description ?? row.id}${row.broken === undefined ? '' : ` · broken: ${row.broken}`}` })),
     cursor, loading, error, query, footer: t('panel.footer.chooseSwitch'),
   })
 }

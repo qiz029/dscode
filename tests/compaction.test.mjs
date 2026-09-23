@@ -57,7 +57,8 @@ test('the effective window subtracts the completion budget the adapter reserves'
   assert.equal(DEFAULT_MAX_TOKENS, 256_000);
   assert.equal(DEFAULT_CONTEXT_WINDOW, 1_000_000);
   const connection = { models: [], defaultContextWindow: 1_048_576, maxTokens: DEFAULT_MAX_TOKENS, defaults: { thinking: 'disabled' } };
-  const info = DeepSeekAdapter.prototype.modelInfoFor.call({}, connection, 'deepseek-official', 'deepseek-flash');
+  // DSH 0.1.7 resolves model capabilities through the adapter's own `resolveModel`.
+  const info = await new DeepSeekAdapter({ options: () => connection }).resolveModel('deepseek-official', 'deepseek-flash');
   assert.equal(info.defaultMaxTokens, 256_000, 'the reserve is a top-level field of the resolved model info');
   assert.equal(info.context.contextWindow, 1_048_576);
   assert.equal(effectiveContextWindow(info.context, info), 792_576, 'the engine patch prices this exact pair');

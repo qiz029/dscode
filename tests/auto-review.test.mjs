@@ -15,7 +15,8 @@ function fixture({ decision = 'allow', timeout = false, budget = 2, policy = 'as
   directories.push(auditDirectory);
   const records = () => auditStore(auditDirectory).read('fixture-session');
   const hooks = {}, commands = {}, notices = [], requests = [];
-  let permission = 'auto', human = 0;
+  // DSH 0.1.7 reserved `auto`, so the reviewed preset is DSCODE's own `auto-review`.
+  let permission = 'auto-review', human = 0;
   const events = [{ seq: 0, type: 'turn/start', data: {} }, { seq: 1, type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'Update this project and run its tests.' }] } }];
   const session = { id: 'fixture-session', seq: 2, header: { cwd: '/project' }, snapshotEvents: () => events, append(type, data) { events.push({ seq: events.length, type, data }); }, requestHeader: () => ({ config: { provider: 'fixture', model: 'test' } }) };
   const agent = { session, inject: message => notices.push(message), cancel: cause => { agent.cancelled = cause; } };

@@ -1,8 +1,11 @@
+# DSH 0.1.7 reserved the name `auto` for its own Auto integration (full access with
+# approval off), so DSCODE's reviewed preset — workspace writes with every eligible
+# approval request reviewed by a model, human fallback intact — is named `auto-review`.
 - id: permission
   config:
-    defaultPreset: auto
+    defaultPreset: auto-review
     presets:
-      auto:
+      auto-review:
         sandbox: workspace-write
         approval: ask
         name: Auto review

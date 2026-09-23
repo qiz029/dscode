@@ -1,4 +1,4 @@
-# Current checks — 2026-09-12
+# Current checks — 2026-09-22
 
 Run `npm run check` for the maintained regression gate:
 
@@ -7,7 +7,7 @@ Run `npm run check` for the maintained regression gate:
 | `npm test` / `npm run test:unit` | Unit and component contracts, including real launcher processes, mailbox transactions, communication orchestration, fresh upstream patches, and the terminal's rendered frames at four widths in dark and light |
 | `npm run test:coverage` | The same tests with a full first-party source inventory; unloaded files count as zero; line coverage must remain at least 75% |
 | `npm run typecheck` | The vendored terminal's TypeScript under `packages/tui/tsconfig.json`; run time and build time both erase those types unread, so this is the only static check of them |
-| `npm run test:integration` | Six deterministic native Harness probes: bridge, messaging, ownership/input boundaries, cards, memory and login |
+| `npm run test:integration` | Nine deterministic native Harness probes: bridge, messaging, ownership/input boundaries, cards, memory, login, exec, triggers and trigger tools |
 | `npm run test:package` | Build and unpack both npm tarballs; verify integrity, exported files, JS syntax, native lock dependency and absence of local state/build paths |
 | `npm run test:e2e` | The whole gate inside a Linux container, plus the installed-bundle Hub lifecycle; needs a Docker daemon, so it is outside `npm run check` (see below) |
 
@@ -63,6 +63,42 @@ because the stdin inspector that settles it immediately is macOS-only. The probe
 records that difference as `EXEC_PROBE_NOTE` instead of asserting the macOS text, while it
 still fails if the turn never ends. Computer Use and the Seatbelt runner stay
 macOS-only by construction and the probes say so rather than failing.
+
+## Upstream 0.1.7-alpha.2 (2026-09-22)
+
+The runtime pin moved from `0.1.5-rc.2` to `0.1.7-alpha.2`. What was verified on the new
+tree, on macOS: `npm run lint`, both typechecks, `npm run test:coverage` (543 unit tests,
+83.34% measured `.mjs` line coverage), `npm run test:integration` (all nine probes),
+`npm run test:package` and `npm run test:eval` (51 evaluations). The nine pinned runtime
+patches were additionally applied twice each and the results parsed, which is how the three
+anchors that drifted were found. The upgrade's own regressions were all caught by those
+probes rather than by reading upstream diffs: the reserved `auto` preset name, the retired
+`agent/session-start` event, session format v4 refusing the shared `plugin` source kind,
+the absent shipped preset rows, and `@anionex/dsh-computer-use` calling a settings method
+that no longer exists.
+
+`npm run doctor` was also run from a normal terminal on the upgraded tree and passed: a real
+profile boot composing both the shipped `standard` preset and DSCODE's own, 51 tools with
+scoped Chrome MCP discovery, skill activation, file editing, shell execution, the compaction
+provider, a nonempty session resume, the auto-review allow/deny/human path with its audit,
+child worktrees and effort selection, manual compaction, and the native Computer Use helper
+reporting `ready: true`. It also recorded one limitation as a probe note: the pinned
+`@anionex/dsh-computer-use` 0.3.2 reads the pre-0.1.7 tool-result shape when restoring its
+execution tools on resume, so a resumed session needs the skill loaded again; live activation
+is unaffected.
+
+`npm run verify:hub` passed as well, and found one more instance of the same preset gap: the
+installed profile declares only DSCODE's preset, so the agent probe's `standard` mount failed
+until the verification overlay declared it from the `dsh-web-app` copy the installation
+carries. It then covered the native locked install, launcher first start, Hub doctor, the
+installed bundle's agent loop, messaging, cards and memory probes, and a failed upgrade with
+rollback. Both `npm run doctor` and `npm run verify:hub` completed inside this Claude Code
+session on macOS; the nested-sandbox refusal above applies to a dscode session, not to every
+agent session.
+
+Not covered here: no interactive TUI session was driven by hand; no live provider request was
+made, so the DeepSeek Messages changes rest on fixture streams; and no desktop action was
+driven through Computer Use.
 
 ## Historical verification records
 

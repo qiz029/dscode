@@ -64,9 +64,9 @@ async function probe(ctx) {
   assert.equal(duplicate.duplicate, true);
   release.resolve(); await agent.whenIdle();
   assert.equal(maximum, 1, 'Concurrent model drivers for one session');
-  const relays = agent.session.snapshotEvents().filter(e => e.type === 'user/message' && e.data.source.plugin === 'dscode-session-bridge');
+  const relays = agent.session.snapshotEvents().filter(e => e.type === 'user/message' && e.data.source.kind === 'dscode-session-bridge');
   assert.equal(relays.length, 2);
-  assert(relays.every(e => e.data.source.kind === 'plugin'));
+  assert(relays.every(e => e.data.source.form === 'relay'));
   assert(relays.some(e => e.data.content[0].text.includes('script-a')));
   await ctx.sessions.flush(agent.session);
   // Prove deduplication survives disposal and reconstruction of the real Agent.

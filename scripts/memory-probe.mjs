@@ -28,7 +28,7 @@ async function probe(ctx) {
   }
   ctx.llm.registerAdapter(['memory-fixture'], new Adapter());
   const time = Date.now() - 86400000;
-  const stored = await ctx.sessionPersistence.create({ version: 3, id: 'memory-probe-history', createdAt: time, cwd: process.cwd(), isSeeded: false, agentPreset: 'dscode' });
+  const stored = await ctx.sessionPersistence.create({ version: 4, id: 'memory-probe-history', createdAt: time, cwd: process.cwd(), isSeeded: false, agentPreset: 'dscode' });
   await stored.append([{ type: 'user/message', seq: 0, time, surfaceOp: 'append', data: createUserMessage({ content: [{ type: 'text', text: 'Use pnpm for this project.' }], source: { kind: 'human' } }) }]);
   await stored.flush(); await stored.close();
   const handle = await ctx.agents.create({ sessionId: 'memory-probe-current', meta: { cwd: process.cwd(), agentPreset: 'dscode' },

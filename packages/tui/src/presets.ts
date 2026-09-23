@@ -2,14 +2,14 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { AgentPreset, AgentPresets } from '@deepseek-ai/dsh-agent-presets'
+import type { AgentPreset, AgentPresetRegistry } from '@deepseek-ai/dsh-agent-preset-registry'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 
 /** One discoverable agent composition. */
 export type PresetRow = AgentPreset
 
 /** Public compatibility alias for the official upstream service type. */
-export type AgentPresetsService = AgentPresets
+export type AgentPresetsService = AgentPresetRegistry
 
 /** Read an optional Cordis service without requiring its package at build time. */
 export function agentPresetsFrom(ctx: Context): AgentPresetsService | undefined {

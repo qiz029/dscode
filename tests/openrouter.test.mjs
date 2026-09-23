@@ -306,14 +306,17 @@ test('web search follows the session route and reads OpenRouter citations', asyn
 test('the plugin registers the configurable route, its adapter and both search providers', async () => {
   const registered = {}, searches = [], injected = {};
   applyOpenRouter({
-    logger: { error() {} }, get: () => undefined,
+    logger: { error() {}, warn() {} }, get: () => undefined,
+    // DSH 0.1.7 addresses a form by the profile entry id, and reports edits on the bus.
+    fiber: { entry: { options: { id: 'dscode-openrouter' } } },
+    on: () => {},
     llm: {
       registerConfigurableProviders: entries => { registered.directory = entries; },
       registerAdapter: (routes, route) => { registered.routes = routes; registered.adapter = route; return Object.assign(() => {}, { replace() {} }); },
     },
     inject: (names, fn) => { injected[names[0]] = fn; },
   }, {});
-  assert.deepEqual(registered.directory, [{ provider: 'openrouter', displayName: 'OpenRouter', settingsNs: 'llm-openrouter', settingsPath: [] }]);
+  assert.deepEqual(registered.directory, [{ provider: 'openrouter', displayName: 'OpenRouter', settingsNs: 'dscode-openrouter', settingsPath: [] }]);
   assert.deepEqual(registered.routes, ['openrouter']);
   assert(registered.adapter instanceof OpenRouterAdapter);
   injected.web({ web: { registerSearchProvider: provider => searches.push(provider.id), searchProviders: new Map() } });

@@ -17,9 +17,19 @@ const { DeepSeekAdapter, resolveAdapterOptions } = await import(pathToFileURL(`$
 test('ultra uses native max on the actual wire and adds policy only to agent calls', async () => {
   const original = globalThis.fetch;
   const payloads = [];
+  // DSH 0.1.7 speaks the DeepSeek Messages API: one Messages event stream, the effort in
+  // `output_config`, the prompt in a top-level `system` field, and Messages-shaped tools.
+  const MESSAGES_SSE = [
+    '{"type":"message_start","message":{"usage":{"input_tokens":1,"output_tokens":0}}}',
+    '{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+    '{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}',
+    '{"type":"content_block_stop","index":0}',
+    '{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}',
+    '{"type":"message_stop"}',
+  ].map(data => `data: ${data}\n\n`).join('');
   globalThis.fetch = async (_url, request) => {
     payloads.push(JSON.parse(request.body));
-    return new Response('data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
+    return new Response(MESSAGES_SSE, { headers: { 'content-type': 'text/event-stream' } });
   };
   try {
     const adapter = new DeepSeekAdapter({ options: () => resolveAdapterOptions({ models: [{ id: 'deepseek-fixture' }, { id: 'deepseek-flash' }] }), resolveApiKey: async () => 'fixture-not-a-key', resolveUserId: () => 'fixture', prepareExtensions: async () => ({ fields: {}, accept: async () => {} }), resolveFiles: () => ({}) });
@@ -39,19 +49,20 @@ test('ultra uses native max on the actual wire and adds policy only to agent cal
       for await (const _chunk of adapter.stream(options)) { }
       assert.equal(JSON.stringify(options), before, 'Flash guidance must not mutate logged input');
     }
-    assert.equal(payloads[0].reasoning_effort, 'max');
+    assert.equal(payloads[0].output_config.effort, 'max', 'Ultra rides on the provider max');
     assert.equal(payloads[0].thinking.type, 'enabled');
-    assert.deepEqual(payloads[0].tools.map(tool => tool.function.name), ['bash', 'subagent', 'subagent_fork']);
-    assert.deepEqual(payloads[1].tools.map(tool => tool.function.name), ['bash', 'subagent', 'subagent_fork'], 'delegation is offered below Ultra too');
-    assert(JSON.stringify(payloads[0].messages).includes('DSCODE ULTRA'));
-    assert(!JSON.stringify(payloads[1].messages).includes('DSCODE ULTRA'));
-    assert(!JSON.stringify(payloads[2].messages).includes('DSCODE ULTRA'));
+    assert.deepEqual(payloads[0].tools.map(tool => tool.name), ['bash', 'subagent', 'subagent_fork']);
+    assert.deepEqual(payloads[1].tools.map(tool => tool.name), ['bash', 'subagent', 'subagent_fork'], 'delegation is offered below Ultra too');
+    assert(payloads[0].system.includes('Original instructions.'), 'the policy is appended, never replacing the prompt');
+    assert(payloads[0].system.includes('DSCODE ULTRA'));
+    assert(!payloads[1].system.includes('DSCODE ULTRA'));
+    assert(!payloads[2].system.includes('DSCODE ULTRA'));
     assert.equal(payloads[3].thinking.type, 'disabled');
-    assert.equal(payloads[3].reasoning_effort, undefined);
-    assert(JSON.stringify(payloads[4].messages).includes('DSCODE DeepSeek Flash'));
-    assert(!JSON.stringify(payloads[5].messages).includes('DSCODE DeepSeek Flash'));
-    assert(!JSON.stringify(payloads[6].messages).includes('DSCODE DeepSeek Flash'));
-    assert(JSON.stringify(payloads[7].messages).includes('DSCODE DeepSeek Flash'));
+    assert.equal(payloads[3].output_config, undefined);
+    assert(payloads[4].system.includes('DSCODE DeepSeek Flash'));
+    assert(!payloads[5].system.includes('DSCODE DeepSeek Flash'));
+    assert(!payloads[6].system.includes('DSCODE DeepSeek Flash'));
+    assert(payloads[7].system.includes('DSCODE DeepSeek Flash'));
   } finally { globalThis.fetch = original; }
 });
 test('every effort can launch and wake children under the shell policy; workflow and ralph stay unavailable', async () => {

@@ -1,6 +1,8 @@
 import z from "@deepseek-ai/schemastery";
 import { RetryPolicySchema, resolveRetryPolicy } from "@deepseek-ai/dsh-llm";
 import { credentialRef } from "@deepseek-ai/dsh-credentials";
+import { deepEqualJson } from "@deepseek-ai/dsh-util-values";
+import { plainConfig } from "../cordis-config/plain.mjs";
 import { launchEnvironmentOf } from "@deepseek-ai/dsh-launch-environment";
 import { GrokAdapter, PROVIDER } from "./adapter.mjs";
 import { ensureGrokModels } from "./models.mjs";
@@ -19,13 +21,17 @@ const DEFAULT_BASE_URL = "https://api.x.ai/v1";
 /** The client version the CLI proxy is asked with; xAI refuses requests without one. */
 const DEFAULT_CLIENT_VERSION = "1.0.34";
 
+// DSH 0.1.7 replaced settings sections with volatile configuration: each `.volatile()`
+// field arrives as a reference the Settings form and a profile edit both write, so the
+// reads below always see the current value.
 export const Config = z.object({
-  apiKeyEnv: z.string().role("credential-ref").default(GROK_TOKEN_REF),
-  baseURL: z.string().default(DEFAULT_BASE_URL),
-  clientVersion: z.string().default(DEFAULT_CLIENT_VERSION),
-  streamIdleTimeoutMs: z.number().min(1).default(300000),
-  retryPolicy: RetryPolicySchema,
+  apiKeyEnv: z.string().role("credential-ref").default(GROK_TOKEN_REF).volatile(),
+  baseURL: z.string().default(DEFAULT_BASE_URL).volatile(),
+  clientVersion: z.string().default(DEFAULT_CLIENT_VERSION).volatile(),
+  streamIdleTimeoutMs: z.number().min(1).default(300000).volatile(),
+  retryPolicy: RetryPolicySchema.volatile(),
 });
+
 
 /** Validated connection facts from one config snapshot. */
 export function resolveOptions(config = {}) {
@@ -50,18 +56,18 @@ export function loginHint(state) {
 }
 
 export function apply(ctx, config = {}) {
-  let current = () => config, lastRaw, lastGood;
+  // The TUI renders this route's own page, so Settings must not generate a form for it.
+  ctx.inject(["settings"], settingsCtx => {
+    settingsCtx.effect(() => settingsCtx.settings.configure({ auto: false }, ctx.fiber));
+  });
+  let lastGood;
   const options = () => {
-    const raw = current();
-    if (raw === lastRaw && lastGood !== undefined) return lastGood;
     try {
-      lastGood = resolveOptions(raw);
-      lastRaw = raw;
+      lastGood = resolveOptions(plainConfig(config));
       return lastGood;
     } catch (error) {
       if (lastGood === undefined) throw error;
-      lastRaw = raw;
-      ctx.logger.error(name + ": keeping the last good configuration after an invalid settings section");
+      ctx.logger.error(name + ": keeping the last good configuration after an invalid edit");
       return lastGood;
     }
   };
@@ -89,19 +95,17 @@ export function apply(ctx, config = {}) {
     await ensureGrokModels({ home, token, version: options().clientVersion });
   };
   const adapter = new GrokAdapter({ options, ensureModels, resolveToken });
-  ctx.llm.registerConfigurableProviders([{ provider: PROVIDER, displayName: "Grok", settingsNs: NS, settingsPath: [] }]);
+  ctx.llm.registerConfigurableProviders([{ provider: PROVIDER, displayName: "Grok", settingsNs: ctx.fiber.entry?.options.id ?? NS, settingsPath: [] }]);
   const registration = ctx.llm.registerAdapter([PROVIDER], adapter);
-  let registeredPolicy = JSON.stringify(options().retryPolicy);
-  ctx.inject(["settings"], settingsCtx => {
-    settingsCtx.settings.installSection(ctx, NS, Config, config, {
-      setSource: source => { current = source; },
-      onChange: () => {
-        const policy = JSON.stringify(options().retryPolicy);
-        if (policy === registeredPolicy) return;
-        registration.replace([PROVIDER]);
-        registeredPolicy = policy;
-      },
-    });
+  // The retry policy is captured at registration, and a reference carries no change
+  // callback: re-register the route when an edit lands on a different policy.
+  let registeredPolicy = options().retryPolicy;
+  ctx.on("loader/volatile-update", () => {
+    let policy;
+    try { policy = options().retryPolicy; } catch (error) { ctx.logger.warn(error); return; }
+    if (deepEqualJson(policy, registeredPolicy)) return;
+    registration.replace([PROVIDER]);
+    registeredPolicy = policy;
   });
   // Warm the catalog and the weekly window for a user who already ran `grok login`, then keep
   // the window fresh at the interval the official CLI itself watches (subscription_watch_interval_secs).

@@ -1,4 +1,4 @@
-import { LlmAdapter, LlmError, ReasoningEffortId, attributionHeaders, contentHasImage, offloadRequestImagesWithPolicy, offloadedImageText } from '@deepseek-ai/dsh-llm';
+import { IMAGE_OFFLOAD_REQUIRED_CODE, LlmAdapter, LlmError, ReasoningEffortId, attributionHeaders, contentHasImage, offloadedImageText, projectOffloadedImages, requiredImageOffload } from '@deepseek-ai/dsh-llm';
 import { listOpenRouterModels, openRouterModel } from './models.mjs';
 import { PROVIDER, effortInfo, errorCode, errorMessage, modelReasoning, requestBody, retryAfterMs, sseData, translate } from './wire.mjs';
 
@@ -157,22 +157,38 @@ export class OpenRouterAdapter extends LlmAdapter {
     }
   }
 
-  /** Read request versions of every image, oldest beyond the byte budget replaced by text first. */
+  /**
+   * Read request versions of every retained image.
+   *
+   * DSH 0.1.7 made the offloaded set a durable surface fact: a route projects what the
+   * surface already offloaded into text and reports how much more must go with
+   * `IMAGE_OFFLOAD_REQUIRED`, instead of dropping the oldest occurrences itself. The
+   * `compaction-image-offload` executor records that choice and retries, so the decision
+   * survives a route change, resume and replay rather than being remade per request.
+   */
   async prepareImages(options, entry, connection, signal) {
-    if (!options.messages.some(message => contentHasImage(message.content))) return undefined;
-    if (!entry?.inputModalities?.includes('image')) throw new LlmError(`OpenRouter model "${options.model}" does not accept image input.`, 'UNSUPPORTED_CONTENT');
     const attachments = this.config.resolveAttachments?.();
+    const access = ref => (attachments === undefined ? undefined : this.config.resolveImageAccess?.(attachments, ref));
+    const messages = projectOffloadedImages(options.messages, ref => offloadedImageText(ref, access(ref)));
+    const withImages = messages.some(message => contentHasImage(message.content));
+    if (!withImages) return messages === options.messages ? undefined : { options: { ...options, messages: [...messages] }, versions: new Map(), access };
+    if (!entry?.inputModalities?.includes('image')) throw new LlmError(`OpenRouter model "${options.model}" does not accept image input.`, 'UNSUPPORTED_CONTENT');
     if (attachments === undefined) throw new LlmError('OpenRouter image input requires the durable attachment service.', 'UNSUPPORTED_CONTENT');
-    const access = ref => this.config.resolveImageAccess?.(attachments, ref);
-    const bounded = policyBytes => offloadRequestImagesWithPolicy(policyBytes.messages, {
-      representation: 'base64', maxBytes: connection.maxRequestImageBytes, byteQuantum: 1,
-      byteLength: policyBytes.byteLength, placeholder: ref => offloadedImageText(ref, access(ref)),
-    });
-    const estimated = bounded({ messages: options.messages, byteLength: ref => Math.min(ref.bytes, IMAGE_POLICY.maxBytes) });
     const refs = new Map();
-    for (const message of estimated) collectImages(message.content, refs);
+    for (const message of messages) collectImages(message.content, refs);
     const versions = new Map(await Promise.all([...refs.values()].map(async ref => [ref.attachmentId, await attachments.readImageRequest(ref, IMAGE_POLICY, signal)])));
-    const exact = bounded({ messages: estimated, byteLength: ref => versions.get(ref.attachmentId).bytes });
-    return { options: { ...options, messages: [...exact] }, versions, access };
+    const offloadImages = requiredImageOffload(
+      messages,
+      { representation: 'base64', maxBytes: connection.maxRequestImageBytes, byteQuantum: 1 },
+      block => versions.get(block.attachment.attachmentId).bytes,
+    );
+    if (offloadImages > 0) {
+      throw new LlmError(
+        `OpenRouter request images exceed ${connection.maxRequestImageBytes} bytes; ${offloadImages} more oldest occurrence(s) must be offloaded.`,
+        IMAGE_OFFLOAD_REQUIRED_CODE,
+        { offloadImages },
+      );
+    }
+    return { options: { ...options, messages: [...messages] }, versions, access };
   }
 }

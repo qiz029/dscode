@@ -1,8 +1,6 @@
-# Host/profile overlay. The upstream standard Agent Preset supplies coding,
-# skills, planning, compaction and native subagents in their correct scopes.
-- id: agent-presets
-  config:
-    default: standard
+# Host/profile overlay. The DSCODE Agent Preset declaration at the end of the
+# profile patch supplies coding, skills, planning, compaction and native
+# subagents in their correct scopes, and names itself the registry default.
 
 - id: sandbox-policy
   config:
@@ -34,16 +32,6 @@
     maxInputBytes: 4096
     maxOutputTokens: 1024
     timeoutMs: 60000
-
-- id: computer-use
-  config:
-    observationTtlMs: 30000
-    allowAllApps: false
-    interaction:
-      focusPolicy: preserve
-      keyboardPolicy: activate
-      pointerInputPolicy: targeted
-      cursorVisualization: visible
 
 # Chrome MCP belongs to the DSCODE agent preset. A fresh, prompt-free TUI
 # launch can render before composing an agent or connecting the browser server.

@@ -8,7 +8,7 @@ export const name = 'runtime-foundations-probe';
 export const inject = ['agents', 'agentPresets', 'llm', 'sessions', 'sessionPersistence'];
 export function apply(ctx) { void probe(ctx).catch(error => { console.error(error.stack); ctx.get('appExit')(1); }); }
 const ID = process.env.DSCODE_FOUNDATIONS_MODE === 'boundaries' ? 'runtime-boundaries-session' : 'runtime-foundations-session';
-const message = text => createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'plugin', plugin: name } });
+const message = text => createUserMessage({ content: [{ type: 'text', text }], source: { kind: name } });
 
 async function probe(ctx) {
   await ctx.get('loader').await();
@@ -24,8 +24,11 @@ async function probe(ctx) {
     }
     ctx.llm.registerAdapter(['preset-fixture'], new PresetAdapter());
     const sessionId = 'legacy-preset-fixture';
+    // The scenario is a session recorded under a preset this deployment no longer
+    // declares — since DSH 0.1.7 the shipped rows live in the `dsh-web-app` bundle, so
+    // `minimal` is exactly such an id — resumed onto the DSCODE preset.
     const old = await ctx.agents.create({ sessionId, meta: { cwd: process.cwd(), agentPreset: 'minimal' }, agentOptions: { provider: 'preset-fixture', model: 'fixture' }, setup: async (agentCtx, agent) => {
-      await ctx.agentPresets.mount(agentCtx, 'minimal');
+      await ctx.agentPresets.mount(agentCtx, 'dscode');
       installModelSelection(agentCtx, { get current() { return agent.options; }, assembled: undefined });
     } });
     old.agent.followup(message('LEGACY_USER_INPUT')); await old.agent.whenIdle();

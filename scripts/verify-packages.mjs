@@ -34,16 +34,20 @@ try {
     }
     else {
       assert.match(readFileSync(join(destination, 'vendor/terminal/index.js'), 'utf8'), /dscode-no-history-expansion-v1/);
-      assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /dscode-bundle\/terminal/);
+      // The preset is a declaration row inside the bundle's own composition patch since
+      // DSH 0.1.7 retired preset discovery from directories.
+      assert(!existsSync(join(destination, 'presets')), 'the bundle ships no preset directory');
+      assert.match(readFileSync(join(destination, 'cordis.patch.yml'), 'utf8'), /dscode-bundle\/terminal/);
+      assert.match(readFileSync(join(destination, 'cordis.patch.yml'), 'utf8'), /name: '@deepseek-ai\/dsh-agent-preset'/, 'the bundle declares the DSCODE preset');
       assert.equal(pkg.exports['./code-review'], './plugins/code-review/index.mjs');
       // Every DSCODE plugin the composition mounts needs its own bundle subpath: a missing
       // export only surfaces when a real Hub install boots the profile, not in the tarball itself.
       for (const plugin of customPlugins) assert.equal(pkg.exports['./' + plugin], `./plugins/${plugin}/index.mjs`, `the bundle must export the ${plugin} plugin`);
-      assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/code-review'/);
+      assert.match(readFileSync(join(destination, 'cordis.patch.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/code-review'/);
       assert.match(readFileSync(join(destination, 'vendor/tui/lib/app.mjs'), 'utf8'), /dispatch\(text\)/, 'the terminal routes /review through the shared service');
       assert.match(readFileSync(join(destination, 'vendor/subagent/index.js'), 'utf8'), /dscode-child-worktree-v3/);
       assert.match(readFileSync(join(destination, 'vendor/command-goal/index.js'), 'utf8'), /dscode-goal-cap-v1/, 'the vendored goal command carries the [N] round-cap patch');
-      assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /dscode-bundle\/command-goal/);
+      assert.match(readFileSync(join(destination, 'cordis.patch.yml'), 'utf8'), /dscode-bundle\/command-goal/);
       assert.match(readFileSync(join(destination, 'vendor/subagent-core/index.js'), 'utf8'), /workspaceCwd/);
       assert.match(readFileSync(join(destination, 'vendor/subagent-driver/index.js'), 'utf8'), /request\.workspaceCwd/);
       assert.match(readFileSync(join(destination, 'cordis.patch.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/subagent-core'/);
@@ -53,7 +57,7 @@ try {
       assert.match(pkg.dependencies['@deepseek-ai/dsh-compaction-basic'], /^\d+\.\d+\.\d+/, 'the engine resolves its upstream base from the bundle dependencies');
       assert.match(readFileSync(join(destination, 'plugins/compaction/engine.mjs'), 'utf8'), /from '\.\/threshold\.mjs'/);
       assert.match(readFileSync(join(destination, 'vendor/tui/lib/app.mjs'), 'utf8'), /from ['"]\.\.\/\.\.\/\.\.\/plugins\/compaction\/tetris\.mjs['"]/);
-      assert.match(readFileSync(join(destination, 'presets/dscode/agent.cordis.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/compaction'/);
+      assert.match(readFileSync(join(destination, 'cordis.patch.yml'), 'utf8'), /name: '@toddzheng024\/dscode-bundle\/compaction'/);
       assert.match(readFileSync(join(destination, 'vendor/tui/lib/app.mjs'), 'utf8'), /DscodeProviderPanel/);
       assert(existsSync(join(destination, 'plugins/providers/catalog.mjs')), 'the terminal imports the provider catalog from the bundle');
       assert(existsSync(join(destination, 'plugins/providers/openrouter-account.mjs')), 'the /openrouter panel reads its account module from the bundle');

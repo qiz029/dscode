@@ -4,20 +4,20 @@ The repository and the complete install package ship the `dscode-auto-review` pl
 
 ## Usage
 
-Restart `dscode` to load the plugin. New sessions default to auto; an existing session and a saved default keep their value, and either can be switched explicitly:
+Restart `dscode` to load the plugin. New sessions default to `auto-review`; an existing session and a saved default keep their value, and either can be switched explicitly:
 
 ```text
-/permission auto
+/permission auto-review
 /permission ask
 /review-usage
 ```
 
-Both `auto` and `ask` are `workspace-write + approval: ask`; the difference is that the first lets the plugin review before the request. The underlying `never` still refuses approval requests and does not mean automatically allowed. Computer Use application authorisation and sensitive-action confirmation always go to the user.
+Both `auto-review` and `ask` are `workspace-write + approval: ask`; the difference is that the first lets the plugin review before the request. The preset was named `auto` until DSH 0.1.7 reserved that name for its own integration; a session recorded under the old name keeps its sandbox and approval values and shows as `custom` until it is switched. The underlying `never` still refuses approval requests and does not mean automatically allowed. Computer Use application authorisation and sensitive-action confirmation always go to the user.
 
 ## What triggers a review
 
 - Workspace file changes, ordinary shell, and curl/CLI network access under existing permissions: no new approval and no review model call.
-- A shell/file tool asking for additional permission: enters the native approval path, and in auto mode the reviewer decides first.
+- A shell/file tool asking for additional permission: enters the native approval path, and under `auto-review` the reviewer decides first.
 - Chrome's explicitly read-only tools `list_pages`, `take_snapshot`, `get_console_message`, `list_console_messages`, `get_network_request`, `list_network_requests`, `performance_analyze_insight`: no new approval.
 - Every other `mcp__*` tool: enters approval before execution, including Chrome navigation, clicking, script execution, upload and screenshots. An unknown MCP tool is not waved through because its name sounds read-only.
 - A request another plugin raises through the native approval interface: handed to a human when it cannot be bound to the actual tool arguments about to execute.

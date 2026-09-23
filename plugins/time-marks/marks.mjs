@@ -7,6 +7,8 @@
  * @module dscode-time-marks/marks
  */
 
+import { producerKind } from '../message-source/kind.mjs'
+
 /** Shortest queue wait worth naming; below it the message simply arrived. */
 const WAIT_FLOOR_MS = 1_000
 
@@ -108,15 +110,14 @@ export function elapsedText(ms) {
  * @returns the attribution clause.
  */
 export function describeSource(source) {
-  const kind = plain(source?.kind)
-  if (kind === 'user') return 'user message'
-  if (kind !== 'plugin') return kind === '' ? 'message' : `message via ${kind}`
-  if (source.form === 'relay') {
+  const producer = producerKind(source)
+  if (producer === 'user') return 'user message'
+  if (source?.form === 'relay') {
     const mode = plain(source.mode) || 'queue'
     const label = plain(source.label) || 'another session'
     return `${mode} relay from ${label}`
   }
-  return `message from ${plain(source.plugin) || 'a plugin'}`
+  return producer === '' ? 'message' : `message from ${producer}`
 }
 
 /**

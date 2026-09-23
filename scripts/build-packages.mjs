@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { replaceOnce } from './patch-util.mjs';
 import { patchRuntime } from './patch-runtime.mjs';
+import { presetDeclaration } from './preset.mjs';
 import { buildTui } from './build-tui.mjs';
 import { vendorHub } from './vendor-hub.mjs';
 const root = resolve(import.meta.dirname, '..');
@@ -28,7 +29,9 @@ for (const pkg of ['commander', 'eventsource-parser']) dependencies[pkg] = lock.
 const bundle = join(out, 'bundle');
 rmSync(bundle, { recursive: true, force: true }); mkdirSync(bundle);
 write(bundle, 'bootstrap.mjs', read('packages/bundle/bootstrap.mjs').replaceAll("from '../../plugins/tui-tools/", "from './plugins/tui-tools/"));
-for (const dir of ['plugins', 'presets', 'bin']) copy(dir, join(bundle, dir));
+// `presets/` is no longer copied: DSH 0.1.7's registry reads declaration rows, so the
+// preset travels inside this bundle's own composition patch below.
+for (const dir of ['plugins', 'bin']) copy(dir, join(bundle, dir));
 rmSync(join(bundle, 'bin/dscode.mjs')); // only launcher owns the global dscode bin
 mkdirSync(join(bundle, 'vendor'));
 // Patch only our staging copies, never the developer or recipient install.
@@ -69,7 +72,6 @@ for (const [file, from, to] of [
 }
 rmSync(stage, { recursive: true, force: true });
 let preset = read('presets/dscode/agent.cordis.yml').replaceAll("'@deepseek-ai/dsh-tool-subagent'", `'${name}/subagent'`).replace('DSCODE_POLICY_PLUGIN', `'${name}/policy'`).replace('DSCODE_REVIEW_PLUGIN', `'${name}/code-review'`).replaceAll("'@deepseek-ai/dsh-tool-bash'", `'${name}/bash'`).replaceAll("'@deepseek-ai/dsh-tool-bash-persistent'", `'${name}/persistent'`).replaceAll("'@deepseek-ai/dsh-terminal-bash'", `'${name}/terminal'`).replaceAll("'@deepseek-ai/dsh-command-goal'", `'${name}/command-goal'`).replace('DSCODE_COMPACTION_PLUGIN', `'${name}/compaction'`);
-write(bundle, 'presets/dscode/agent.cordis.yml', preset);
 let patch = read('node_modules/@deepseek-ai/dsh-base/cordis.patch.yml') + '\n' + read('node_modules/@anionex/dsh-computer-use/cordis.patch.yml') + '\n' + read('node_modules/dsh-code/cordis.patch.yml').replaceAll("'dsh-code/startup'", `'${name}/startup'`).replaceAll("'dsh-code/session-query'", `'${name}/session-query'`).replaceAll("'dsh-code'", `'${name}/tui'`);
 for (const [upstream, replacement] of [
   ['@deepseek-ai/dsh-subagent', 'subagent-core'],
@@ -78,6 +80,7 @@ for (const [upstream, replacement] of [
 ]) patch = patch.replaceAll(`name: '${upstream}'`, `name: '${name}/${replacement}'`);
 patch += '\n' + read('config/cordis.patch.yml') + '\n' + read('config/auto-review.patch.yml');
 patch += '\n' + composePlugins({ bundle: name });
+patch += '\n' + presetDeclaration(root, preset);
 // Hub can compose the bundle repeatedly; the inserted provider must already
 // use its final name so the next pass does not conflict with the override.
 patch = replaceOnce(patch, "name: '@deepseek-ai/dsh-credentials-local'", `name: '${name}/credentials'`);
@@ -92,9 +95,9 @@ patch += `
 `;
 write(bundle, 'cordis.patch.yml', patch);
 const exports = { './email-tools':'./plugins/email-tools/index.mjs', './imap':'./plugins/email/imap.mjs', './gmail':'./plugins/email/gmail.mjs', './email':'./plugins/email/inbox.mjs', './package.json':'./package.json', './cordis.patch.yml':'./cordis.patch.yml', './credentials':'./plugins/credentials/index.mjs', './memory':'./plugins/memory/index.mjs', './session-bridge':'./plugins/session-bridge/index.mjs', './session-cards':'./plugins/session-cards/index.mjs', './time-marks':'./plugins/time-marks/index.mjs' };
-for (const [key, file] of Object.entries({subagent:'vendor/subagent/index.js','subagent-core':'vendor/subagent-core/index.js','subagent-driver':'vendor/subagent-driver/index.js','subagent-spawn':'vendor/subagent-spawn/index.js','subagent-fork':'vendor/subagent-fork/index.js',bootstrap:'bootstrap.mjs',tui:'vendor/tui/lib/index.mjs',startup:'vendor/tui/lib/startup.mjs','session-query':'vendor/tui/lib/session-query.mjs','invariant':'vendor/tui/lib/invariant.mjs',deepseek:'vendor/deepseek/index.js',bash:'vendor/bash/index.js',persistent:'vendor/persistent/index.js',terminal:'vendor/terminal/index.js',compaction:'plugins/compaction/engine.mjs',policy:'plugins/dscode/index.mjs','code-review':'plugins/code-review/index.mjs','auto-review':'plugins/auto-review/index.mjs',jev:'plugins/jev/index.mjs','session-metrics':'plugins/session-metrics/index.mjs',openrouter:'plugins/openrouter/index.mjs',grok:'plugins/grok/index.mjs','tui-tools':'plugins/tui-tools/index.mjs','triggers':'plugins/triggers/index.mjs','command-goal':'vendor/command-goal/index.js'})) exports['./'+key] = './'+file;
+for (const [key, file] of Object.entries({subagent:'vendor/subagent/index.js','subagent-core':'vendor/subagent-core/index.js','subagent-driver':'vendor/subagent-driver/index.js','subagent-spawn':'vendor/subagent-spawn/index.js','subagent-fork':'vendor/subagent-fork/index.js',bootstrap:'bootstrap.mjs',tui:'vendor/tui/lib/index.mjs',startup:'vendor/tui/lib/startup.mjs','session-query':'vendor/tui/lib/session-query.mjs','invariant':'vendor/tui/lib/invariant.mjs',deepseek:'vendor/deepseek/index.js',bash:'vendor/bash/index.js',persistent:'vendor/persistent/index.js',terminal:'vendor/terminal/index.js',compaction:'plugins/compaction/engine.mjs',policy:'plugins/dscode/index.mjs','code-review':'plugins/code-review/index.mjs','auto-review':'plugins/auto-review/index.mjs',jev:'plugins/jev/index.mjs','session-metrics':'plugins/session-metrics/index.mjs',openrouter:'plugins/openrouter/index.mjs',grok:'plugins/grok/index.mjs','tui-tools':'plugins/tui-tools/index.mjs','triggers':'plugins/triggers/index.mjs','computer-use':'plugins/computer-use/index.mjs','command-goal':'vendor/command-goal/index.js'})) exports['./'+key] = './'+file;
 const shared = { version, type:'module', license:'MIT', author:'Todd Zheng', engines:original.engines, publishConfig:{access:'public'}, repository: process.env.DSCODE_REPOSITORY ? {type:'git',url:process.env.DSCODE_REPOSITORY} : original.repository };
-write(bundle, 'package.json', { ...shared, name, description:'DSCODE coding harness: minimal persistent shell, Ultra subagents, auto review, Chrome, computer use and session telemetry.', files:['bootstrap.mjs','cordis.patch.yml','plugins','presets','bin','vendor','THIRD_PARTY_NOTICES.md'], exports, dependencies, dsh:{bundle:{patch:'./cordis.patch.yml'},hub:{schemaVersion:1,displayName:'DSCODE',summary:'A complete DeepSeek coding agent with persistent shell, Ultra collaboration and automatic permission review.',description:'macOS coding TUI with Chrome MCP, Computer Use, skills, compaction, goals, hooks and session telemetry. Requires the DSCODE profile and its pinned DSH runtime.',categories:['community'],keywords:['coding','tui','deepseek-harness'],compatibility:{dsh:dependencies['@deepseek-ai/dsh'],node:original.engines.node,platforms:['darwin'],surfaces:['headless'],hmr:'restart'},entryIds:['dscode-bootstrap'],before:[],after:[],channel:'stable'}} });
+write(bundle, 'package.json', { ...shared, name, description:'DSCODE coding harness: minimal persistent shell, Ultra subagents, auto review, Chrome, computer use and session telemetry.', files:['bootstrap.mjs','cordis.patch.yml','plugins','bin','vendor','THIRD_PARTY_NOTICES.md'], exports, dependencies, dsh:{bundle:{patch:'./cordis.patch.yml'},hub:{schemaVersion:1,displayName:'DSCODE',summary:'A complete DeepSeek coding agent with persistent shell, Ultra collaboration and automatic permission review.',description:'macOS coding TUI with Chrome MCP, Computer Use, skills, compaction, goals, hooks and session telemetry. Requires the DSCODE profile and its pinned DSH runtime.',categories:['community'],keywords:['coding','tui','deepseek-harness'],compatibility:{dsh:dependencies['@deepseek-ai/dsh'],node:original.engines.node,platforms:['darwin'],surfaces:['headless'],hmr:'restart'},entryIds:['dscode-bootstrap'],before:[],after:[],channel:'stable'}} });
 write(bundle, 'THIRD_PARTY_NOTICES.md', notices.join('\n'));
 write(bundle, 'README.md', '# DSCODE bundle\n\nInstall through the DSCODE Hub preset, or use `npm install -g @toddzheng024/dscode` then `dscode`.\n\nRequires DSH ' + dependencies['@deepseek-ai/dsh'] + ', macOS 14+, Node 22.19+ or 24+, and Chrome. Includes modified upstream modules; see THIRD_PARTY_NOTICES.md. No install-time patches or scripts.\n');
 const launcher = join(out, 'launcher');

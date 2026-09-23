@@ -123,7 +123,7 @@ export async function probeDscode(ctx) {
   assert.equal(escalations, 1, JSON.stringify(agent.session.snapshotEvents().filter(e => e.type === 'tool/result')));
   assert(!existsSync(join(cwd, 'MUST_NOT_EXIST')));
   dispose();
-  ctx.permissionPresets.apply(agent.session, 'auto');
+  ctx.permissionPresets.apply(agent.session, 'auto-review');
   nextTool = { name: 'shell_retry', args: { command: 'touch MUST_NOT_EXIST_AUTO', workdir: 'nested', description: 'Verify automatic review binds workdir', sandbox_permissions: 'danger-full-access', justification: 'Deterministic automatic review fixture' } };
   agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Exercise automatic review on the retry fixture.' }], source: { kind: 'user' } }));
   await agent.whenIdle();

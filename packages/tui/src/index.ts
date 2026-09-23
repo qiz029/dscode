@@ -22,7 +22,7 @@ import type { Agent, AgentHandle, AgentStatus, Inbox, ModelSelection, ModelSelec
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, MessageId, type ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { JobSnapshot } from '@deepseek-ai/dsh-jobs'
+import type { JobView } from '@deepseek-ai/dsh-jobs'
 import { SessionId, SessionLogOffset, type Session, type SessionEvent, type SessionHeader, type UserMessage } from '@deepseek-ai/dsh-session'
 import { deriveTurnTokenUsage } from '@deepseek-ai/dsh-token-meter/client'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
@@ -178,7 +178,8 @@ function listJobs(ctx: Context, caller: Agent | undefined): readonly JobRow[] {
   const jobs = ctx.get('jobs')
   if (jobs === undefined) return []
   try {
-    return jobs.list(caller).map((job: JobSnapshot) => ({
+    // DSH 0.1.7 fences jobs by the owning session id rather than the calling Agent.
+    return jobs.list(caller?.session.id).map((job: JobView) => ({
       id: job.id,
       kind: job.kind,
       label: job.label,

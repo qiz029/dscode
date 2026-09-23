@@ -132,7 +132,8 @@ test('native tool pairs survive boundary selection and pruner runs before summar
     assert(!events.some(event => event.type === 'compaction/summary'));
     const messages = visibleMessages(runtime.session);
     const calls = messages.flatMap(message => message.content.filter(block => block.type === 'tool-call'));
-    const results = messages.flatMap(message => message.content.filter(block => block.type === 'tool-result'));
+    // DSH 0.1.7 carries the answered call id on the tool-result message, not in a block.
+    const results = messages.filter(message => message.role === 'tool');
     assert.deepEqual(calls.map(call => call.id), results.map(result => result.toolCallId));
     assert(runtime.measure().totalTokens < 4096);
   } finally { await runtime.close(); }
@@ -178,13 +179,19 @@ test('missing credentials and unsafe endpoints fail before creating live-run art
 test('official DeepSeek SSE adapter records usage and sends no gold or credentials into artifacts', async t => {
   const oldFetch = globalThis.fetch, requests = [];
   t.after(() => { globalThis.fetch = oldFetch; });
+  // DSH 0.1.7 speaks the DeepSeek Messages API: Messages events, and cache accounting
+  // reported as `cache_read_input_tokens` beside the prompt's own `input_tokens`.
   globalThis.fetch = async (_url, init) => {
     requests.push(JSON.parse(init.body));
-    const chunks = [
-      { id: 'mock', choices: [{ index: 0, delta: { content: '{"answers":{"next":"run tests"}}' }, finish_reason: null }] },
-      { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 300, completion_tokens: 20, prompt_cache_hit_tokens: 100, prompt_cache_miss_tokens: 200 } },
+    const events = [
+      { type: 'message_start', message: { usage: { input_tokens: 200, output_tokens: 0, cache_read_input_tokens: 100 } } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '{"answers":{"next":"run tests"}}' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 20 } },
+      { type: 'message_stop' },
     ];
-    return new Response(chunks.map(chunk => 'data: ' + JSON.stringify(chunk) + '\n\n').join('') + 'data: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
+    return new Response(events.map(event => 'data: ' + JSON.stringify(event) + '\n\n').join(''), { headers: { 'content-type': 'text/event-stream' } });
   };
   const result = await runEvaluation({ dataset: tiny(), policies: [policies[0]], backend: 'deepseek', apiKey: 'test-only-secret', output: join(directory(t), 'wire') });
   assert.equal(result.rows[0].grade.passed, 1); assert.equal(requests.length, 1);

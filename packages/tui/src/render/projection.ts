@@ -7,7 +7,7 @@
  * @module @deepseek-ai/dsh-tui/render/projection
  */
 
-import { assistantStreamFirstTokenTime, boundContextSummary, isTokenDelta, type ContentBlock, type FileBlock, type ImageBlock, type MessageId, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { assistantStreamFirstTokenTime, boundContextSummary, isTokenDelta, type ContentBlock, type FileBlock, type ImageBlock, type MessageId, type MessageSource, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { FileAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
@@ -531,10 +531,30 @@ export function nextEveryTarget(previousTarget: number, acceptedAt: number, ever
   return previousTarget + missed * interval
 }
 
-/** Plugin snapshot sources folded into token stats but never rendered as rows. */
-const HIDDEN_SNAPSHOT_PLUGINS = new Set(['time-context', 'tmux-context', 'dscode-time-marks'])
-/** Plugin prompt sources rendered as full user rows (they ARE the conversation). */
-const REMINDER_PLUGINS = new Set(['schedule'])
+/** Snapshot producers folded into token stats but never rendered as rows. */
+const HIDDEN_SNAPSHOT_KINDS = new Set(['time-context', 'tmux-context', 'dscode-time-marks'])
+/** Producers whose prompts are rendered as full user rows (they ARE the conversation). */
+const REMINDER_KINDS = new Set(['schedule'])
+
+/**
+ * The producing subsystem behind one message source.
+ *
+ * DSH 0.1.7 retired the shared `plugin` kind: every producer declares its own `kind`.
+ * A resumed transcript also carries the two older shapes — the raw
+ * `{ kind: 'plugin', plugin: '<producer>' }` of a session written before the upgrade and
+ * the `plugin:<producer>` kind the v3-to-v4 session migration writes for a producer it
+ * does not know — so every rule below asks this function instead of the raw kind.
+ */
+function producerKind(source: MessageSource): string {
+  const legacy = source as MessageSource | { kind: 'plugin'; plugin?: string }
+  if (legacy.kind === 'plugin') return legacy.plugin ?? ''
+  return source.kind.startsWith('plugin:') ? source.kind.slice('plugin:'.length) : source.kind
+}
+
+/** One-line account a `notice`-form context committed, when it carries one. */
+function noticeSummary(source: MessageSource): string | undefined {
+  return 'form' in source && source.form === 'notice' ? source.summary : undefined
+}
 
 /** The complete TUI transcript view for one session. */
 export interface TranscriptView {
@@ -864,7 +884,7 @@ export function projectEvent(view: TranscriptView, event: SessionEvent): Transcr
       // Snapshot injections (time/tmux context) still spend model context but
       // render nothing; the schedule reminder is a real prompt and renders in
       // full — the model acts on it, so the transcript must show it.
-      if (message.source.kind === 'plugin' && HIDDEN_SNAPSHOT_PLUGINS.has(message.source.plugin)) {
+      if (HIDDEN_SNAPSHOT_KINDS.has(producerKind(message.source))) {
         return {
           ...view,
           pending,
@@ -879,7 +899,7 @@ export function projectEvent(view: TranscriptView, event: SessionEvent): Transcr
           },
         }
       }
-      if (message.source.kind === 'plugin' && REMINDER_PLUGINS.has(message.source.plugin)) {
+      if (REMINDER_KINDS.has(producerKind(message.source))) {
         return {
           ...view,
           pending,
@@ -894,11 +914,7 @@ export function projectEvent(view: TranscriptView, event: SessionEvent): Transcr
           },
         }
       }
-      const notice = message.source.kind === 'plugin' && message.source.form === 'notice'
-        ? message.source.summary
-        : message.source.kind === 'plugin'
-          ? message.source.plugin
-          : message.source.kind
+      const notice = noticeSummary(message.source) ?? producerKind(message.source)
       const summary = boundContextSummary(notice)
       return {
         ...view,
@@ -1127,17 +1143,19 @@ export function projectEvent(view: TranscriptView, event: SessionEvent): Transcr
       }
     }
     case 'tool/result': {
-      const block = event.data.message.content[0]
-      const started = view.anchors.toolStart.get(block.toolCallId)
-      view.anchors.toolStart.delete(block.toolCallId)
+      // DSH 0.1.7 moved the answered call id, the error flag and the result text from
+      // the first content block onto the tool-result message itself.
+      const result = event.data.message
+      const started = view.anchors.toolStart.get(result.toolCallId)
+      view.anchors.toolStart.delete(result.toolCallId)
       // Deregister the call from its turn's registry so `turn/end` does not
       // sweep a start that already paired with a result.
       const turnTools = view.anchors.turnTools.get(event.data.turn)
       if (turnTools !== undefined) {
-        turnTools.delete(block.toolCallId)
+        turnTools.delete(result.toolCallId)
         if (turnTools.size === 0) view.anchors.turnTools.delete(event.data.turn)
       }
-      const rawText = textOf(block.content)
+      const rawText = textOf(result.content)
       const summary = boundContextSummary(rawText)
       // The verbose expansion self-serves from the persisted presentation
       // metadata (diffs, read windows, web sources) with the bounded raw text
@@ -1150,8 +1168,8 @@ export function projectEvent(view: TranscriptView, event: SessionEvent): Transcr
         view.anchors.turnFiles.set(event.data.turn, set)
       }
       const entries = view.entries.map((entry) => {
-        if (entry.kind !== 'tool' || entry.callId !== block.toolCallId) return entry
-        return { ...entry, state: block.isError === true ? 'error' as const : 'done' as const, summary, detail }
+        if (entry.kind !== 'tool' || entry.callId !== result.toolCallId) return entry
+        return { ...entry, state: result.isError === true ? 'error' as const : 'done' as const, summary, detail }
       })
       return {
         ...view,
@@ -1746,7 +1764,7 @@ export function replayProjectEvent(acc: ReplayAccumulator, event: SessionEvent):
       const origin = acc.claimOrigin.get(message.id)
       const delivery = origin === undefined ? {} : { delivery: origin === 'next-turn' ? 'queued' as const : 'steered' as const }
       acc.claimOrigin.delete(message.id)
-      if (message.source.kind === 'user' || (message.source.kind === 'plugin' && REMINDER_PLUGINS.has(message.source.plugin))) {
+      if (message.source.kind === 'user' || REMINDER_KINDS.has(producerKind(message.source))) {
         appendReplayEntry(acc, { kind: 'user', text, notice: false, ...delivery, ...(images.length === 0 ? {} : { images }), ...(files.length === 0 ? {} : { files }) })
         acc.stats = {
           ...acc.stats,
@@ -1757,7 +1775,7 @@ export function replayProjectEvent(acc: ReplayAccumulator, event: SessionEvent):
         }
         return true
       }
-      if (message.source.kind === 'plugin' && HIDDEN_SNAPSHOT_PLUGINS.has(message.source.plugin)) {
+      if (HIDDEN_SNAPSHOT_KINDS.has(producerKind(message.source))) {
         acc.stats = {
           ...acc.stats,
           contextSegments: {
@@ -1767,11 +1785,7 @@ export function replayProjectEvent(acc: ReplayAccumulator, event: SessionEvent):
         }
         return true
       }
-      const notice = message.source.kind === 'plugin' && message.source.form === 'notice'
-        ? message.source.summary
-        : message.source.kind === 'plugin'
-          ? message.source.plugin
-          : message.source.kind
+      const notice = noticeSummary(message.source) ?? producerKind(message.source)
       const summary = boundContextSummary(notice)
       appendReplayEntry(acc, { kind: 'user', text: summary, notice: true })
       acc.stats = {
@@ -1948,15 +1962,15 @@ export function replayProjectEvent(acc: ReplayAccumulator, event: SessionEvent):
       return true
     }
     case 'tool/result': {
-      const block = event.data.message.content[0]
-      const started = acc.toolStart.get(block.toolCallId)
-      acc.toolStart.delete(block.toolCallId)
+      const result = event.data.message
+      const started = acc.toolStart.get(result.toolCallId)
+      acc.toolStart.delete(result.toolCallId)
       const turnTools = acc.turnTools.get(event.data.turn)
       if (turnTools !== undefined) {
-        turnTools.delete(block.toolCallId)
+        turnTools.delete(result.toolCallId)
         if (turnTools.size === 0) acc.turnTools.delete(event.data.turn)
       }
-      const rawText = textOf(block.content)
+      const rawText = textOf(result.content)
       const summary = boundContextSummary(rawText)
       const detail = toolResultDetail(event.data.meta, rawText)
       if (detail?.kind === 'diff') {
@@ -1966,13 +1980,13 @@ export function replayProjectEvent(acc: ReplayAccumulator, event: SessionEvent):
       }
       const update = (entry: ToolEntry): ToolEntry => ({
         ...entry,
-        state: block.isError === true ? 'error' as const : 'done' as const,
+        state: result.isError === true ? 'error' as const : 'done' as const,
         summary,
         detail,
       })
       // Every matching row updates (duplicate callIds included); an id with no
       // registered index is a provable no-op — no full-array fallback scan.
-      updateReplayById<ToolEntry>(acc, acc.toolIndex, block.toolCallId, entry => entry.callId === block.toolCallId, update)
+      updateReplayById<ToolEntry>(acc, acc.toolIndex, result.toolCallId, entry => entry.callId === result.toolCallId, update)
       acc.stats = {
         ...acc.stats,
         toolMs: acc.stats.toolMs + (started === undefined ? 0 : Math.max(0, event.time - started)),
@@ -2426,10 +2440,11 @@ function dscodeCloseTurn(entries: readonly TranscriptEntry[]): readonly Transcri
 }
 
 /**
- * dscode: session-bridge relays are plugin messages that must render as visible
- * user turns (the bridge delivers a peer session's message), so the replay
- * branch admits them alongside direct human prompts.
+ * dscode: session-bridge relays are injected messages that must render as visible
+ * user turns (the bridge delivers a peer session's message), so the replay branch
+ * admits them alongside direct human prompts.
  */
-function dscodeVisibleRelay(message: { source: { kind: string; plugin?: string; form?: string } }): boolean {
-  return message.source.kind === 'plugin' && message.source.plugin === 'dscode-session-bridge' && message.source.form === 'relay'
+function dscodeVisibleRelay(message: { source: MessageSource }): boolean {
+  return producerKind(message.source) === 'dscode-session-bridge'
+    && 'form' in message.source && message.source.form === 'relay'
 }

@@ -12,7 +12,7 @@ export function mutationProblem(ctx, agent) {
   const plan = ctx.get('planMode')?.get(agent);
   if (plan?.active || plan?.pending) return 'Schedule management is unavailable in plan mode';
   const permission = ctx.permissionPresets.current(agent.session);
-  if (!['auto', 'ask', 'workspace-write', 'danger-full-access'].includes(permission)) return 'Schedule management requires a writable permission preset';
+  if (!['auto-review', 'auto', 'ask', 'workspace-write', 'danger-full-access'].includes(permission)) return 'Schedule management requires a writable permission preset';
 }
 
 export function registerTriggerTools(ctx, { home, ...deps }) {

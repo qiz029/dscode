@@ -131,7 +131,7 @@ export async function analyzeDoctorEvidence(ctx, evidence, route, signal, { mode
     const reasoningEffort = await effortFor(ctx.llm, route, 'low', deadline);
     await chargeTo(sessionId, 'doctor', async () => {
       for await (const chunk of ctx.llm.stream({ provider: route.provider, model: route.model, ...(reasoningEffort ? { reasoningEffort } : {}), maxTokens: 4096, system: SYSTEM,
-        messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(evidence) }], source: { kind: 'plugin', plugin: 'dscode-doctor' } })], signal: deadline })) {
+        messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(evidence) }], source: { kind: 'dscode-doctor' } })], signal: deadline })) {
         deadline.throwIfAborted(); assembler.push(chunk);
         if (chunk.type === 'finish') finished = true;
       }

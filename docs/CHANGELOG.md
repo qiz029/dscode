@@ -8,6 +8,18 @@ Per-release notes live in [`docs/releases/`](releases/); the entries below summa
 
 ## [Unreleased]
 
+## [0.7.28] - 2026-09-22
+
+### Changed
+
+- The whole `@deepseek-ai/dsh*` runtime moves from `0.1.5-rc.2` to `0.1.7-alpha.2` (with cordis `4.0.4`, cordis-plugin-loader `1.0.5` and schemastery `3.18.4`), bringing `run_code` sandbox escalation, durable image offload, the MCP client on `@modelcontextprotocol/client` 2.0.0, subagent permission inheritance and compaction retry recovery. Five retired packages are replaced by their successors: the preset registry, the PTC runtime and workflow engine, and the configuration editor. `0.1.7-alpha.2` is upstream's alpha channel, not a release candidate.
+- **The reviewed permission preset is renamed `auto` → `auto-review`**, because DSH 0.1.7 reserves `auto` for its own Auto integration and refuses a configured preset of that name. The bundle is unchanged (`workspace-write` plus `approval: ask` with model review). Use `/permission auto-review`, `dscode exec --permission auto-review` and `permission: auto-review`; trigger definitions written earlier still accept `auto`, and a session recorded under `auto` keeps its knobs and shows as `custom` until switched.
+- The DSCODE agent preset is now one `@deepseek-ai/dsh-agent-preset` declaration row inside the profile patch instead of a provisioned `.runtime/agent-presets/dscode` directory: the 0.1.7 registry reads rows and no longer discovers presets from directories. The npm bundle carries the same row in its composition and ships no `presets/` directory.
+- DSCODE's injected messages carry per-producer source kinds (`dscode-session-bridge`, `dscode-time-marks`, `dscode-shell-exec`, …) because session format v4 refuses the retired shared `plugin` kind. One helper resolves the current kind plus both shapes older history holds, so resumed sessions render their hidden snapshots, reminder rows and relays as before.
+- The OpenRouter and Grok routes read volatile configuration and address their Settings form by profile entry id; Computer Use is mounted through DSCODE's own row, which restores the settings method its pinned 0.3.2 release still calls without patching the installed package.
+- Computer Use keeps live activation and its native helper, but a resumed session regains its execution tools only once the `computer-use` skill is loaded again: the pinned `@anionex/dsh-computer-use` 0.3.2 reads the pre-0.1.7 tool-result shape when restoring them from the durable log.
+- Ultra and the Flash policy now ride the DeepSeek Messages API: Ultra is advertised in the effort catalog and normalised to the provider's `max`, and both policies are appended to the request's `system` field. Image offload follows upstream's durable contract, where a route reports the over-budget count and the compaction executor records the choice.
+
 ## [0.7.27] - 2026-09-22
 
 ### Fixed
