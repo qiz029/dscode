@@ -27,6 +27,34 @@ test('source and package compositions share plugins and settings after path reso
   assert.deepEqual(source.find(e => e.id === 'agent-preset-registry').config, { default: 'dscode' });
 });
 
+test('every row DSCODE patches by id exists in the bundles it composes', () => {
+  // A Loader patch addresses a row by id, and an id that no longer exists patches nothing
+  // at all — silently. That is how an upstream rename (`workflow-worker-thread` became
+  // `workflow-ptc` in DSH 0.1.7) can put a row DSCODE deliberately disables back in
+  // service. Every target is checked against the compositions this profile actually
+  // carries, so the next rename fails here instead of in a running session.
+  const declared = (rows, out = new Set()) => {
+    for (const row of rows ?? []) {
+      if (row === null || typeof row !== 'object') continue;
+      if (row.insert) declared(row.insert, out);
+      if (Array.isArray(row.config)) declared(row.config, out);
+      if (Array.isArray(row.config?.plugins)) declared(row.config.plugins, out);
+      if (row.id !== undefined && row.name !== undefined) out.add(row.id);
+    }
+    return out;
+  };
+  const bundle = name => decode(readFileSync(new URL(`../node_modules/${name}/cordis.patch.yml`, import.meta.url), 'utf8'));
+  const upstream = declared([...bundle('@deepseek-ai/dsh-base'), ...bundle('@anionex/dsh-computer-use')]);
+  const own = declared(decode(readFileSync(new URL('../packages/tui/cordis.patch.yml', import.meta.url), 'utf8')));
+  for (const file of ['../packages/tui/cordis.patch.yml', '../config/cordis.patch.yml', '../config/auto-review.patch.yml']) {
+    const rows = decode(readFileSync(new URL(file, import.meta.url), 'utf8'));
+    const targets = rows.filter(row => row !== null && typeof row === 'object' && !row.insert && row.id !== undefined).map(row => row.id);
+    for (const id of targets) {
+      assert(upstream.has(id) || own.has(id), `${file} patches "${id}", which no bundle this profile composes declares`);
+    }
+  }
+});
+
 test('no MCP server mounts by default, on the host plane or in the preset', () => {
   const host = decode(readFileSync(new URL('../config/cordis.patch.yml', import.meta.url), 'utf8'));
   const preset = decode(readFileSync(new URL('../presets/dscode/agent.cordis.yml', import.meta.url), 'utf8'));

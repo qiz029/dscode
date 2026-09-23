@@ -78,7 +78,11 @@
   disabled: true
 - id: tool-subagent-fork
   disabled: true
-- id: workflow-worker-thread
+# The workflow engine is preset-owned: DSCODE's delegation group mounts it inside an
+# entry-local `workflowEngine` realm, so the host row stays off. DSH 0.1.7 renamed this
+# row from `workflow-worker-thread`, and a patch addresses rows by id — an id that no
+# longer exists silently patches nothing, which is how the host engine came back.
+- id: workflow-ptc
   disabled: true
 - id: tool-workflow
   disabled: true
@@ -95,10 +99,18 @@
 # preset became a single-tool composition), so this patch no longer lists it.
 
 - insert:
-    # Code Mode is a core execution capability, not a Web component. DSH 0.1.7
-    # renamed the worker-thread runtime to the Node PTC runtime.
-    - id: ptc-runtime
-      name: '@deepseek-ai/dsh-ptc-runtime-node'
+    # The account login's browser callback: `deepseekAccount` registers /oauth/callback on
+    # `ctx.webServer` for the lifetime of one attempt, so the terminal needs an HTTP
+    # transport of its own. Loopback only and an OS-assigned port, and no route exists
+    # until a login runs — the provider's route is the only one this profile registers,
+    # because the Web shell's frontend and API rows stay in the web-app bundle.
+    # `DSCODE_ACCOUNT_LOGIN=0` removes the listener, and `/account` then says why.
+    - id: webserver
+      name: '@deepseek-ai/dsh-host-webserver'
+      disabled: !!js process.env.DSCODE_ACCOUNT_LOGIN === '0'
+      config:
+        host: 127.0.0.1
+        port: 0
 
     # Cross-session @mentions: bounded read-only snapshots of other sessions
     # as sourced model context. Opt-in upstream; the TUI's completion menu

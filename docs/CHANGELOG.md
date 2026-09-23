@@ -8,6 +8,17 @@ Per-release notes live in [`docs/releases/`](releases/); the entries below summa
 
 ## [Unreleased]
 
+## [0.7.29] - 2026-09-23
+
+### Added
+
+- `/account` signs the DeepSeek route in with a DeepSeek account through the system browser, and reads its identity, recharge and bonus balances, platform links and sign-out — the terminal equivalent of the account page DSH 0.1.7 added for its Web client. A signed-in machine needs no `DEEPSEEK_API_KEY`; a stored key remains the fallback and a non-default base URL deliberately never receives the account token. The TUI profile composes a loopback `127.0.0.1` webserver on an OS-assigned port for the provider's `/oauth/callback`, which exists only while an attempt runs; `DSCODE_ACCOUNT_LOGIN=0` removes the listener and `/account login` then says so. See [Account login](account-login.md).
+
+### Fixed
+
+- The host-plane workflow engine is disabled again. DSH 0.1.7 renamed that row from `workflow-worker-thread` to `workflow-ptc`, and a Loader patch addresses rows by id, so DSCODE's disable silently stopped landing and `workflowEngine` was published process-wide instead of staying inside the preset's entry-local realm. A new composition test checks every id DSCODE patches against the bundles it composes, so the next rename fails in the suite rather than in a session.
+- DSCODE no longer inserts its own `ptc-runtime` row: DSH 0.1.7 ships the Node PTC runtime in the base composition, and the same-id insert only re-patched that row.
+
 ## [0.7.28] - 2026-09-22
 
 ### Changed

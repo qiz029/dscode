@@ -55,6 +55,10 @@ The [90-second demo script](docs/demo.md) has the shot list, the exact commands,
 
 ## 🆕 What's new
 
+**0.7.29** — `/account` signs the DeepSeek route in with a DeepSeek account through the system browser: the grant is stored on this machine, a signed-in machine needs no `DEEPSEEK_API_KEY`, and the command also reads the account identity, recharge and bonus balances, and signs out. The profile composes a loopback callback server for it, which carries a route only while a sign-in runs; `DSCODE_ACCOUNT_LOGIN=0` removes it. Two composition fixes came with it: the host-plane workflow engine is disabled again after an upstream rename silently voided the patch that disabled it, and the redundant PTC runtime row is gone now that the base composition ships one.
+
+**0.7.28** — The DSH runtime moves from `0.1.5-rc.2` to `0.1.7-alpha.2`, bringing sandbox escalation with justification on the retry shell, durable image offload, MCP resource tools, subagent permission inheritance and compaction retry recovery. **The reviewed permission preset is renamed `auto` → `auto-review`**, because DSH now reserves `auto` for its own integration: use `/permission auto-review`, `dscode exec --permission auto-review` and `permission: auto-review`. Computer Use keeps live activation and its native helper, but a resumed session regains its execution tools only once the `computer-use` skill is loaded again.
+
 **0.7.27** — Fixes fresh Hub installation failing after Harness composition generates its empty `cordis.yml`. The launcher carries a narrowly patched Hub CLI, and release verification now checks the native locked installer, launcher first start and Hub doctor.
 
 **0.7.26** — Triggers now support fresh or persistent sessions, durable cron and delay jobs, and supervised script sources. Manage them from `/trigger`, the CLI or agent tools with the same workspace and approval boundaries. The TUI stays in DSCODE mode and model switches reset unsupported effort values to the target default. TPS uses API-reported tokens with request-count exponential smoothing; runtime metrics and skills sit on the left, while cost, DeepSeek balance, peak/off-peak and cache align right or move together onto a third row. OpenRouter content-policy rejections now explain why the turn stopped.
@@ -65,7 +69,7 @@ The [90-second demo script](docs/demo.md) has the shot list, the exact commands,
 
 **0.7.23** — A session now stays in the folder it was created in: resuming it from anywhere else runs it in that folder and prints one warning naming both, while `--cwd` still decides where a new session binds. Cross-session traffic became visible — the activity line reads `⇄ sending to` / `⇄ waiting for`, a notice line records every settled send and inbound relay in its own violet, and `/tasks` lists the messages. The footer shows the last completed turn's cost beside the session total and `/usage` prices every turn. Streaming no longer re-wraps the whole live region per frame (3.12 → 0.001 ms on 16 long entries), ancestor skill discovery is on by default, and the Ink repaint ledger stops leaving a blank band above the composer.
 
-Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.27 notes](docs/releases/0.7.27.md) have the long version.
+Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.29 notes](docs/releases/0.7.29.md) have the long version.
 
 ## 🚀 Quick start
 
@@ -124,7 +128,7 @@ npm start -- --cwd /path/to/project
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh
-curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.27
+curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.29
 ```
 
 **From a tar package** — download the prebuilt `dscode-<version>-darwin-arm64.tar.gz` (Apple silicon) or `dscode-<version>-darwin-x64.tar.gz` (Intel) from [GitHub Releases](https://github.com/qiz029/dscode/releases/latest), then:
@@ -140,14 +144,14 @@ The command lands in `~/.local/bin/dscode` by default—make sure that directory
 **If the npm name lookup returns 404**, install the same version straight from the official registry tarball:
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.27.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.29.tgz
 ```
 
 **Upgrade** — `dscode update [exact-version]` updates the whole installation in one step, and requires no running DSCODE sessions. On the npm/Hub install it replaces the launcher binary with npm and then upgrades the installed profile to the same version. On a tar install it downloads the release tarball (the prebuilt one for this platform when the release has it, so the update needs no npm either), verifies it against the release's sha256 digest, swaps the installation directory in place and migrates `.runtime`, `.env` and local `config/`; the previous installation is kept as a sibling backup directory. A source checkout updates itself the same way: `git pull --ff-only` on the branch it tracks, then `npm ci --ignore-scripts` and `npm run setup`; uncommitted changes in tracked files refuse before anything runs, so a failed update never half-applies.
 
 ```sh
 dscode update                  # latest release
-dscode update 0.7.27           # an exact version
+dscode update 0.7.29           # an exact version
 ```
 
 `dscode history` lists retained versions and `dscode rollback` returns to the previous preset revision (npm/Hub install). Tar installs older than the first release with `dscode update` upgrade by installing the new tarball into a fresh directory and migrating the state once. Source, tar and npm/Hub installs use different data directories, and sessions and credentials are not migrated between them. See the [tar distribution notes](docs/distribution.md) and the [npm + Hub guide](docs/hub-distribution.md).
@@ -159,6 +163,7 @@ dscode update 0.7.27           # an exact version
 | Command | What it does |
 |---|---|
 | `/login` | Paste the DeepSeek API key into a hidden input; saved under `~/.dscode/` and loaded at startup |
+| `/account` | Sign in to a DeepSeek account in the browser instead of pasting a key; also its identity, balance and sign-out |
 | `/model`, `/effort` | Choose a model (type to search) or configure other credentials; models with four levels use a horizontal effort bar |
 | `/new` | Start a fresh session; the TUI is fixed to the `dscode` preset, including resumed conversations |
 | `/status`, `/doctor` | Session state and runtime diagnostics |
@@ -226,6 +231,7 @@ The bundle generates its modified modules at build time and never rewrites third
 | [Session cards](docs/session-cards.md) | Project, workspace and topic fields, and how they are derived |
 | [Memory](docs/memory.md) | Global cross-session memory, background usage and switches |
 | [Persistent shell and Ultra](docs/dscode-ultra.md) | Presets, reasoning effort, per-child effort and worktree isolation |
+| [Account login](docs/account-login.md) | Signing the DeepSeek route in with a browser account instead of an API key: the flow, the loopback callback, the limits |
 | [Auto review](docs/auto-review.md) | Scope, cost and limits of independent permission review |
 | [Email](docs/email.md) | IMAP setup, the inbox panel, `send_email` and aliases |
 | [Skills and workspace instructions](docs/skills.md) | Discovery scopes, the ancestor mode and instruction files |

@@ -55,6 +55,10 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
+**0.7.29** — `/account` 用系统浏览器以 DeepSeek 账号给 DeepSeek 路由授权：凭据存在本机，已登录的机器不再需要 `DEEPSEEK_API_KEY`；该命令同时可查看账号身份、充值余额与赠额，并支持退出登录。profile 为此组合了一个回环回调服务，且只在登录进行期间存在路由，`DSCODE_ACCOUNT_LOGIN=0` 可移除它。随之修复两处组合：上游改名让禁用补丁静默失效后，host 层的 workflow 引擎重新被关闭；base 已自带 PTC 运行时，冗余的那行也删掉了。
+
+**0.7.28** — DSH 运行时从 `0.1.5-rc.2` 升到 `0.1.7-alpha.2`，带来重试 shell 上带理由的沙箱提权、持久化图片 offload、MCP 资源工具、子代理权限继承与压缩重试恢复。**复核权限预设由 `auto` 改名为 `auto-review`**，因为 DSH 已把 `auto` 保留给自己的集成：请使用 `/permission auto-review`、`dscode exec --permission auto-review` 与 `permission: auto-review`。Computer Use 的现场激活与原生 helper 不受影响，但恢复会话后需重新加载 `computer-use` skill 才会恢复其执行工具。
+
 **0.7.27** — 修复首次 Hub 安装因 Harness 生成空 `cordis.yml` 而失败的问题。Launcher 携带针对性修复的 Hub CLI；发布验证新增原生锁文件安装、launcher 首次启动及 Hub doctor 检查。
 
 **0.7.26** — Trigger 支持每次新建或复用 session、持久化 cron 和 delay job，以及受监管的脚本事件源；可通过 `/trigger`、CLI 或 agent 工具管理，共用工作区和审批边界。TUI 固定为 DSCODE 模式，切换模型时不支持的 effort 会回到目标默认值。TPS 使用接口返回的 token 数，按 request 次数做指数平滑；运行指标和 skills 在左侧，费用、DeepSeek 余额、峰谷和缓存率靠右，窄屏时整组移到第三行。OpenRouter 内容策略拒绝也会明确说明回合停止的原因。
@@ -65,7 +69,7 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 **0.7.23** — session 现在固定锁在它创建时的目录：从别处恢复会在该目录中运行并打印一行同时点名两个目录的警告，`--cwd` 只决定新 session 绑定到哪里。跨 session 通信变得可见——活动行显示 `⇄ sending to` / `⇄ waiting for`，每次发出的消息和收到的中继都会以专属紫色留一行记录，`/tasks` 可列出这些消息。footer 在会话总额旁显示上一轮已完成轮次的花费，`/usage` 为每一轮定价。流式期间不再每帧重排整个活动区（16 条长文本下 3.12 → 0.001 ms），祖先 skill 发现默认开启，Ink 重绘账本不再在输入框上方留下空白带。
 
-每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.27 更新说明](docs/releases/0.7.27.md)。
+每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.29 更新说明](docs/releases/0.7.29.md)。
 
 ## 🚀 快速开始
 
@@ -126,7 +130,7 @@ npm start -- --cwd /path/to/project
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh
-curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.27
+curl -fsSL https://raw.githubusercontent.com/qiz029/dscode/main/install.sh | sh -s -- 0.7.29
 ```
 
 **tar 包安装** —— 从 [GitHub Releases](https://github.com/qiz029/dscode/releases/latest) 下载预构建的 `dscode-<version>-darwin-arm64.tar.gz`（Apple 芯片）或 `dscode-<version>-darwin-x64.tar.gz`（Intel），然后执行：
@@ -142,14 +146,14 @@ sh dscode-install/install.sh
 **若 npm 包名查询暂时返回 404**，可直接安装同一版本的官方 registry tarball：
 
 ```sh
-npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.27.tgz
+npm install -g https://registry.npmjs.org/@toddzheng024/dscode/-/dscode-0.7.29.tgz
 ```
 
 **升级** —— `dscode update [精确版本号]` 一步完成整个安装的更新，且要求没有正在运行的 DSCODE 会话。npm/Hub 安装会先用 npm 替换 launcher 本体，再把已安装的 profile 升到同一版本；tar 安装会下载 release tar 包（release 带有当前平台的预构建包时取它，升级同样不需要 npm）、按发布方 sha256 校验、原位换目录并迁移 `.runtime`、`.env` 和本地 `config/`，旧安装保留为同级备份目录。源码检出同样一条命令更新：先对它跟踪的分支执行 `git pull --ff-only`，再跑 `npm ci --ignore-scripts` 和 `npm run setup`；工作区中有未提交的改动时会先拒绝，避免更新只做一半。
 
 ```sh
 dscode update                  # 最新版本
-dscode update 0.7.27           # 指定版本
+dscode update 0.7.29           # 指定版本
 ```
 
 `dscode history` 查看保留的版本记录，`dscode rollback` 回到上个 preset 版本（npm/Hub 安装）。带 `dscode update` 之前的旧 tar 安装，请把新 tar 包装到新目录并手动迁移一次状态。源码、tar 与 npm/Hub 使用不同的数据目录，会话和凭据不会互相迁移。详见 [tar 分发说明](docs/distribution.md) 与 [npm + Hub 分发指南](docs/hub-distribution.md)。
@@ -161,6 +165,7 @@ dscode update 0.7.27           # 指定版本
 | 命令 | 作用 |
 |---|---|
 | `/login` | 在隐藏输入框粘贴 DeepSeek API key，保存到 `~/.dscode/`，启动自动加载 |
+| `/account` | 用浏览器登录 DeepSeek 账号代替粘贴 key，并查看身份、余额与退出登录 |
 | `/model`、`/effort` | 选择模型（直接输入即可搜索）、配置其他凭据；支持四档的模型用横向 bar 调整 effort |
 | `/new` | 新建会话；TUI 固定使用 `dscode` preset，恢复旧会话时也使用该 preset |
 | `/status`、`/doctor` | 会话状态与运行时诊断 |
@@ -227,6 +232,7 @@ Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第�
 | [会话名片](docs/session-cards.md) | 项目、工作区与 topic 字段及其来源 |
 | [记忆](docs/memory.md) | 全局跨 session 记忆、后台用量与开关 |
 | [持久 Shell 与 Ultra](docs/dscode-ultra.md) | preset、推理强度、子 agent effort 与 worktree 隔离 |
+| [账号登录](docs/account-login.md) | 用浏览器账号代替 API key 给 DeepSeek 路由授权：流程、回环回调与限制 |
 | [Auto 审核](docs/auto-review.md) | 独立权限审核的范围、成本与限制 |
 | [邮件](docs/email.md) | IMAP 配置、收件箱面板、`send_email` 与联系人别名 |
 | [Skills 与工作区指令](docs/skills.md) | 发现范围、祖先模式与指令文件 |
