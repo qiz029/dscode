@@ -15,12 +15,18 @@ async function git(cwd, args, signal, timeout = 60000) {
   }
 }
 
-export async function createChildWorktree(parentCwd, signal) {
+/** The parent's Git root, once it can host child worktrees: an absolute, clean repository root. */
+export async function worktreeBase(parentCwd, signal) {
   if (typeof parentCwd !== 'string' || !isAbsolute(parentCwd)) throw new Error('Subagent worktree requires an absolute parent workspace.');
   const root = realpathSync(await git(parentCwd, ['rev-parse', '--show-toplevel'], signal));
   if (root !== realpathSync(parentCwd)) throw new Error('Subagent worktree requires the parent session to start at its Git repository root.');
   const status = await git(root, ['status', '--porcelain=v1', '--untracked-files=all'], signal);
   if (status) throw new Error('Subagent worktree starts at HEAD, but the parent workspace has uncommitted changes. Use the shared workspace for work that needs those changes, or commit/stash them first.');
+  return root;
+}
+
+export async function createChildWorktree(parentCwd, signal) {
+  const root = await worktreeBase(parentCwd, signal);
   const directory = join(root, '.dscode-worktrees');
   if (await git(root, ['ls-files', '--', '.dscode-worktrees'], signal)) throw new Error('The repository tracks .dscode-worktrees; choose a different workspace before delegating.');
   if (lstatSync(directory, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error('Refusing a symlinked .dscode-worktrees directory.');

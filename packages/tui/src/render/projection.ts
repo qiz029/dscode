@@ -532,7 +532,7 @@ export function nextEveryTarget(previousTarget: number, acceptedAt: number, ever
 }
 
 /** Snapshot producers folded into token stats but never rendered as rows. */
-const HIDDEN_SNAPSHOT_KINDS = new Set(['time-context', 'tmux-context', 'dscode-time-marks'])
+const HIDDEN_SNAPSHOT_KINDS = new Set(['time-context', 'tmux-context', 'dscode-time-marks', 'dscode-delegate-board'])
 /** Producers whose prompts are rendered as full user rows (they ARE the conversation). */
 const REMINDER_KINDS = new Set(['schedule'])
 

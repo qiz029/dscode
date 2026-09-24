@@ -55,6 +55,8 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
+**0.7.30** — `/delegate <任务>` 让主 agent 成为协调者：先在看板上按优先级和依赖规划任务，把就绪的部分派给隔离 Git worktree 中的子 agent，逐个验证结果，再按依赖顺序把通过的改动合并并暂存（不提交）。`/delegate-dashboard` 用彩色看板展示待分配、进行中、验证中、已完成四列。子 agent 并发上限改为非 Ultra 5 个、Ultra 20 个；欢迎界面的雪花重新绘制。
+
 **0.7.29** — `/account` 用系统浏览器以 DeepSeek 账号给 DeepSeek 路由授权：凭据存在本机，已登录的机器不再需要 `DEEPSEEK_API_KEY`；该命令同时可查看账号身份、充值余额与赠额，并支持退出登录。profile 为此组合了一个回环回调服务，且只在登录进行期间存在路由，`DSCODE_ACCOUNT_LOGIN=0` 可移除它。随之修复两处组合：上游改名让禁用补丁静默失效后，host 层的 workflow 引擎重新被关闭；base 已自带 PTC 运行时，冗余的那行也删掉了。
 
 **0.7.28** — DSH 运行时从 `0.1.5-rc.2` 升到 `0.1.7-alpha.2`，带来重试 shell 上带理由的沙箱提权、持久化图片 offload、MCP 资源工具、子代理权限继承与压缩重试恢复。**复核权限预设由 `auto` 改名为 `auto-review`**，因为 DSH 已把 `auto` 保留给自己的集成：请使用 `/permission auto-review`、`dscode exec --permission auto-review` 与 `permission: auto-review`。Computer Use 的现场激活与原生 helper 不受影响，但恢复会话后需重新加载 `computer-use` skill 才会恢复其执行工具。
@@ -66,8 +68,6 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 **0.7.25** — 再次运行安装器不再一律拒绝，而是让 tar 安装保持最新：旧版本交给它自己的 `dscode update`（迁移状态，旧目录保留为 `.dscode-backup-<版本>`），相同或更新则只报告、不做改动，不是安装器创建的路径仍然带着它找到的路径拒绝。安装方式新增 Homebrew——`brew tap qiz029/tap && brew trust qiz029/tap && brew install dscode` 装的是同一个 launcher，且该方式下 `dscode update` 只更新 Hub profile，launcher 由 `brew upgrade dscode` 负责。
 
 **0.7.24** — 事件现在可以无人值守地启动 session：触发器定义放在 `<state>/triggers/` 和 `<workspace>/.dsh/triggers/`，事件只携带数据且必须带 `eventId`，用 `dscode trigger` / `/triggers` 运行和查看，`trigger install` 会写入 launchd LaunchAgent——运行失败目前还没有任何通知。`/goal[20]` 可在命令面板设置或重设目标的轮次上限。OpenRouter 侧，MiMo V2.6（pro、flash、ultraspeed）加入回传思考的模型行列，`/model` 改为精选 28 个模型——五个已调优家族加 Anthropic、OpenAI、Google、xAI 的旗舰线——而不是全部 373 个可调用模型；已在清单外模型上的会话仍可继续运行。
-
-**0.7.23** — session 现在固定锁在它创建时的目录：从别处恢复会在该目录中运行并打印一行同时点名两个目录的警告，`--cwd` 只决定新 session 绑定到哪里。跨 session 通信变得可见——活动行显示 `⇄ sending to` / `⇄ waiting for`，每次发出的消息和收到的中继都会以专属紫色留一行记录，`/tasks` 可列出这些消息。footer 在会话总额旁显示上一轮已完成轮次的花费，`/usage` 为每一轮定价。流式期间不再每帧重排整个活动区（16 条长文本下 3.12 → 0.001 ms），祖先 skill 发现默认开启，Ink 重绘账本不再在输入框上方留下空白带。
 
 每次发布的完整记录见 **[更新日志](docs/CHANGELOG.md)**，更详细的说明见 [0.7.29 更新说明](docs/releases/0.7.29.md)。
 
@@ -177,6 +177,8 @@ dscode update 0.7.29           # 指定版本
 | `/mcp`、`/skills`、`/hooks` | 管理 MCP、检查 skill 来源、查看或重载 hooks |
 | `/plan`、`/goal` | 计划与持续任务 |
 | `/agents` | 查看子 agent 的任务、状态与当前活动 |
+| `/delegate <任务>` | 主 agent 先把任务拆到看板上并标明优先级和依赖，在子 agent 有空位时按优先级把依赖已满足的任务派给隔离 Git worktree 中的子 agent，解答它们的提问、逐个验证结果，最后把决定合并的改动暂存到主工作区 |
+| `/delegate-dashboard` | 弹出委派任务看板：待分配、进行中、验证中、已完成 |
 | `/mailbox` | 查看 session 消息和 deferred 便签 |
 | `/email` | `i` 配置 IMAP 邮箱与应用密码；浏览 `[ToAgent]` 邮件，Enter 直接 steer 进当前 session |
 | `/compact` | 压缩历史上下文 |

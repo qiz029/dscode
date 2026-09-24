@@ -8,9 +8,11 @@ import { patchMacStdin, MAC_INSPECTOR_ANCHOR } from '../scripts/patch-mac-stdin.
 import { createTestRuntime } from '../scripts/test-runtime.mjs';
 import { pathToFileURL } from 'node:url';
 const fixture = createTestRuntime({ runtime: true });
+process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'dscode-home-'));
 const root = fixture.root;
 after(fixture.close);
-import { apply, CHILD_NAME, DOCS_SECTION, SHELL_POLICY } from '../plugins/dscode/index.mjs';
+import { apply, CHILD_LIMIT, CHILD_NAME, delegateMessage, DOCS_SECTION, SHELL_POLICY } from '../plugins/dscode/index.mjs';
+import { spawnSync } from 'node:child_process';
 
 
 const { DeepSeekAdapter, resolveAdapterOptions } = await import(pathToFileURL(`${root}/node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js`));
@@ -70,7 +72,7 @@ test('every effort can launch and wake children under the shell policy; workflow
   let effort;
   const owner = { session: { id: 'root', header: {}, requestHeader: () => ({ config: { reasoningEffort: effort } }) }, options: {} };
   const child = { status: 'idle', session: { header: { origin: 'subagent', parentSession: 'root' } } };
-  apply({ systemPrompt: { section() {} }, on: (event, cb) => { if (event === 'tools/execute') execute = cb; }, commands: { register() {} }, agents: { list: () => [child], get: () => child } });
+  apply({ effect() {}, tools: { register() {} }, systemPrompt: { section() {} }, on: (event, cb) => { if (event === 'tools/execute') execute = cb; }, commands: { register() {} }, agents: { list: () => [child], get: () => child } });
   assert.match(SHELL_POLICY, /below ultra, delegation is the exception/i);
   for (const level of [undefined, 'low', 'high', 'max', 'ultra']) {
     effort = level;
@@ -87,7 +89,7 @@ test('every effort can launch and wake children under the shell policy; workflow
 test('dscode workers do not see delegation tools or delegation prompt sections', async () => {
   let assemble;
   const sections = [];
-  apply({ systemPrompt: { section: value => sections.push(value) }, on: (event, cb) => { if (event === 'system-prompt/assemble') assemble = cb; }, commands: { register() {} }, agents: { list: () => [], get: () => undefined } });
+  apply({ effect() {}, tools: { register() {} }, systemPrompt: { section: value => sections.push(value) }, on: (event, cb) => { if (event === 'system-prompt/assemble') assemble = cb; }, commands: { register() {} }, agents: { list: () => [], get: () => undefined } });
   const base = { tools: ['bash', 'subagent', 'subagent_fork', 'workflow', 'ralph'].map(name => ({ name })), sections: ['tool:subagent', 'tool:subagent_fork', 'dscode:shell-policy'].map(name => ({ name })) };
   const child = { scope: { session: { header: { origin: 'subagent', agentPreset: 'dscode' } } } };
   assert.match(sections.find(section => section.name === 'dscode:code-discipline').text, /Fix the problem at its root cause/);
@@ -107,7 +109,7 @@ test('the documentation section names the user guides and refuses internal recor
   assert.match(DOCS_SECTION, /never quote them to a user/);
   for (const internal of ['CONTEXT-HANDOFF.md', 'session-messaging-design.md', 'cloud-webapp-host.md', 'verification.md']) assert.ok(DOCS_SECTION.includes(internal), internal + ' must be named as internal');
   const sections = [];
-  apply({ systemPrompt: { section: value => sections.push(value) }, on: () => {}, commands: { register() {} }, agents: { list: () => [], get: () => undefined } });
+  apply({ effect() {}, tools: { register() {} }, systemPrompt: { section: value => sections.push(value) }, on: () => {}, commands: { register() {} }, agents: { list: () => [], get: () => undefined } });
   const registered = sections.find(section => section.name === 'dscode:docs');
   assert.equal(typeof registered.text, 'string');
   assert.equal(registered.text, DOCS_SECTION);
@@ -157,8 +159,8 @@ test('the persistent shell captures one command window instead of re-reading the
 test('ultra reserves concurrent admissions and frees slots after failed launches', async () => {
   let execute;
   const owner = { session: { id: 'root', header: {}, requestHeader: () => ({ config: { reasoningEffort: 'ultra' } }) }, options: {} };
-  const children = Array.from({ length: 2 }, (_, i) => ({ status: 'running', session: { id: `child${i}`, header: { origin: 'subagent', parentSession: 'root' } } }));
-  apply({ systemPrompt: { section() {} }, on: (event, cb) => { if (event === 'tools/execute') execute = cb; }, commands: { register() {} }, agents: { list: () => children, get: () => undefined } });
+  const children = Array.from({ length: CHILD_LIMIT.ultra - 1 }, (_, i) => ({ status: 'running', session: { id: `child${i}`, header: { origin: 'subagent', parentSession: 'root' } } }));
+  apply({ effect() {}, tools: { register() {} }, systemPrompt: { section() {} }, on: (event, cb) => { if (event === 'tools/execute') execute = cb; }, commands: { register() {} }, agents: { list: () => children, get: () => undefined } });
   let finish;
   const pending = execute({ name: 'subagent', arguments: {}, agent: owner }, () => new Promise(resolve => { finish = resolve; }));
   await assert.rejects(execute({ name: 'subagent_fork', arguments: {}, agent: owner }, () => {}), /limit/);
@@ -167,6 +169,25 @@ test('ultra reserves concurrent admissions and frees slots after failed launches
   assert.equal(await execute({ name: 'subagent', arguments: {}, agent: owner }, () => 'next'), 'next');
   children.push({ status: 'running', session: { header: { origin: 'subagent', parentSession: 'root' } } });
   await assert.rejects(execute({ name: 'send_message', arguments: { agent_id: 'cold-child' }, agent: owner }, () => 'wake'), /limit/);
+});
+test('the concurrent child cap is five below ultra and twenty at ultra', async () => {
+  let execute;
+  let effort = 'high';
+  const owner = { session: { id: 'root', header: {}, requestHeader: () => ({ config: { reasoningEffort: effort } }) }, options: {} };
+  const children = [];
+  const running = count => { children.length = 0; for (let i = 0; i < count; i++) children.push({ status: 'running', session: { id: `child${i}`, header: { origin: 'subagent', parentSession: 'root' } } }); };
+  apply({ effect() {}, tools: { register() {} }, systemPrompt: { section() {} }, on: (event, cb) => { if (event === 'tools/execute') execute = cb; }, commands: { register() {} }, agents: { list: () => children, get: () => undefined } });
+  const launch = () => execute({ name: 'subagent', arguments: {}, agent: owner }, () => 'started');
+  assert.equal(CHILD_LIMIT.standard, 5);
+  assert.equal(CHILD_LIMIT.ultra, 20);
+  running(4); assert.equal(await launch(), 'started');
+  running(5); await assert.rejects(launch(), /Concurrent child limit reached \(5\)/);
+  effort = 'ultra';
+  assert.equal(await launch(), 'started');
+  running(19); assert.equal(await launch(), 'started');
+  running(20); await assert.rejects(launch(), /Concurrent child limit reached \(20\)/);
+  effort = 'max';
+  running(5); await assert.rejects(launch(), /\(5\)/, 'dropping out of ultra restores the lower cap');
 });
 
 test('subagent tool requires a parent-chosen child name and shows it as /name', () => {
@@ -183,7 +204,7 @@ test('children are addressed by /name and the parent by /', async () => {
   let execute;
   const live = new Map();
   const owner = { session: { id: 'root', header: {}, requestHeader: () => ({ config: { reasoningEffort: 'ultra' } }) }, options: {} };
-  apply({ systemPrompt: { section() {} }, on: (event, cb) => { if (event === 'tools/execute') execute = cb; }, commands: { register() {} }, agents: { list: () => [...live.values()], get: id => live.get(id) } });
+  apply({ effect() {}, tools: { register() {} }, systemPrompt: { section() {} }, on: (event, cb) => { if (event === 'tools/execute') execute = cb; }, commands: { register() {} }, agents: { list: () => [...live.values()], get: id => live.get(id) } });
   const start = (name, id) => execute({ name: 'subagent', arguments: { name, description: 'read it', prompt: 'go' }, agent: owner }, () => { live.set(id, { status: 'running', session: { id, header: { origin: 'subagent', parentSession: 'root' } } }); return { kind: 'continuable', subagentId: id }; });
   assert.deepEqual(await start('reader', 'child-1'), { kind: 'continuable', subagentId: 'child-1' });
   await assert.rejects(start('reader', 'child-2'), /already used by a live child/);
@@ -206,4 +227,42 @@ test('children are addressed by /name and the parent by /', async () => {
   assert.deepEqual(await start('reader', 'child-3'), { kind: 'continuable', subagentId: 'child-3' }, 'a name is free again once its child is gone');
   assert.equal(await exec('send_message', '/reader'), 'ok');
   assert.equal(seen.at(-1), 'child-3');
+});
+
+test('/delegate hands the main agent the coordinator protocol only from a clean Git root', async () => {
+  const commands = new Map();
+  apply({ effect() {}, tools: { register() {} }, systemPrompt: { section() {} }, on() {}, commands: { register: def => commands.set(def.name, def) }, agents: { list: () => [], get: () => undefined } });
+  const delegate = commands.get('delegate');
+  assert.equal(delegate.input.hint, 'task for child agents');
+  const repo = mkdtempSync(join(tmpdir(), 'dscode-delegate-'));
+  const git = (...args) => assert.equal(spawnSync('git', ['-C', repo, ...args]).status, 0);
+  try {
+    git('init', '-q');
+    writeFileSync(join(repo, 'a.txt'), 'a\n');
+    git('add', 'a.txt');
+    git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'initial');
+    const queued = [];
+    const agent = (effort, header = {}) => ({ status: 'idle', followup: message => queued.push(message), options: {}, session: { id: 'root', header: { cwd: repo, ...header }, requestHeader: () => ({ config: { reasoningEffort: effort } }) } });
+    const run = (rawInput, target = agent('high')) => delegate.handler({ agent: target, rawInput, attachments: [] });
+    assert.match((await run('  ')).text, /Usage: \/delegate <task>/);
+    assert.match((await run('fix it', agent('high', { origin: 'subagent' }))).text, /Child agents cannot delegate/);
+    assert.match((await run('fix it', agent('high', { cwd: join(repo, '..') }))).text, /needs worktrees/);
+    assert.equal(queued.length, 0);
+    const done = await run(' split the parser work ');
+    assert.equal(done.kind, 'success');
+    assert.match(done.text, /up to 5 children/);
+    assert.equal(queued.length, 1);
+    assert.deepEqual(queued[0].source, { kind: 'dscode-delegate', form: 'notice', summary: '/delegate split the parser work' }, 'the transcript shows one line, not the protocol');
+    const text = queued[0].content[0].text;
+    assert.equal(text, delegateMessage('split the parser work', 5));
+    assert.match(text, /worktree: true/);
+    assert.match(text, /do not commit, branch or push unless the user asks/);
+    assert.match(text, /Task:\nsplit the parser work$/);
+    assert.match((await run('go', agent('ultra'))).text, /up to 20 children/);
+    writeFileSync(join(repo, 'b.txt'), 'dirty\n');
+    const dirty = await run('go');
+    assert.equal(dirty.kind, 'error');
+    assert.match(dirty.text, /uncommitted changes/);
+    assert.equal(queued.length, 2);
+  } finally { rmSync(repo, { recursive: true, force: true }); }
 });

@@ -60,6 +60,8 @@ import { footerFiguresFor as dscodeFooterFiguresFor } from '../../../plugins/ses
 import { newerVersion as dscodeNewerVersion } from '../../../plugins/tui-tools/update.mjs'
 import { languageName as dscodeLanguageName, normalizeLanguage as dscodeNormalizeLanguage, t as dscodeMessage } from '../../../plugins/i18n/messages.mjs'
 import { dscodeTelemetryNodes } from './dscode/telemetry.ts'
+import { DelegateDashboardPanel } from './dscode/delegate-panel.ts'
+import { delegateBoardFor as dscodeDelegateBoardFor } from '../../../plugins/dscode/board.mjs'
 import { dscodePadEnd, welcomeArtRows, welcomePath, WELCOME_ART, WELCOME_ART_SMALL } from './dscode/welcome.ts'
 import { TETRIS_TICK_MS as DSCODE_TETRIS_TICK_MS, TETRIS_WIDTH as DSCODE_TETRIS_WIDTH, tetrisFrame as dscodeTetrisFrame } from '../../../plugins/compaction/tetris.mjs'
 import {
@@ -345,6 +347,7 @@ const LOCAL_COMMANDS: readonly LocalCommand[] = [
   { label: '/update', descriptionKey: 'cmd.update' },
   { label: '/jobs', descriptionKey: 'cmd.jobs' },
   { label: '/schedule', descriptionKey: 'cmd.schedule' },
+  { label: '/delegate-dashboard', descriptionKey: 'cmd.delegateDashboard' },
   { label: '/statusline', descriptionKey: 'cmd.statusline' },
   { label: '/theme', descriptionKey: 'cmd.theme' },
   { label: '/language', descriptionKey: 'cmd.language' },
@@ -4600,7 +4603,7 @@ export function DscodeEffortPanel(props) {
 }
 
 
-function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, descriptors, skills, dispatch, steer, submitMode, cycleSubmitMode, interrupt, quit, openEmail, openLogin, openProvider, openOpenRouter, openModel, openEffort, openHelp, openPermission, openResume, openSearch, openPlugin, openUpdate, openSchedule, openJobs, openStatusline, openTheme, openLanguage, saveLanguage, openHistory, openQueue, openBtw, openAgents, openSubagent, openTodos, openUsage, openDelete, openDiff, openReviewPicker, reviewChanges, deleteConfirm, confirmDelete, cancelDelete, createSession, forkSession, cancelSessionSwitch, notify, applyEditorKeys, hasNotice, dismissNotice, toggleReasoning, openVerbose, clearView, refresh, loadMentions, inspectImages, prepareImages, inspectFiles, prepareFiles, readClipboardImage, cycleMode, exportTranscript, renameTitle, copyLastResponse, recallSpace, recordLocal, recordHistory, queued, updateQueued, historyFill, historyConsumed, animations, applyAnimations, applyRainbow, rainbowBurstId, waveTier, waveStyle, maxRows, anchorRowsBelow, tabTitle, onEditorRows, onMenuRows, sessionKey }: {
+function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, descriptors, skills, dispatch, steer, submitMode, cycleSubmitMode, interrupt, quit, openEmail, openLogin, openProvider, openOpenRouter, openModel, openEffort, openHelp, openPermission, openResume, openSearch, openPlugin, openUpdate, openSchedule, openDelegateDashboard, openJobs, openStatusline, openTheme, openLanguage, saveLanguage, openHistory, openQueue, openBtw, openAgents, openSubagent, openTodos, openUsage, openDelete, openDiff, openReviewPicker, reviewChanges, deleteConfirm, confirmDelete, cancelDelete, createSession, forkSession, cancelSessionSwitch, notify, applyEditorKeys, hasNotice, dismissNotice, toggleReasoning, openVerbose, clearView, refresh, loadMentions, inspectImages, prepareImages, inspectFiles, prepareFiles, readClipboardImage, cycleMode, exportTranscript, renameTitle, copyLastResponse, recallSpace, recordLocal, recordHistory, queued, updateQueued, historyFill, historyConsumed, animations, applyAnimations, applyRainbow, rainbowBurstId, waveTier, waveStyle, maxRows, anchorRowsBelow, tabTitle, onEditorRows, onMenuRows, sessionKey }: {
   active: boolean
   /** dscode: the effort bar or Ultra ripple that owns the composer band. */
   effortSurface?: ReactElement
@@ -4644,6 +4647,7 @@ function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, de
   openUpdate: () => void
   /** Open the /schedule reminder panel (read-only catalog). */
   openSchedule: () => void
+  openDelegateDashboard: () => void
   openJobs: () => void
   openStatusline: () => void
   openTheme: () => void
@@ -5678,6 +5682,10 @@ function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, de
         openSchedule()
         return
       }
+      if (text === '/delegate-dashboard') {
+        openDelegateDashboard()
+        return
+      }
       if (text === '/jobs' || text.startsWith('/jobs ')) {
         openJobs()
         return
@@ -6656,6 +6664,7 @@ export function App(props: AppProps): ReactElement {
   const [pluginQuery, setPluginQuery] = useState('')
   const [updateOpen, setUpdateOpen] = useState(false)
   const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [delegateOpen, setDelegateOpen] = useState(false)
   const [jobsOpen, setJobsOpen] = useState(false)
   const [statuslineOpen, setStatuslineOpen] = useState(false)
   const [statuslineItems, setStatuslineItems] = useState<readonly StatusItemId[]>(() => parseStatuslineItems(props.statusline))
@@ -6739,8 +6748,8 @@ export function App(props: AppProps): ReactElement {
   // panel keypress.
   const inputActive = deleteConfirmId !== undefined
     ? !approvalPending && !questionPending
-    : !emailOpen && !modelOpen && !helpOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && budgetPending === undefined && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
-  const transcriptVisible = !btwOpen && !emailOpen && !modelOpen && !helpOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && budgetPending === undefined && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
+    : !emailOpen && !modelOpen && !helpOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !delegateOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && budgetPending === undefined && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
+  const transcriptVisible = !btwOpen && !emailOpen && !modelOpen && !helpOpen && !permissionOpen && !resumeOpen && !pluginOpen && !updateOpen && !scheduleOpen && !delegateOpen && !jobsOpen && !statuslineOpen && !themeOpen && !languageOpen && !historyOpen && !queueOpen && !agentsOpen && !subagentOpen && !todosOpen && !usageOpen && !verboseOpen && budgetPending === undefined && diffView === undefined && !reviewPickerOpen && !approvalPending && !questionPending
 
   // Human questions outrank local inspectors. Close the lower modal instead
   // of leaving an approval/question visible but keyboard-locked behind it.
@@ -6757,6 +6766,7 @@ export function App(props: AppProps): ReactElement {
     setPluginOpen(false)
     setUpdateOpen(false)
     setScheduleOpen(false)
+    setDelegateOpen(false)
     setStatuslineOpen(false)
     setThemeOpen(false)
     setHistoryOpen(false)
@@ -6964,7 +6974,7 @@ export function App(props: AppProps): ReactElement {
   const auditedReasoningRows = liveAudit.allocation.reasoning
   const auditedAnswerRows = liveAudit.allocation.answer
   const inspectorVisible = verboseOpen && !approvalPending && !questionPending
-  const modalVisible = budgetPending !== undefined || emailOpen || modelOpen || helpOpen || permissionOpen || resumeOpen || pluginOpen || updateOpen || scheduleOpen || jobsOpen || statuslineOpen || themeOpen || languageOpen || historyOpen || queueOpen || agentsOpen || subagentOpen || todosOpen || usageOpen || inspectorVisible || diffView !== undefined || reviewPickerOpen || approvalPending || questionPending
+  const modalVisible = budgetPending !== undefined || emailOpen || modelOpen || helpOpen || permissionOpen || resumeOpen || pluginOpen || updateOpen || scheduleOpen || delegateOpen || jobsOpen || statuslineOpen || themeOpen || languageOpen || historyOpen || queueOpen || agentsOpen || subagentOpen || todosOpen || usageOpen || inspectorVisible || diffView !== undefined || reviewPickerOpen || approvalPending || questionPending
   // The surface that currently owns the keyboard, named in the frozen band:
   // an empty composer under a panel must not advertise typing it cannot
   // accept — every key actually feeds the panel (which may or may not
@@ -6991,6 +7001,8 @@ export function App(props: AppProps): ReactElement {
                       ? '/update'
                       : scheduleOpen
                         ? '/schedule'
+                        : delegateOpen
+                          ? '/delegate-dashboard'
                         : jobsOpen
                           ? '/jobs'
                         : statuslineOpen
@@ -7625,6 +7637,9 @@ export function App(props: AppProps): ReactElement {
     scheduleOpen && !approvalPending && !questionPending
       ? createElement(SchedulePanel, { rows: () => view.schedules, close: () => setScheduleOpen(false) })
       : undefined,
+    delegateOpen && !approvalPending && !questionPending
+      ? createElement(DelegateDashboardPanel, { load: () => props.sessionKey ? dscodeDelegateBoardFor(props.sessionKey) : undefined, close: () => setDelegateOpen(false) })
+      : undefined,
     jobsOpen && !approvalPending && !questionPending
       ? createElement(JobsPanel, { load: props.loadJobs, close: () => setJobsOpen(false) })
       : undefined,
@@ -7840,6 +7855,7 @@ export function App(props: AppProps): ReactElement {
         openPlugin: (query = '') => { setPluginQuery(query); setPluginOpen(true) },
         openUpdate: () => setUpdateOpen(true),
         openSchedule: () => setScheduleOpen(true),
+        openDelegateDashboard: () => setDelegateOpen(true),
         openJobs: () => setJobsOpen(true),
         openStatusline: () => setStatuslineOpen(true),
         openTheme: () => setThemeOpen(true),

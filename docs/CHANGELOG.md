@@ -8,6 +8,20 @@ Per-release notes live in [`docs/releases/`](releases/); the entries below summa
 
 ## [Unreleased]
 
+## [0.7.30] - 2026-09-23
+
+### Added
+
+- `/delegate <task>` makes the main agent a coordinator: it plans the task on a board, runs the parts as child agents in isolated Git worktrees, answers their questions, verifies each result and merges the ones it accepts in dependency order, leaving them staged and uncommitted. The command checks for a clean Git repository root and appears in the transcript as one line.
+- The `delegate_board` tool records each task's planned child name, priority (`high`, `normal`, `low`) and dependencies. Blocked tasks cannot be launched, dependency cycles are rejected, ready tasks are ordered by effective priority (work that unblocks a high-priority task goes first), and a task completes only with the main agent's verification evidence. A dependent task starts from its dependencies' verified changes through a baseline commit on its worktree's detached HEAD.
+- `/delegate-dashboard` opens a kanban of the board — pending, running, verifying, complete — with one colour-coded card per task, priority marks, blocked tasks naming what they wait on, a `?` badge on children waiting for the main agent, and a child-slot meter. Running and verifying come from the children's live status.
+
+### Changed
+
+- A parent runs at most five children at once below Ultra and twenty at Ultra, instead of three at every effort.
+- The coordinator receives the board as a message only when it changes, never through the system prompt, so the provider's prompt cache survives a busy board.
+- The welcome snowflake is redrawn from snowflake geometry: six arms 60° apart around a hexagonal crystal, with smoothed 30° arms.
+
 ## [0.7.29] - 2026-09-23
 
 ### Added

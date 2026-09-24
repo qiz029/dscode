@@ -55,6 +55,8 @@ The [90-second demo script](docs/demo.md) has the shot list, the exact commands,
 
 ## 🆕 What's new
 
+**0.7.30** — `/delegate <task>` turns the main agent into a coordinator: it plans the task on a board with priorities and dependencies, runs ready parts as child agents in isolated Git worktrees, verifies each result and merges the accepted ones in dependency order, staged and uncommitted. `/delegate-dashboard` shows the board as a colour-coded kanban — pending, running, verifying, complete. Parents now run up to five children at once below Ultra and twenty at Ultra, and the welcome snowflake is redrawn.
+
 **0.7.29** — `/account` signs the DeepSeek route in with a DeepSeek account through the system browser: the grant is stored on this machine, a signed-in machine needs no `DEEPSEEK_API_KEY`, and the command also reads the account identity, recharge and bonus balances, and signs out. The profile composes a loopback callback server for it, which carries a route only while a sign-in runs; `DSCODE_ACCOUNT_LOGIN=0` removes it. Two composition fixes came with it: the host-plane workflow engine is disabled again after an upstream rename silently voided the patch that disabled it, and the redundant PTC runtime row is gone now that the base composition ships one.
 
 **0.7.28** — The DSH runtime moves from `0.1.5-rc.2` to `0.1.7-alpha.2`, bringing sandbox escalation with justification on the retry shell, durable image offload, MCP resource tools, subagent permission inheritance and compaction retry recovery. **The reviewed permission preset is renamed `auto` → `auto-review`**, because DSH now reserves `auto` for its own integration: use `/permission auto-review`, `dscode exec --permission auto-review` and `permission: auto-review`. Computer Use keeps live activation and its native helper, but a resumed session regains its execution tools only once the `computer-use` skill is loaded again.
@@ -66,8 +68,6 @@ The [90-second demo script](docs/demo.md) has the shot list, the exact commands,
 **0.7.25** — Running the installer again now keeps a tar installation current instead of refusing: an older one is updated through its own `dscode update` (state migrated, the old tree kept as `.dscode-backup-<version>`), an equal or newer one is reported and left alone, and anything the installer did not create is still refused with the path it found. A Homebrew formula joins the install paths — `brew tap qiz029/tap && brew trust qiz029/tap && brew install dscode` installs the same launcher, and there `dscode update` moves only the Hub profile because `brew upgrade dscode` owns the launcher.
 
 **0.7.24** — An event can start a session unattended: trigger definitions live in `<state>/triggers/` and `<workspace>/.dsh/triggers/`, an event carries only data under a required `eventId`, and `dscode trigger` / `/triggers` run and inspect them, with `trigger install` writing a launchd LaunchAgent — a failed run notifies nobody yet. `/goal[20]` sets or re-caps the goal's round cap from the command plane. On OpenRouter, MiMo V2.6 (pro, flash and ultraspeed) joins the models that pass thinking back, and `/model` now offers a curated 28-model list — the five tuned labs plus the flagship line of Anthropic, OpenAI, Google and xAI — instead of all 373 tool-calling models, while a session already on a trimmed model keeps running.
-
-**0.7.23** — A session now stays in the folder it was created in: resuming it from anywhere else runs it in that folder and prints one warning naming both, while `--cwd` still decides where a new session binds. Cross-session traffic became visible — the activity line reads `⇄ sending to` / `⇄ waiting for`, a notice line records every settled send and inbound relay in its own violet, and `/tasks` lists the messages. The footer shows the last completed turn's cost beside the session total and `/usage` prices every turn. Streaming no longer re-wraps the whole live region per frame (3.12 → 0.001 ms on 16 long entries), ancestor skill discovery is on by default, and the Ink repaint ledger stops leaving a blank band above the composer.
 
 Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.29 notes](docs/releases/0.7.29.md) have the long version.
 
@@ -175,6 +175,8 @@ dscode update 0.7.29           # an exact version
 | `/mcp`, `/skills`, `/hooks` | Manage MCP, inspect skill sources, view or reload hooks |
 | `/plan`, `/goal` | Plans and long-running objectives |
 | `/agents` | Sub-agent tasks, status and current activity |
+| `/delegate <task>` | The main agent plans the task on a board with priorities and dependencies, dispatches ready tasks in priority order to child agents in isolated Git worktrees as child slots free up, answers their questions, verifies each result and finally stages what it merges |
+| `/delegate-dashboard` | Kanban popup of the delegated tasks: pending, running, verifying, complete |
 | `/btw` | Ask a side question in a child session; the answer shows in its own panel and never enters the main conversation |
 | `/mailbox` | Session messages and deferred notes |
 | `/email` | Press `i` to configure IMAP and an app password; browse `[ToAgent]` mail and press Enter to steer it into the session |
