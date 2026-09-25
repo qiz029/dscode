@@ -46,7 +46,7 @@ test('command arguments name a provider or are refused without interpretation', 
   assert.equal(providerArgument('sk-or-v1-synthetic'), null);
   assert.equal(providerArgument('OpenCode'), 'opencode-go');
   assert.equal(providerArgument('opencode-go'), 'opencode-go');
-  assert.deepEqual(PROVIDERS.map(provider => provider.credentialRef), ['DEEPSEEK_API_KEY', 'OPENROUTER_API_KEY', 'GROK_CLI_TOKEN', 'OPENCODE_API_KEY']);
+  assert.deepEqual(PROVIDERS.map(provider => provider.credentialRef), ['DEEPSEEK_API_KEY', 'OPENROUTER_API_KEY', 'GROK_CLI_TOKEN', 'OPENCODE_OAUTH']);
 });
 
 test('labels split at the first slash so OpenRouter model ids keep their vendor', () => {
@@ -76,6 +76,7 @@ test('credential state distinguishes saved, environment, missing and unreadable 
   assert.equal(credentialState({}), 'missing');
   assert.equal(credentialState(facts({ configured: true, writable: true, source: 'file' })), 'saved');
   assert.equal(credentialState(facts({ configured: true, writable: false, source: 'env' })), 'env');
+  assert.equal(credentialState(facts({ configured: true, writable: true, source: 'account' })), 'account');
   assert.equal(credentialState(facts({ configured: false, writable: true })), 'missing');
   assert.equal(credentialState(facts({ configured: false, writable: false })), 'readonly');
   assert.equal(credentialState({ credential: { kind: 'error', message: 'denied' } }), 'error');

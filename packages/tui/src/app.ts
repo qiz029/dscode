@@ -3082,6 +3082,8 @@ export function DscodeProviderPanel({ current, load, choose, back, grokStatus })
     if (directory === void 0) return "…";
     const row = directory.rows.find(row => row.provider === provider.id);
     const state = dscodeCredentialState(row);
+    if (state === "account") return "signed in";
+    if (provider.login !== undefined && (state === "missing" || state === "readonly")) return "not signed in · " + provider.login;
     if (state === "saved") return "key saved";
     if (state === "env") return "key from " + provider.credentialRef;
     if (state === "readonly") return provider.credentialRef + " is empty";
@@ -7122,6 +7124,9 @@ export function App(props: AppProps): ReactElement {
       const providers = await props.loadModelProviders!()
       const state = dscodeCredentialState(providers.rows.find(row => row.provider === provider))
       if (state === 'unavailable') { notify(spec.name + t('notice.providerUnavailableSuffix'), 'error'); return }
+      // A route authorised by a login command has no key to ask for: name the command instead.
+      const login = (spec as { login?: string }).login
+      if (login !== undefined && (state === 'missing' || state === 'readonly')) { notify(t('notice.providerNeedsLogin', { name: spec.name, command: login }), 'warning'); return }
       if (state === 'missing') {
         setProviderOpen(false)
         setEffortFor(undefined)
@@ -7771,6 +7776,8 @@ export function App(props: AppProps): ReactElement {
           setProviderOpen(false)
           setEffortFor(undefined)
           const target = provider ?? dscodeProviderOfLabel(modelLabel)
+          const spec = dscodeProviderSpec(target) as { name: string; login?: string } | undefined
+          if (spec?.login !== undefined) { notify(t('notice.providerNeedsLogin', { name: spec.name, command: spec.login }), 'warning'); return }
           setProviderAction(target === 'grok' ? { kind: 'dscode-grok' } : { kind: 'dscode-key', provider: target })
           setModelOpen(true)
         },

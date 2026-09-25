@@ -6,8 +6,12 @@ import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment';
 import { PROVIDERS } from '../providers/catalog.mjs';
 import { GROK_TOKEN_REF, grokAuthState } from '../grok/auth.mjs';
 
-// The `/provider` keys (DeepSeek, OpenRouter and its management key) live in the shared store.
+// The `/provider` credentials (DeepSeek, OpenRouter and its management key, the OpenCode Go
+// login) live in the shared store.
 const SHARED = new Set(PROVIDERS.flatMap(provider => [provider.credentialRef, provider.managementRef].filter(Boolean)));
+// Credentials a login command writes (the OpenCode Go account login): described as read-only
+// so no key form is offered, while the owning plugin still stores them through `set`.
+const LOGINS = new Set(PROVIDERS.filter(provider => provider.login).map(provider => provider.credentialRef));
 
 // Use the native locked, watched, owner-only store. Keep this independent of
 // the installed profile so upgrades and different projects share credentials.
@@ -45,6 +49,9 @@ export default class DscodeCredentials extends LocalCredentialProvider {
     if (ref === GROK_TOKEN_REF) {
       const state = grokAuthState();
       return state.kind === 'ready' ? { configured: true, source: 'file', writable: false } : { configured: false, writable: false };
+    }
+    if (LOGINS.has(ref)) {
+      return (await this.shared.resolve(ref))?.value ? { configured: true, source: 'account', writable: false } : { configured: false, writable: false };
     }
     if (SHARED.has(ref)) {
       const facts = await this.shared.describe(ref);

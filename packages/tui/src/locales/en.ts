@@ -232,6 +232,7 @@ export const en = {
   'notice.providerBusy': 'Stop the running turn before /provider.',
   'notice.providerUnavailableSuffix': ' is unavailable in this profile',
   'notice.providerUnverified': 'could not confirm the {name} API key; requests may fail until /login {provider} succeeds',
+  'notice.providerNeedsLogin': '{name} is not signed in; run {command} first',
   'notice.providerNoModels': ' serves no models yet — check /model',
   'notice.providerSwitchFailed': 'provider switch failed: {error}',
   'notice.keySaved': ' API key saved locally; ready to use.',

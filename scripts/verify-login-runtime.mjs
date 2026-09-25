@@ -88,33 +88,45 @@ export function apply(ctx) {
     assert(!JSON.stringify(requests[1].body.messages).includes('DSCODE ULTRA'));
     assert.equal(requests[2].body.reasoning.effort, 'none');
 
-    // /provider opencode-go: a keyed route like OpenRouter, serving its own catalog.
+    // /provider opencode-go: authorised only by the /opencode login, a read-only credential here.
     const go = await row(ctx, 'opencode-go');
     assert(go, 'missing opencode-go provider');
-    assert.equal(go.credentialRef, 'OPENCODE_API_KEY');
-    assert.equal(go.credential.writable, true);
-    if (save) await saveProviderCredential(ctx, go, 'synthetic-go-key');
-    assert.equal((await ctx.credentials.resolve('OPENCODE_API_KEY')).value, 'synthetic-go-key');
+    assert.equal(go.credentialRef, 'OPENCODE_OAUTH');
+    assert.equal(go.credential.writable, false, 'no key form is offered');
+    assert.equal(go.credential.configured, false);
     const goDirectory = await waitForModels(() => loadModelDirectory(ctx), 'opencode-go');
     const kimi = goDirectory.rows.find(row => row.provider === 'opencode-go' && row.model === 'kimi-k3');
     assert.deepEqual(kimi.reasoning.efforts.map(effort => effort.id), ['off', 'low', 'high', 'max', 'ultra']);
     assert.equal(pickModel(goDirectory.rows, 'opencode-go', 'openrouter/z-ai/glm-5.3', 'max').row.model, 'glm-5.3');
+    // The harness reports a failed call as its final chunk rather than a throw.
+    const signedOutChunks = [];
+    try {
+      for await (const chunk of ctx.llm.stream({ provider: 'opencode-go', model: 'kimi-k3', messages: [{ role: 'user', content: [{ type: 'text', text: 'Hi.' }] }] })) signedOutChunks.push(chunk);
+    } catch (error) { signedOutChunks.push({ type: 'thrown', message: error.message }); }
+    assert.match(JSON.stringify(signedOutChunks.at(-1)), /run \\/opencode login/, 'signed out, a request names the login command: ' + JSON.stringify(signedOutChunks.at(-1)));
+    // A stored login: the row reads as signed in, and requests go to its endpoint with its token and org.
+    await ctx.credentials.set('OPENCODE_OAUTH', JSON.stringify({ version: 1, access: 'st_synthetic', refresh: 'rt_synthetic', expires: Date.now() + 86400000, server: 'https://opencode.ai/console', api: 'https://opencode.ai/inference/go/openai/v1', orgID: 'org-synthetic' }));
+    const signedIn = await row(ctx, 'opencode-go');
+    assert.equal(signedIn.credential.configured, true);
+    assert.equal(signedIn.credential.source, 'account');
     const goRequests = [];
     globalThis.fetch = async (url, init) => {
       const request = url instanceof Request ? url : new Request(url, init);
-      goRequests.push({ url: request.url, auth: request.headers.get('authorization'), agent: request.headers.get('user-agent'), session: request.headers.get('x-opencode-session'), body: JSON.parse(await request.text()) });
-      return new Response('data: {"id":"x","model":"m","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":1}}\\n\\ndata: [DONE]\\n\\n', { headers: { 'content-type': 'text/event-stream' } });
+      goRequests.push({ url: request.url, auth: request.headers.get('authorization'), org: request.headers.get('x-opencode-org-id'), agent: request.headers.get('user-agent'), session: request.headers.get('x-opencode-session'), body: request.method === 'POST' ? JSON.parse(await request.text()) : undefined });
+      return new Response('data: {"id":"x","model":"m","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}\\n\\ndata: [DONE]\\n\\n', { headers: { 'content-type': 'text/event-stream' } });
     };
     try {
       for await (const _chunk of ctx.llm.stream({ provider: 'opencode-go', model: 'kimi-k3', reasoningEffort: 'high', sessionId: 'probe-session',
         messages: [{ role: 'user', content: [{ type: 'text', text: 'Hi.' }] }] })) {}
-    } finally { globalThis.fetch = original; }
-    assert.equal(goRequests[0].url, 'https://opencode.ai/zen/go/v1/chat/completions');
-    assert.equal(goRequests[0].auth, 'Bearer synthetic-go-key');
-    assert.match(goRequests[0].agent, /^dscode\\//);
-    assert.equal(goRequests[0].session, 'probe-session');
-    assert.equal(goRequests[0].body.reasoning_effort, 'high');
-    assert.equal(goRequests[0].body.reasoning, undefined);
+    } finally { globalThis.fetch = original; await ctx.credentials.unset('OPENCODE_OAUTH'); }
+    const chat = goRequests.find(request => request.url.endsWith('/chat/completions'));
+    assert.equal(chat.url, 'https://opencode.ai/inference/go/openai/v1/chat/completions');
+    assert.equal(chat.auth, 'Bearer st_synthetic');
+    assert.equal(chat.org, 'org-synthetic');
+    assert.match(chat.agent, /^dscode\\//);
+    assert.equal(chat.session, 'probe-session');
+    assert.equal(chat.body.reasoning_effort, 'high');
+    assert.equal(chat.body.reasoning, undefined);
     console.log('LOGIN_RUNTIME_PASSED');
     ctx.get('appExit')(0);
   })().catch(error => { console.error('Login runtime fixture failed', error?.stack ?? error); ctx.get('appExit')(1); });
@@ -143,7 +155,6 @@ export function apply(ctx) {
     const env = { ...environment(home), DSCODE_LOGIN_CHECK: mode };
     delete env.DEEPSEEK_API_KEY;
     delete env.OPENROUTER_API_KEY;
-    delete env.OPENCODE_API_KEY;
     const child = spawn(process.execPath, [dshEntry, '--profile', 'tui', '--patch', patch], { cwd: home, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     child.stdout.on('data', data => { output += data; }); child.stderr.on('data', data => { output += data; });
@@ -156,5 +167,5 @@ export function apply(ctx) {
     assert(output.includes('LOGIN_RUNTIME_PASSED'), output);
     if (code !== 0) assert(code === 13 && output.includes('unsettled top-level await'), output);
   }
-  console.log('Login runtime passed: real provider directory and native TUI save callback for DeepSeek, OpenRouter and the read-only Grok CLI login; the OpenRouter route, its Ultra-capable models and both keys survive a fresh Host; the OpenRouter wire request is captured before network I/O; the OpenCode Go route saves its key, lists its catalog and sends its own request shape.');
+  console.log('Login runtime passed: real provider directory and native TUI save callback for DeepSeek, OpenRouter and the read-only Grok CLI login; the OpenRouter route, its Ultra-capable models and both keys survive a fresh Host; the OpenRouter wire request is captured before network I/O; the OpenCode Go route is login-only, lists its catalog, and sends its own request shape to the endpoint its login names.');
 } finally { rmSync(home, { recursive: true, force: true }); rmSync(uiEntry, { force: true }); }

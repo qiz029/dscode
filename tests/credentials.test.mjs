@@ -79,3 +79,21 @@ test('the OpenRouter key shares the cross-project store and its environment over
     await rm(home, { recursive: true, force: true });
   }
 });
+
+test('the OpenCode Go login is a read-only credential the login command writes to the shared store', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dscode-credentials-opencode-'));
+  const ctx = new Context();
+  try {
+    ctx.provide('launchEnvironment', createLaunchEnvironmentSnapshot([{ source: 'process', values: {} }]));
+    await ctx.plugin(Credentials, { path: join(home, 'shared', 'credentials.yaml'), dshHome: home, watch: false });
+    assert.deepEqual(await ctx.credentials.describe('OPENCODE_OAUTH'), { configured: false, writable: false }, 'no key form is offered');
+    await ctx.credentials.set('OPENCODE_OAUTH', '{"version":1}');
+    assert.match(await readFile(join(home, 'shared', 'credentials.yaml'), 'utf8'), /OPENCODE_OAUTH/, 'the login lives in the shared store');
+    assert.deepEqual(await ctx.credentials.describe('OPENCODE_OAUTH'), { configured: true, source: 'account', writable: false });
+    await ctx.credentials.unset('OPENCODE_OAUTH');
+    assert.equal((await ctx.credentials.describe('OPENCODE_OAUTH')).configured, false);
+  } finally {
+    await ctx.fiber.dispose();
+    await rm(home, { recursive: true, force: true });
+  }
+});

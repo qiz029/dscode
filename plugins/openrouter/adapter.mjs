@@ -108,6 +108,14 @@ export class OpenRouterAdapter extends LlmAdapter {
     return { 'HTTP-Referer': APP_URL, 'X-OpenRouter-Title': 'DSCODE', 'X-OpenRouter-Categories': 'cli-agent' };
   }
 
+  /**
+   * Where and how the next request authenticates: the bearer secret, the base URL and any
+   * extra headers. A subclass whose credential carries its own endpoint overrides this.
+   */
+  async resolveAuth(connection) {
+    return { apiKey: await this.config.resolveApiKey(connection), baseURL: connection.baseURL, headers: {} };
+  }
+
   /** Options for the stream translation: the replay kind and error label. */
   translateOptions(options) {
     return { model: options.model };
@@ -116,6 +124,8 @@ export class OpenRouterAdapter extends LlmAdapter {
   async *stream(options) {
     const connection = this.config.options();
     const label = this.label;
+    // The endpoint the request went to, for error messages: the route's own until auth names another.
+    let endpoint = connection.baseURL;
     const idle = new AbortController(), consumer = new AbortController();
     let timer;
     const pulse = () => {
@@ -125,7 +135,8 @@ export class OpenRouterAdapter extends LlmAdapter {
     };
     const signal = AbortSignal.any([idle.signal, consumer.signal, ...(options.signal ? [options.signal] : [])]);
     try {
-      const apiKey = await this.config.resolveApiKey(connection);
+      const auth = await this.resolveAuth(connection);
+      endpoint = auth.baseURL;
       const entry = await this.modelEntry(options.model);
       pulse();
       const images = await this.prepareImages(options, entry, connection, signal);
@@ -133,21 +144,22 @@ export class OpenRouterAdapter extends LlmAdapter {
       const fetchImpl = this.config.fetch ?? globalThis.fetch;
       let response;
       try {
-        response = await fetchImpl(`${connection.baseURL}/chat/completions`, {
+        response = await fetchImpl(`${auth.baseURL}/chat/completions`, {
           method: 'POST',
           headers: {
-            authorization: `Bearer ${apiKey}`,
+            authorization: `Bearer ${auth.apiKey}`,
             'content-type': 'application/json',
             accept: 'text/event-stream',
             ...attributionHeaders(),
             ...this.requestHeaders(options),
+            ...auth.headers,
           },
           body: JSON.stringify(body),
           signal,
         });
       } catch (error) {
         if (signal.aborted) throw error;
-        throw new LlmError(`${label} request to ${connection.baseURL} failed`, 'TRANSPORT', { cause: error });
+        throw new LlmError(`${label} request to ${endpoint} failed`, 'TRANSPORT', { cause: error });
       }
       // A rejected request, or a 200 whose JSON body holds only an error.
       if (!response.ok || !response.headers.get('content-type')?.includes('text/event-stream')) {
@@ -174,7 +186,7 @@ export class OpenRouterAdapter extends LlmAdapter {
       if (idle.signal.aborted && !options.signal?.aborted) throw new LlmError(`${label} stream idle timeout after ${connection.streamIdleTimeoutMs}ms`, 'TIMEOUT', { cause: error });
       if (options.signal?.aborted) throw new LlmError(`${label} request aborted by caller`, 'ABORTED', { cause: error });
       if (error instanceof LlmError) throw error;
-      throw new LlmError(`${label} API stream from ${connection.baseURL} failed`, 'TRANSPORT', { cause: error });
+      throw new LlmError(`${label} API stream from ${endpoint} failed`, 'TRANSPORT', { cause: error });
     } finally {
       clearTimeout(timer);
       consumer.abort(`${label} stream consumer stopped`);

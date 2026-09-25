@@ -8,6 +8,17 @@ Per-release notes live in [`docs/releases/`](releases/); the entries below summa
 
 ## [Unreleased]
 
+## [0.7.32] - 2026-09-25
+
+### Added
+
+- `/opencode [login|cancel|logout]` signs OpenCode Go in with an OpenCode account through the console's device login. `login` answers at once with the code, opens the browser and waits in the background. The login is kept in DSCODE's shared credential store, separate from any OpenCode CLI login, and renews itself before its 30 days run out. Requests go to the inference endpoint the console names for the first organisation with Go, with `x-opencode-org-id`. The consent page names the OpenCode CLI, whose public login client DSCODE uses. See [OpenCode Go](opencode-go.md).
+- On the OpenCode Go route the footer's money slot shows the subscription's usage of its rolling five-hour, weekly and monthly caps (`Go · 5h 12% · 7d 3% · 30d 1%`), read once a minute from the account's usage endpoint; an exhausted cap is marked and the slot says when requests work again.
+
+### Changed
+
+- OpenCode Go no longer takes a console API key: the account login is its only credential. A key saved under 0.7.31 is no longer read; run `/opencode login` once. `/provider opencode-go` and `/login opencode-go` name `/opencode login` instead of asking for a key, and the picker shows `signed in` or `not signed in · /opencode login`.
+
 ## [0.7.31] - 2026-09-24
 
 ### Added

@@ -3,6 +3,7 @@ import { t } from '../i18n/messages.mjs';
 import { estimateCost, peakEmoji } from './pricing.mjs';
 import { balanceNow, trustedNow } from './balance.mjs';
 import { grokSubscriptionNow } from '../grok/billing.mjs';
+import { goUsageNow } from '../opencode-go/usage.mjs';
 import { sessionAverageTps } from './rate.mjs';
 import { attributeCostByTurn, evaluateBudget, parseBudget } from './turns.mjs';
 let source;
@@ -95,6 +96,27 @@ export function grokFooterFact(subscription, locale = 'en', now = Date.now()) {
   return parts.join(' · ');
 }
 
+const GO_WINDOWS = Object.freeze([['rolling', '5h'], ['weekly', '7d'], ['monthly', '30d']]);
+
+/**
+ * The money slot for the OpenCode Go subscription: the share used of each cap Go enforces —
+ * rolling five hours, week, month — and, when one is exhausted, when it lifts. An unread
+ * snapshot shows the plan name alone instead of a wrong number.
+ */
+export function goFooterFact(usage, locale = 'en', now = Date.now()) {
+  const parts = ['Go'];
+  for (const [key, label] of GO_WINDOWS) {
+    const percent = usage?.[key]?.percent;
+    if (Number.isFinite(percent)) parts.push(label + ' ' + (Number.isInteger(percent) ? String(percent) : percent.toFixed(1)) + '%' + (usage[key].limited ? '!' : ''));
+  }
+  // Blocked until the last exhausted window lifts: that is when requests work again.
+  const lifts = GO_WINDOWS.map(([key]) => usage?.[key]).filter(window => window?.limited).map(window => window.resetsAt)
+    .filter(iso => Number.isFinite(Date.parse(iso ?? ''))).sort((a, b) => Date.parse(b) - Date.parse(a))[0];
+  const stamp = resetStamp(lifts, now);
+  if (stamp !== undefined) parts.push(t(locale, 'footer.goLimited') + ' ' + stamp);
+  return parts.join(' · ');
+}
+
 /** Local `MM-DD HH:MM` for a reset time, or undefined when the window is unknown or past. */
 function resetStamp(iso, now) {
   const at = Date.parse(typeof iso === 'string' ? iso : '');
@@ -147,6 +169,7 @@ function footerFigures(metrics, context, rates, locale = 'en', provider = 'deeps
   // per-second figure at the widths the footer actually runs at. A balance the
   // provider cannot report is left out instead of parked as `$--`.
   const dollars = provider === 'grok' ? grokFooterFact(grokSubscriptionNow(), locale)
+    : provider === 'opencode-go' ? goFooterFact(goUsageNow(), locale)
     : spend + (balance === null ? '' : ' / $' + balance.toFixed(2)) + (provider === 'deepseek-official' ? ' ' + peakEmoji(trustedNow()) : '');
   // The budget slot rides the money figure: it answers "how much of the session's
   // limit is spent", which is a fact about the cost, not a second cost. A session

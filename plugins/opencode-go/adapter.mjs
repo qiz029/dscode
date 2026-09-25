@@ -15,14 +15,15 @@ function modelInfo(provider, id, entry) {
 
 /**
  * OpenCode Go chat completions as a harness adapter. The request loop, image handling and
- * stream translation are OpenRouter's; this route supplies its own catalog, body and
- * headers. Go asks each client to name itself in the user agent and to send one stable
+ * stream translation are OpenRouter's; this route supplies its own catalog, body, headers
+ * and the account login's endpoint. Go asks each client to name itself in the user agent and to send one stable
  * `x-opencode-session` per conversation.
  */
 export class OpenCodeGoAdapter extends OpenRouterAdapter {
   /**
-   * @param config - `options()` connection facts, `resolveApiKey(connection)`, `version`,
-   *   optional `resolveAttachments()`, `resolveImageAccess(attachments, ref)` and `fetch`.
+   * @param config - `options()` connection facts, `resolveAccount()` (request auth from the account
+   *   login; throws when signed out), `version`, optional `resolveAttachments()`,
+   *   `resolveImageAccess(attachments, ref)` and `fetch`.
    */
   constructor(config) {
     super({ ensureModels: async () => {}, ...config });
@@ -64,6 +65,11 @@ export class OpenCodeGoAdapter extends OpenRouterAdapter {
 
   requestBody(options, context) {
     return requestBody(options, context);
+  }
+
+  /** The OpenCode account login: the endpoint it names, its token and its organisation header. */
+  async resolveAuth() {
+    return this.config.resolveAccount();
   }
 
   requestHeaders(options) {

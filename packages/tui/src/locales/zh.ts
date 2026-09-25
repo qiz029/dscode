@@ -234,6 +234,7 @@ export const zh: MessageCatalog = {
   'notice.providerBusy': '请先停止正在运行的回合，再执行 /provider。',
   'notice.providerUnavailableSuffix': ' 在当前 profile 中不可用',
   'notice.providerUnverified': '无法确认 {name} 的 API key；在 /login {provider} 成功前请求可能失败',
+  'notice.providerNeedsLogin': '{name} 尚未登录；请先运行 {command}',
   'notice.providerNoModels': ' 暂无可用模型 — 请检查 /model',
   'notice.providerSwitchFailed': '提供商切换失败：{error}',
   'notice.keySaved': ' 的 API key 已保存在本机；可以使用了。',

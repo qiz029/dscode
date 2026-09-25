@@ -9,8 +9,9 @@ export const PROVIDERS = Object.freeze([
   { id: 'openrouter', name: 'OpenRouter', aliases: ['openrouter', 'open-router'], credentialRef: 'OPENROUTER_API_KEY', managementRef: 'OPENROUTER_MANAGEMENT_KEY', defaultModel: 'deepseek/deepseek-v4-flash' },
   // The Grok subscription rail: the token is the local 'grok login', read-only (plugins/grok).
   { id: 'grok', name: 'Grok', aliases: ['grok', 'xai', 'x-ai'], credentialRef: 'GROK_CLI_TOKEN', defaultModel: 'grok-4.6' },
-  // The OpenCode Go subscription: its chat-completions models, keyed from the OpenCode console (plugins/opencode-go).
-  { id: 'opencode-go', name: 'OpenCode Go', aliases: ['opencode-go', 'opencode', 'go'], credentialRef: 'OPENCODE_API_KEY', defaultModel: 'kimi-k3' },
+  // The OpenCode Go subscription: its chat-completions models, authorised only by an OpenCode
+  // account login. `login` names the command that sets the credential up; there is no key to paste.
+  { id: 'opencode-go', name: 'OpenCode Go', aliases: ['opencode-go', 'opencode', 'go'], credentialRef: 'OPENCODE_OAUTH', login: '/opencode login', defaultModel: 'kimi-k3' },
 ]);
 
 // The pi-ai adapter served OpenRouter until 0.7.6, from this settings section.
@@ -114,14 +115,15 @@ export function pickModel(rows, provider, currentLabel, effort) {
 
 /**
  * Credential status of a provider-settings row.
- * @returns `saved`, `env`, `missing`, `readonly` (an empty read-only source), `error`, or `unavailable` (no row).
+ * @returns `saved`, `env`, `account` (signed in with an account instead of a key), `missing`,
+ *   `readonly` (an empty read-only source), `error`, or `unavailable` (no row).
  */
 export function credentialState(row) {
   if (!row) return 'unavailable';
   const credential = row.credential;
   if (credential?.kind === 'error') return 'error';
   if (credential?.kind !== 'facts') return 'missing';
-  if (credential.configured) return credential.source === 'env' ? 'env' : 'saved';
+  if (credential.configured) return credential.source === 'env' ? 'env' : credential.source === 'account' ? 'account' : 'saved';
   return credential.writable ? 'missing' : 'readonly';
 }
 
