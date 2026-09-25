@@ -55,6 +55,8 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
+**0.7.31** — OpenCode Go 加入 `/provider`：`/provider opencode-go` 保存 OpenCode 控制台发放的 key，提供 Go 的 chat-completions 模型——DeepSeek、GLM、Kimi、MiMo、LongCat、Hy 和 Space Bunny——每个模型的推理强度都按线上网关实测结果提供，请求带上 Go 要求的会话 ID，工具调用之间会回传思考内容。Go 会话的联网搜索和 OpenCode 一样走 Exa，不需要额外的 key。Qwen、MiniMax 以及 Go 上的 Grok、GPT 模型走其他协议，暂未提供。
+
 **0.7.30** — `/delegate <任务>` 让主 agent 成为协调者：先在看板上按优先级和依赖规划任务，把就绪的部分派给隔离 Git worktree 中的子 agent，逐个验证结果，再按依赖顺序把通过的改动合并并暂存（不提交）。`/delegate-dashboard` 用彩色看板展示待分配、进行中、验证中、已完成四列。子 agent 并发上限改为非 Ultra 5 个、Ultra 20 个；欢迎界面的雪花重新绘制。
 
 **0.7.29** — `/account` 用系统浏览器以 DeepSeek 账号给 DeepSeek 路由授权：凭据存在本机，已登录的机器不再需要 `DEEPSEEK_API_KEY`；该命令同时可查看账号身份、充值余额与赠额，并支持退出登录。profile 为此组合了一个回环回调服务，且只在登录进行期间存在路由，`DSCODE_ACCOUNT_LOGIN=0` 可移除它。随之修复两处组合：上游改名让禁用补丁静默失效后，host 层的 workflow 引擎重新被关闭；base 已自带 PTC 运行时，冗余的那行也删掉了。
@@ -93,7 +95,7 @@ dscode
 
 一行安装器会解析最新 release、校验 GitHub 为其 tarball 公布的 sha256 摘要，然后执行该 tar 包自带的安装流程；`sh -s -- <版本号>` 可固定精确版本而不跟随最新版。所有方式都需要 Node 和 Git。GitHub release 的两种方式不再需要别的：预构建 tar 包（`dscode-<version>-darwin-arm64.tar.gz` 或 `-darwin-x64`）已经带上锁定版本的 `node_modules`，安装时不需要 npm，也不访问任何 npm registry——公司 registry 代理拦截 npm 时就用它。不带平台后缀的 `dscode-<version>.tar.gz` 是源码 tar 包，用 `npm ci` 安装自己的 lockfile；当前平台没有预构建包时安装器会回退到它，也可用 `DSCODE_INSTALL_SOURCE=1` 显式指定。npm 方式则从 Hub 安装固定版本的 profile。
 
-首次启动会从 [DSH Plugin Hub](https://dshpluginhub.ai) 安装固定版本的完整 preset——无需手动拼装插件，也不需要全局安装 pnpm。之后输入 `/login`，在隐藏输入框中粘贴 DeepSeek API key：密钥以 `0600` 权限保存在本机 `~/.dscode/credentials.yaml`，不同项目和安装版本共用，不会发送给 agent。已设置的 `DEEPSEEK_API_KEY` 环境变量优先。想使用 OpenRouter，输入 `/provider openrouter`：DSCODE 会提示输入 OpenRouter key（同样保存在本机，或读取 `OPENROUTER_API_KEY`），并把当前会话切到对应的 DeepSeek 模型；`/model` 随后只列出精选清单，而不是整个目录——DeepSeek、GLM、Kimi、Qwen、MiMo 的当前主力型号，加上 Anthropic、OpenAI、Google、xAI 的旗舰线——直接输入即可搜索。前五家经过适配和测试，后四家的旗舰尽力可用。清单外的模型在已有会话里仍可继续运行。`/provider deepseek` 切回，`/login openrouter` 可更换 key。用 `/model` 选择模型或配置其他提供方，用 `/effort` 调整推理强度；默认路由是 `deepseek-official/deepseek-flash`。 TUI 启动时会检查 npm 上的新版本，`/update` 可在退出后自动完成整个安装的升级。
+首次启动会从 [DSH Plugin Hub](https://dshpluginhub.ai) 安装固定版本的完整 preset——无需手动拼装插件，也不需要全局安装 pnpm。之后输入 `/login`，在隐藏输入框中粘贴 DeepSeek API key：密钥以 `0600` 权限保存在本机 `~/.dscode/credentials.yaml`，不同项目和安装版本共用，不会发送给 agent。已设置的 `DEEPSEEK_API_KEY` 环境变量优先。想使用 OpenRouter，输入 `/provider openrouter`：DSCODE 会提示输入 OpenRouter key（同样保存在本机，或读取 `OPENROUTER_API_KEY`），并把当前会话切到对应的 DeepSeek 模型；`/model` 随后只列出精选清单，而不是整个目录——DeepSeek、GLM、Kimi、Qwen、MiMo 的当前主力型号，加上 Anthropic、OpenAI、Google、xAI 的旗舰线——直接输入即可搜索。前五家经过适配和测试，后四家的旗舰尽力可用。清单外的模型在已有会话里仍可继续运行。`/provider deepseek` 切回，`/login openrouter` 可更换 key。[OpenCode Go](docs/opencode-go.md) 订阅用法相同：`/provider opencode-go` 会提示输入它的 key（或读取 `OPENCODE_API_KEY`），并提供 Go 的 DeepSeek、GLM、Kimi、MiMo、LongCat、Hy 和 Space Bunny 模型。用 `/model` 选择模型或配置其他提供方，用 `/effort` 调整推理强度；默认路由是 `deepseek-official/deepseek-flash`。 TUI 启动时会检查 npm 上的新版本，`/update` 可在退出后自动完成整个安装的升级。
 
 **默认英文，界面支持 6 种语言。** `/language` 打开选择器，`/language ja` 可直接切换；也可以直接写「中文」「日本語」「한국어」。支持 English、简体中文、繁體中文、日本語、한국어、Español。选择按机器保存在 `~/.dsh/dsh-code/language.json`，`DSCODE_LANGUAGE=es` 可覆盖单次运行。
 
@@ -235,6 +237,7 @@ Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第�
 | [记忆](docs/memory.md) | 全局跨 session 记忆、后台用量与开关 |
 | [持久 Shell 与 Ultra](docs/dscode-ultra.md) | preset、推理强度、子 agent effort 与 worktree 隔离 |
 | [账号登录](docs/account-login.md) | 用浏览器账号代替 API key 给 DeepSeek 路由授权：流程、回环回调与限制 |
+| [OpenCode Go](docs/opencode-go.md) | 用 OpenCode Go 订阅运行会话：配置、模型及其推理强度、暂不支持的部分 |
 | [Auto 审核](docs/auto-review.md) | 独立权限审核的范围、成本与限制 |
 | [邮件](docs/email.md) | IMAP 配置、收件箱面板、`send_email` 与联系人别名 |
 | [Skills 与工作区指令](docs/skills.md) | 发现范围、祖先模式与指令文件 |

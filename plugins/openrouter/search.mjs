@@ -75,14 +75,15 @@ export class OpenRouterSearchProvider {
 
 /**
  * The pinned search provider: OpenRouter for an OpenRouter session, DeepSeek for a
- * DeepSeek one, and otherwise whichever provider has a key (DeepSeek first).
+ * DeepSeek one, Exa for an OpenCode Go one (Go has no search of its own), and otherwise
+ * whichever provider has a key (DeepSeek first).
  */
 export class RoutedSearchProvider {
   id = ROUTED_SEARCH_ID;
 
   /**
-   * @param routes - `openrouter` provider, `deepseek()` provider lookup, `currentProvider()` of the
-   *   calling session, and `hasKey(ref)` for credential presence.
+   * @param routes - `openrouter` provider, `deepseek()` provider lookup, optional `exa` provider,
+   *   `currentProvider()` of the calling session, and `hasKey(ref)` for credential presence.
    */
   constructor(routes) {
     this.routes = routes;
@@ -93,10 +94,11 @@ export class RoutedSearchProvider {
   }
 
   async pick() {
-    const { openrouter, deepseek: lookup, currentProvider, hasKey } = this.routes;
+    const { openrouter, deepseek: lookup, exa, currentProvider, hasKey } = this.routes;
     const deepseek = lookup();
     const route = currentProvider();
     if (route === 'openrouter') return openrouter;
+    if (route === 'opencode-go' && exa) return exa;
     if (route === 'deepseek-official' && deepseek) return deepseek;
     if (deepseek && await hasKey('DEEPSEEK_API_KEY')) return deepseek;
     if (await hasKey('OPENROUTER_API_KEY')) return openrouter;

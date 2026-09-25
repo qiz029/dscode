@@ -92,16 +92,22 @@ function replayedDetails(message) {
   return details;
 }
 
-function serializeAssistant(message, model) {
+function serializeAssistant(message, model, dialect) {
   const text = textOf(message.content);
   const calls = message.content.filter(block => block.type === 'tool-call')
     .map(block => ({ id: block.id, type: 'function', function: { name: block.name, arguments: block.arguments } }));
   // An empty assistant turn (reasoning only) has nothing a provider accepts.
   if (text.length === 0 && calls.length === 0) return undefined;
   // Reasoning replays only to the model that produced it.
-  const sameModel = message.source?.provider === PROVIDER && message.source?.model === model;
-  const details = sameModel ? replayedDetails(message) : [];
+  const sameModel = message.source?.provider === dialect.provider && message.source?.model === model;
   const reasoning = sameModel ? message.content.filter(block => block.type === 'reasoning').map(block => block.text).join('') : '';
+  if (dialect.reasoningContent !== undefined) {
+    // A pass-through route speaks the upstream's own field: the reasoning text itself, or an
+    // empty one for models that reject a tool-call turn without it.
+    const field = reasoning.length > 0 ? reasoning : dialect.reasoningContent(model) ? '' : undefined;
+    return { role: 'assistant', content: text, ...(calls.length > 0 ? { tool_calls: calls } : {}), ...(field !== undefined ? { reasoning_content: field } : {}) };
+  }
+  const details = sameModel ? replayedDetails(message) : [];
   return {
     role: 'assistant',
     content: text,
@@ -115,8 +121,10 @@ function serializeAssistant(message, model) {
  * Harness history as OpenRouter chat messages. Each tool result becomes a `tool`
  * message; its images follow in one user message, which `tool` content cannot carry.
  * @param images - prepared request images (`versions` by attachment id, `access`), when the request has any.
+ * @param dialect - another chat-completions route reusing this serializer: its `provider` id (whose
+ *   reasoning replays), and `reasoningContent(model)` to replay reasoning as `reasoning_content`.
  */
-export function serializeMessages(messages, { model, system, images } = {}) {
+export function serializeMessages(messages, { model, system, images, dialect = { provider: PROVIDER } } = {}) {
   const wire = [];
   if (system !== undefined && system.length > 0) wire.push({ role: 'system', content: system });
   let pendingImages = [];
@@ -134,7 +142,7 @@ export function serializeMessages(messages, { model, system, images } = {}) {
     }
     if (message.role === 'assistant') {
       flush();
-      const entry = serializeAssistant(message, model);
+      const entry = serializeAssistant(message, model, dialect);
       if (entry) wire.push(entry);
       continue;
     }
@@ -318,9 +326,9 @@ function closeBlock(block) {
   return { type: block.kind, text: block.text };
 }
 
-function finishReason(reason, blocks) {
+function finishReason(reason, blocks, label) {
   if (reason === 'length') return { kind: 'max-tokens' };
-  if (reason === 'content_filter') return { kind: 'error', failure: { message: 'OpenRouter stopped the response for content filtering', code: 'CONTENT_FILTER' } };
+  if (reason === 'content_filter') return { kind: 'error', failure: { message: `${label} stopped the response for content filtering`, code: 'CONTENT_FILTER' } };
   if (reason === 'tool_calls' || blocks.some(block => block.kind === 'tool-call') && (reason === undefined || reason === 'stop')) return { kind: 'tool-calls' };
   if (reason === undefined || reason === null || reason === 'stop' || reason === 'end') {
     return blocks.length === 0 ? { kind: 'error', failure: { message: 'model returned a completed response with no content', code: EMPTY_RESPONSE_CODE } } : { kind: 'stop' };
@@ -333,8 +341,9 @@ function finishReason(reason, blocks) {
  * held until `[DONE]`; the finish of a successful response carries the replay state:
  * reasoning details per block, the generation id, the serving provider and the billed cost.
  * An error inside the stream throws with its routed code.
+ * @param kind - the replay kind stamped on the response; `label` names the route in errors.
  */
-export async function* translate(payloads, { model }) {
+export async function* translate(payloads, { model, kind = REPLAY_KIND, label = 'OpenRouter' }) {
   let nextIndex = 0, textBlock, reasoningBlock, finish, usage, cost, id, provider;
   const tools = new Map();
   const order = [];
@@ -347,12 +356,12 @@ export async function* translate(payloads, { model }) {
     if (payload === '[DONE]') {
       for (const block of order) yield { type: 'block-end', index: block.index, block: closeBlock(block) };
       if (usage) yield { type: 'usage', usage };
-      const reason = finishReason(finish, order);
+      const reason = finishReason(finish, order, label);
       const succeeded = reason.kind === 'stop' || reason.kind === 'tool-calls' || reason.kind === 'max-tokens';
       yield {
         type: 'finish', reason,
         ...(succeeded ? { replayState: {
-          response: { kind: REPLAY_KIND, version: 1, model, ...(id ? { id } : {}), ...(provider ? { provider } : {}), ...(cost !== undefined ? { cost } : {}) },
+          response: { kind, version: 1, model, ...(id ? { id } : {}), ...(provider ? { provider } : {}), ...(cost !== undefined ? { cost } : {}) },
           blocks: order.map(block => block.kind === 'reasoning' && block.details.length > 0 ? { type: 'reasoning', reasoningDetails: mergeDetails(block.details) } : { type: block.kind }),
         } } : {}),
       };
@@ -362,11 +371,11 @@ export async function* translate(payloads, { model }) {
     try {
       chunk = JSON.parse(payload);
     } catch {
-      throw new LlmError(`malformed OpenRouter stream payload: ${payload.slice(0, 120)}`, 'MALFORMED_RESPONSE');
+      throw new LlmError(`malformed ${label} stream payload: ${payload.slice(0, 120)}`, 'MALFORMED_RESPONSE');
     }
     if (chunk?.error) {
       const status = Number.isInteger(chunk.error.code) ? chunk.error.code : undefined;
-      throw new LlmError(errorMessage(chunk.error, 'OpenRouter stream error'), errorCode(undefined, chunk.error), status === undefined ? {} : { status });
+      throw new LlmError(errorMessage(chunk.error, `${label} stream error`), errorCode(undefined, chunk.error), status === undefined ? {} : { status });
     }
     if (typeof chunk?.id === 'string') id ??= chunk.id;
     if (typeof chunk?.provider === 'string') provider ??= chunk.provider;
@@ -416,5 +425,5 @@ export async function* translate(payloads, { model }) {
       if (Number.isFinite(chunk.usage.cost) && chunk.usage.cost >= 0) cost = chunk.usage.cost;
     }
   }
-  throw new LlmError('OpenRouter stream ended without [DONE]', 'TRANSPORT');
+  throw new LlmError(`${label} stream ended without [DONE]`, 'TRANSPORT');
 }

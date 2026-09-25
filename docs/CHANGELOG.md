@@ -8,6 +8,17 @@ Per-release notes live in [`docs/releases/`](releases/); the entries below summa
 
 ## [Unreleased]
 
+## [0.7.31] - 2026-09-24
+
+### Added
+
+- OpenCode Go is a provider: `/provider opencode-go` stores the key from the OpenCode console (or reads `OPENCODE_API_KEY`) and serves Go's chat-completions models — DeepSeek V4, GLM, Kimi, MiMo, LongCat, Hy and Space Bunny Free — with the reasoning efforts each model accepted on the live gateway. Requests carry the session id in `x-opencode-session` and a `dscode/<version>` user agent, and reasoning is passed back to the model that produced it. See [OpenCode Go](opencode-go.md).
+- A Go session's web search goes through Exa's hosted MCP search, as OpenCode's own client does: no key needed, `EXA_API_KEY` optional. Other routes search as before.
+
+### Changed
+
+- The OpenRouter adapter's request loop, image handling and stream translation are shared with the new route; OpenRouter's own behaviour is unchanged.
+
 ## [0.7.30] - 2026-09-23
 
 ### Added

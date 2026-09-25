@@ -1,7 +1,7 @@
 // Model providers `/provider` switches between. DeepSeek's official API is the
 // native `llm-deepseek` route; OpenRouter is DSCODE's own adapter
 // (plugins/openrouter), which serves OpenRouter's live model listing and is always
-// registered. This module ships beside the TUI too, so it imports nothing.
+// registered, as are the Grok and OpenCode Go routes. This module ships beside the TUI too, so it imports nothing.
 
 export const PROVIDERS = Object.freeze([
   { id: 'deepseek-official', name: 'DeepSeek', aliases: ['deepseek', 'deepseek-official', 'official'], credentialRef: 'DEEPSEEK_API_KEY', defaultModel: 'deepseek-flash' },
@@ -9,6 +9,8 @@ export const PROVIDERS = Object.freeze([
   { id: 'openrouter', name: 'OpenRouter', aliases: ['openrouter', 'open-router'], credentialRef: 'OPENROUTER_API_KEY', managementRef: 'OPENROUTER_MANAGEMENT_KEY', defaultModel: 'deepseek/deepseek-v4-flash' },
   // The Grok subscription rail: the token is the local 'grok login', read-only (plugins/grok).
   { id: 'grok', name: 'Grok', aliases: ['grok', 'xai', 'x-ai'], credentialRef: 'GROK_CLI_TOKEN', defaultModel: 'grok-4.6' },
+  // The OpenCode Go subscription: its chat-completions models, keyed from the OpenCode console (plugins/opencode-go).
+  { id: 'opencode-go', name: 'OpenCode Go', aliases: ['opencode-go', 'opencode', 'go'], credentialRef: 'OPENCODE_API_KEY', defaultModel: 'kimi-k3' },
 ]);
 
 // The pi-ai adapter served OpenRouter until 0.7.6, from this settings section.
@@ -77,10 +79,17 @@ export function providerOfHeader(header) {
   return typeof header === 'string' ? header.match(/^([^\s:/]+): /)?.[1] : undefined;
 }
 
+// OpenCode Go names DeepSeek models by the official ids, without OpenRouter's vendor segment.
+const OPENCODE_GO_OFFICIAL = Object.freeze({ 'deepseek-flash': 'deepseek-v4-flash' });
+
 function counterpart(from, model, to) {
   if (from === to) return model;
   if (from === 'deepseek-official' && to === 'openrouter') return OPENROUTER_MODELS.find(entry => entry.official.includes(model))?.id;
   if (from === 'openrouter' && to === 'deepseek-official') return OPENROUTER_MODELS.find(entry => entry.id === model)?.official[0];
+  if (from === 'deepseek-official' && to === 'opencode-go') return OPENCODE_GO_OFFICIAL[model] ?? model;
+  if (from === 'opencode-go' && to === 'deepseek-official') return model;
+  // OpenRouter's `vendor/model` ids mostly end in Go's own id.
+  if (from === 'openrouter' && to === 'opencode-go') return model.slice(model.indexOf('/') + 1);
   return undefined;
 }
 

@@ -28,7 +28,7 @@ export function ultraRequest(options, messages) {
 /**
  * DSH 0.1.7 rewrote the DeepSeek adapter onto the Messages API, where the system
  * prompt is a request field rather than a leading message. These two carry the same
- * gates as the message-shaped pair above, which the OpenRouter and Grok adapters
+ * gates as the message-shaped pair above, which the OpenRouter, Grok and OpenCode Go adapters
  * still use, and stay self-contained: `patch-runtime` embeds them by `toString()`.
  */
 export function ultraSystem(options, system) {

@@ -7,10 +7,12 @@ import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment';
 import { OpenRouterAdapter, PROVIDER } from './adapter.mjs';
 import { ensureOpenRouterModels } from './models.mjs';
 import { OpenRouterSearchProvider, RoutedSearchProvider } from './search.mjs';
+import { ExaSearchProvider } from '../opencode-go/search.mjs';
+import { dscodeVersion } from '../opencode-go/version.mjs';
 
 // The `openrouter` route: DSCODE's own OpenRouter adapter over its live model
 // listing, configured by this entry's own profile row, plus web search that
-// follows the session's route.
+// follows the session's route (including Exa for an OpenCode Go session).
 export const name = 'dscode-openrouter';
 export const inject = ['llm'];
 const NS = 'llm-openrouter';
@@ -103,6 +105,8 @@ export function apply(ctx, config = {}) {
       openrouter,
       // `ctx.web` keeps no per-call selection; the DeepSeek provider is looked up in its registry.
       deepseek: () => webCtx.web.searchProviders?.get?.('deepseek-official'),
+      // An OpenCode Go session searches through Exa, as OpenCode's own client does.
+      exa: new ExaSearchProvider(() => ({ resolveApiKey: () => resolveKey(credentialRef('EXA_API_KEY')), userAgent: `dscode/${dscodeVersion() ?? '0.0.0'}` })),
       currentProvider: () => {
         const agent = ctx.get('agents')?.currentInitiator?.();
         return agent?.session?.requestHeader?.()?.config?.provider ?? agent?.options?.provider;

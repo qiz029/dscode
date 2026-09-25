@@ -87,23 +87,49 @@ export class OpenRouterAdapter extends LlmAdapter {
     };
   }
 
+  /** Name in error messages; a subclass serving another route renames it. */
+  get label() {
+    return 'OpenRouter';
+  }
+
+  /** The model's catalog entry, after the catalog is loaded. */
+  async modelEntry(model) {
+    await this.config.ensureModels();
+    return openRouterModel(model);
+  }
+
+  /** The chat-completions body for one prepared request. */
+  requestBody(options, context) {
+    return requestBody(options, context);
+  }
+
+  /** Route headers beyond auth, content type and the user agent. */
+  requestHeaders() {
+    return { 'HTTP-Referer': APP_URL, 'X-OpenRouter-Title': 'DSCODE', 'X-OpenRouter-Categories': 'cli-agent' };
+  }
+
+  /** Options for the stream translation: the replay kind and error label. */
+  translateOptions(options) {
+    return { model: options.model };
+  }
+
   async *stream(options) {
     const connection = this.config.options();
+    const label = this.label;
     const idle = new AbortController(), consumer = new AbortController();
     let timer;
     const pulse = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => idle.abort(new Error('OpenRouter stream idle')), connection.streamIdleTimeoutMs);
+      timer = setTimeout(() => idle.abort(new Error(`${label} stream idle`)), connection.streamIdleTimeoutMs);
       timer.unref?.();
     };
     const signal = AbortSignal.any([idle.signal, consumer.signal, ...(options.signal ? [options.signal] : [])]);
     try {
       const apiKey = await this.config.resolveApiKey(connection);
-      await this.config.ensureModels();
-      const entry = openRouterModel(options.model);
+      const entry = await this.modelEntry(options.model);
       pulse();
       const images = await this.prepareImages(options, entry, connection, signal);
-      const body = requestBody(images?.options ?? options, { entry, images });
+      const body = this.requestBody(images?.options ?? options, { entry, images });
       const fetchImpl = this.config.fetch ?? globalThis.fetch;
       let response;
       try {
@@ -114,46 +140,44 @@ export class OpenRouterAdapter extends LlmAdapter {
             'content-type': 'application/json',
             accept: 'text/event-stream',
             ...attributionHeaders(),
-            'HTTP-Referer': APP_URL,
-            'X-OpenRouter-Title': 'DSCODE',
-            'X-OpenRouter-Categories': 'cli-agent',
+            ...this.requestHeaders(options),
           },
           body: JSON.stringify(body),
           signal,
         });
       } catch (error) {
         if (signal.aborted) throw error;
-        throw new LlmError(`OpenRouter request to ${connection.baseURL} failed`, 'TRANSPORT', { cause: error });
+        throw new LlmError(`${label} request to ${connection.baseURL} failed`, 'TRANSPORT', { cause: error });
       }
       // A rejected request, or a 200 whose JSON body holds only an error.
       if (!response.ok || !response.headers.get('content-type')?.includes('text/event-stream')) {
         const raw = await response.text();
         let error;
         try { error = JSON.parse(raw)?.error; } catch { /* not JSON */ }
-        if (response.ok && error === undefined) throw new LlmError(`OpenRouter returned a non-stream response: ${raw.slice(0, 120)}`, 'MALFORMED_RESPONSE');
+        if (response.ok && error === undefined) throw new LlmError(`${label} returned a non-stream response: ${raw.slice(0, 120)}`, 'MALFORMED_RESPONSE');
         const delay = retryAfterMs(response.headers.get('retry-after'));
         const status = response.ok ? (Number.isInteger(error?.code) ? error.code : undefined) : response.status;
-        throw new LlmError(errorMessage(error, `OpenRouter API error (HTTP ${response.status})`), errorCode(response.ok ? undefined : response.status, error), {
-          cause: new Error(raw.length > 0 ? raw : `OpenRouter HTTP ${response.status}`),
+        throw new LlmError(errorMessage(error, `${label} API error (HTTP ${response.status})`), errorCode(response.ok ? undefined : response.status, error), {
+          cause: new Error(raw.length > 0 ? raw : `${label} HTTP ${response.status}`),
           ...(status === undefined ? {} : { status }),
           ...(delay === undefined ? {} : { providerRetryAfterMs: delay }),
         });
       }
-      if (!response.body) throw new LlmError('OpenRouter returned no response body', 'EMPTY_RESPONSE');
-      for await (const chunk of translate(sseData(response.body, pulse), { model: options.model })) {
+      if (!response.body) throw new LlmError(`${label} returned no response body`, 'EMPTY_RESPONSE');
+      for await (const chunk of translate(sseData(response.body, pulse), this.translateOptions(options))) {
         // The idle clock measures the provider, not a slow consumer.
         clearTimeout(timer);
         yield chunk;
         pulse();
       }
     } catch (error) {
-      if (idle.signal.aborted && !options.signal?.aborted) throw new LlmError(`OpenRouter stream idle timeout after ${connection.streamIdleTimeoutMs}ms`, 'TIMEOUT', { cause: error });
-      if (options.signal?.aborted) throw new LlmError('OpenRouter request aborted by caller', 'ABORTED', { cause: error });
+      if (idle.signal.aborted && !options.signal?.aborted) throw new LlmError(`${label} stream idle timeout after ${connection.streamIdleTimeoutMs}ms`, 'TIMEOUT', { cause: error });
+      if (options.signal?.aborted) throw new LlmError(`${label} request aborted by caller`, 'ABORTED', { cause: error });
       if (error instanceof LlmError) throw error;
-      throw new LlmError(`OpenRouter API stream from ${connection.baseURL} failed`, 'TRANSPORT', { cause: error });
+      throw new LlmError(`${label} API stream from ${connection.baseURL} failed`, 'TRANSPORT', { cause: error });
     } finally {
       clearTimeout(timer);
-      consumer.abort('OpenRouter stream consumer stopped');
+      consumer.abort(`${label} stream consumer stopped`);
     }
   }
 
@@ -172,8 +196,8 @@ export class OpenRouterAdapter extends LlmAdapter {
     const messages = projectOffloadedImages(options.messages, ref => offloadedImageText(ref, access(ref)));
     const withImages = messages.some(message => contentHasImage(message.content));
     if (!withImages) return messages === options.messages ? undefined : { options: { ...options, messages: [...messages] }, versions: new Map(), access };
-    if (!entry?.inputModalities?.includes('image')) throw new LlmError(`OpenRouter model "${options.model}" does not accept image input.`, 'UNSUPPORTED_CONTENT');
-    if (attachments === undefined) throw new LlmError('OpenRouter image input requires the durable attachment service.', 'UNSUPPORTED_CONTENT');
+    if (!entry?.inputModalities?.includes('image')) throw new LlmError(`${this.label} model "${options.model}" does not accept image input.`, 'UNSUPPORTED_CONTENT');
+    if (attachments === undefined) throw new LlmError(`${this.label} image input requires the durable attachment service.`, 'UNSUPPORTED_CONTENT');
     const refs = new Map();
     for (const message of messages) collectImages(message.content, refs);
     const versions = new Map(await Promise.all([...refs.values()].map(async ref => [ref.attachmentId, await attachments.readImageRequest(ref, IMAGE_POLICY, signal)])));
@@ -184,7 +208,7 @@ export class OpenRouterAdapter extends LlmAdapter {
     );
     if (offloadImages > 0) {
       throw new LlmError(
-        `OpenRouter request images exceed ${connection.maxRequestImageBytes} bytes; ${offloadImages} more oldest occurrence(s) must be offloaded.`,
+        `${this.label} request images exceed ${connection.maxRequestImageBytes} bytes; ${offloadImages} more oldest occurrence(s) must be offloaded.`,
         IMAGE_OFFLOAD_REQUIRED_CODE,
         { offloadImages },
       );
