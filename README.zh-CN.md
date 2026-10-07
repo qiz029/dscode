@@ -234,6 +234,7 @@ Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第�
 |---|---|
 | [更新日志](docs/CHANGELOG.md) | 每次发布，最新在前 |
 | [非交互执行](docs/exec.md) | `dscode exec`、JSON 输出、resume 与 effort/model/permission 参数 |
+| [ACP 客户端](docs/acp.md) | `dscode acp`、自定义模型服务、客户端审批和协议限制 |
 | [触发器](docs/triggers.md) | 由事件触发运行，可新建或复用会话：cron、延迟任务、托管脚本循环、`/trigger` TUI 管理、agent 工具、运行日志 |
 | [会话接入](docs/session-bridge.md) | 用 `dscode sessions`、`send`、`read`、`watch` 接入运行中的会话 |
 | [Session 通信](docs/session-communication.md) | Agent 侧消息、投递方式、预算与去重 |

@@ -94,8 +94,10 @@ export function serializeMessages(messages, { model, system, images, dialect = {
       if (entry) wire.push(entry);
       continue;
     }
-    const results = message.content.filter(block => block.type === 'tool-result');
-    const parts = contentParts(message.content.filter(block => block.type !== 'tool-result'), images);
+    const results = message.role === 'tool'
+      ? [{ toolCallId: message.toolCallId, content: message.content }]
+      : message.content.filter(block => block.type === 'tool-result');
+    const parts = message.role === 'tool' ? [] : contentParts(message.content.filter(block => block.type !== 'tool-result'), images);
     if (parts.length > 0 || results.length === 0) {
       flush();
       wire.push({ role: 'user', content: collapse(parts) });
@@ -111,4 +113,3 @@ export function serializeMessages(messages, { model, system, images, dialect = {
   flush();
   return wire;
 }
-

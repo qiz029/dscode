@@ -233,6 +233,7 @@ The bundle generates its modified modules at build time and never rewrites third
 |---|---|
 | [Changelog](docs/CHANGELOG.md) | Every release, newest first |
 | [Non-interactive runs](docs/exec.md) | `dscode exec`, JSON output, resume and effort/model/permission flags |
+| [ACP clients](docs/acp.md) | `dscode acp`, custom providers, client approval and protocol limits |
 | [Triggers](docs/triggers.md) | Event-driven runs with fresh or persistent sessions: cron, delay jobs, supervised script loops, `/trigger` TUI management, agent tools, the run log |
 | [Session bridge](docs/session-bridge.md) | `dscode sessions`, `send`, `read`, `watch` against a live session |
 | [Session communication](docs/session-communication.md) | Agent-side messaging, delivery modes, budgets and de-duplication |
