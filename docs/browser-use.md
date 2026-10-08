@@ -695,6 +695,14 @@ validates without writing. This setup leaves the Desktop Host's global PATH and
 native Standard shell providers unchanged; shell sandbox and approval rules still
 apply.
 
+Once a version has been published, **Plugins → Add plugin** also accepts
+`@toddzheng024/dscode-desktop@<version>`. Pin the version whose release notes
+match your Harness runtime. The `preview` npm tag follows the current Desktop
+preview. For archive installation, download the matching `.tgz` and `.sha256`
+from [GitHub Releases](https://github.com/qiz029/dscode/releases) and verify it
+with `shasum -a 256 -c <downloaded-file>.tgz.sha256` before installing. Dependency
+resolution still needs network access.
+
 To install through the official interface, open **Plugins → Add plugin**, enter
 the absolute `.tgz` path, install it and choose **Enable now**.
 

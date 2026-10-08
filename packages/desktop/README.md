@@ -44,6 +44,20 @@ Installation through the official **Plugins → Add plugin** interface was check
 on macOS Desktop 0.2.0-rc.2. Public npm installation instructions accompany a
 public release; a candidate build alone does not publish a package.
 
+## Install a published version
+
+After this version is available on npm, enter
+`@toddzheng024/dscode-desktop@{{VERSION}}` in **Plugins → Add plugin**,
+review the installation, install, then choose **Enable now**. Using the exact
+version keeps the installation tied to these instructions and compatibility
+requirements. The `preview` tag tracks the current Desktop preview release.
+
+For archive installation, download the matching `.tgz` and `.sha256`
+from [GitHub Releases](https://github.com/qiz029/dscode/releases), run
+`shasum -a 256 -c <downloaded-file>.tgz.sha256` in that directory, and use the
+archive installation steps above. Installing its dependencies still needs
+network access. A checksum mismatch means the download should not be installed.
+
 ## Moving from the earlier private probe
 
 Do not enable the old probe and this package together: they register the same
