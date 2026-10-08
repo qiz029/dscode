@@ -35,7 +35,7 @@ Most coding agents work alone. DSCODE is built on the opposite assumption: sessi
 | `dscode send <session-id> --steer "review the change in parser.ts and reply"` | Work handed to another session on this machine; it can read your transcript, answer, and hand the result back. |
 | `/permission auto-review` · `/review-usage` | Approvals decided by an independent reviewer from your instruction, with what it allowed and what it cost. |
 
-The [90-second demo script](docs/demo.md) has the shot list, the exact commands, and how to record it.
+The [demo guide](docs/demo.md) separates DSCODE and Plugin Hub features, outlines a five-minute Desktop walkthrough, and retains the 90-second terminal shot list and recording commands.
 
 ## 🧭 Core features
 
@@ -259,7 +259,7 @@ The bundle generates its modified modules at build time and never rewrites third
 | [Skills and workspace instructions](docs/skills.md) | Discovery scopes, the ancestor mode and instruction files |
 | [TUI commands](docs/tui-commands.md) | Command reference and hooks |
 | [Session metrics](docs/session-metrics.md) | Definition of the footer TPS, context, cost and cache figures |
-| [Demo script](docs/demo.md) | The 90-second demo: shot list, exact commands, how to record it |
+| [Demo guide](docs/demo.md) | Desktop feature summary and walkthrough draft; 90-second terminal shot list and recording commands |
 | [npm + Hub distribution](docs/hub-distribution.md) | Bundle, Hub release and launcher pipeline |
 | [tar distribution](docs/distribution.md) | The standalone tar installer |
 | [Verification](docs/verification.md) | What the maintained checks cover |
