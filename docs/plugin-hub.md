@@ -59,9 +59,10 @@ retrying; the Hub's operation history is not persisted.
 - Search queries and package lookups go to `api.dshpluginhub.ai`. Provider keys,
   conversation text, workspace files and local credentials are not sent by this
   catalog client. The agent may include task terms in a query you ask it to make.
-- This guide describes the source candidate. Public Desktop npm distribution,
-  legacy probe migration and the official application's rendered installation
-  flow are still being qualified.
+- This guide describes the source candidate. Public Desktop npm distribution is still
+  being qualified. Official Add plugin installation, Hub installation with
+  handoff to official management, and migration from the legacy probe name
+  have passed on macOS Desktop 0.2.0-rc.2.
 
 See [Desktop candidate installation](browser-use.md#install-the-experimental-combined-desktop-package)
 and [distribution](hub-distribution.md) for package setup and release status.

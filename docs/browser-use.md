@@ -621,7 +621,10 @@ Chrome toolbar installation and live-model understanding remain unverified.
 
 The source checkout can also package the DSCODE agent preset, custom-model
 and account settings, browser preview, durable session communication, cross-session
-memory and opt-in task scheduling together. This private package is not published to npm. It does
+memory and opt-in task scheduling together. Ordinary builds remain private;
+the separate [release process](hub-distribution.md#desktop-release-candidate-and-publication)
+qualifies a public candidate for 0.2.0-rc.2. Public npm distribution is still
+pending. The package does
 not yet include all DSCODE Host services. Its experimental
 [native Computer Use adapter](computer-use.md) has passed helper and lifecycle
 checks; window observation, screenshots and input await qualification with
@@ -634,7 +637,9 @@ includes [Plugin Hub](plugin-hub.md) for community discovery and installation
 through the official manager. The earlier private
 `@toddzheng024/dscode-desktop-preset-probe` must be removed before installing
 this package; both register the same DSCODE components. Back up your Desktop
-state first. Migration between these names still requires separate qualification.
+state first. A separate macOS Desktop 0.2.0-rc.2 migration check preserved
+sessions, credentials, configuration and user patches when removing the old
+name and installing the formal package.
 
 DSCODE sessions in the same Desktop state directory can discover session cards,
 read other active DSCODE root sessions, send requests or notifications, and reply
@@ -690,8 +695,11 @@ validates without writing. This setup leaves the Desktop Host's global PATH and
 native Standard shell providers unchanged; shell sandbox and approval rules still
 apply.
 
-Open the official application once to initialize its Desktop profile, then
-fully quit it. Use the application's bundled command, adjusting the application
+To install through the official interface, open **Plugins → Add plugin**, enter
+the absolute `.tgz` path, install it and choose **Enable now**.
+
+For CLI installation, open the application once to initialize its Desktop
+profile, then fully quit it. Use its bundled command, adjusting the application
 path and replacing the package placeholder with the printed tarball path:
 
 ```bash
