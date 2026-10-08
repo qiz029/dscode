@@ -8,6 +8,8 @@ Per-release notes live in [`docs/releases/`](releases/); the entries below summa
 
 ## [Unreleased]
 
+- Desktop Hub publication retries the npm propagation window where the exact version is visible but the Hub still reports `package_not_found` or an older index. Retries are bounded; policy/credential failures and integrity mismatches still stop publication.
+
 ## [0.7.33] - 2026-10-08
 
 - The formal Desktop plugin is `@toddzheng024/dscode-desktop`, with an icon, localized identity, exact Harness compatibility and package-specific instructions. Public release candidates target Harness 0.2.0-rc.2 on macOS Apple Silicon; standalone applications and an automatic Desktop updater remain outside this delivery.

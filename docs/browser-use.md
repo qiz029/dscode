@@ -623,8 +623,8 @@ The source checkout can also package the DSCODE agent preset, custom-model
 and account settings, browser preview, durable session communication, cross-session
 memory and opt-in task scheduling together. Ordinary builds remain private;
 the separate [release process](hub-distribution.md#desktop-release-candidate-and-publication)
-qualifies a public candidate for 0.2.0-rc.2. Public npm distribution is still
-pending. The package does
+qualifies a public candidate for 0.2.0-rc.2. The Desktop preview is published on npm as
+`@toddzheng024/dscode-desktop@0.7.33`. The package does
 not yet include all DSCODE Host services. Its experimental
 [native Computer Use adapter](computer-use.md) has passed helper and lifecycle
 checks; window observation, screenshots and input await qualification with
@@ -632,7 +632,7 @@ macOS Accessibility permission.
 Choose this package or the browser-only bundle; enabling both duplicates their
 browser services.
 
-The current candidate's package name is `@toddzheng024/dscode-desktop`. It also
+The Desktop plugin's package name is `@toddzheng024/dscode-desktop`. It also
 includes [Plugin Hub](plugin-hub.md) for community discovery and installation
 through the official manager. The earlier private
 `@toddzheng024/dscode-desktop-preset-probe` must be removed before installing

@@ -33,6 +33,17 @@ The default state directory is `~/.local/share/dscode-hub`, overridable with `DS
 
 A user who already has dsh-hub installed can apply directly, but must use pnpm 10.15.1, set a dedicated `DSH_HOME` and `DSH_AGENTS_HOME`, and set `npm_config_ignore_scripts=true` on the install command. The launcher is recommended because it unifies those conditions.
 
+### Desktop users
+
+Install the official Harness Desktop application with embedded runtime
+0.2.0-rc.2. In **Plugins → Add plugin**, enter
+`@toddzheng024/dscode-desktop@0.7.33`, review and install, then choose
+**Enable now**. Select the DSCODE preset and configure your model account.
+The Desktop preview is qualified on macOS Apple Silicon. See
+[Desktop installation](browser-use.md#install-the-experimental-combined-desktop-package)
+for archive checksums, migration and removal, and [Plugin Hub](plugin-hub.md)
+for discovering community plugins after installation.
+
 ## Release checklist
 
 Cutting a release from this repository, in order. The rule that matters most: **the git tag must equal `v<package.json version>`, and that version must not already be on npm from a different build.**
@@ -142,7 +153,12 @@ npm run publish:desktop -- verify
 Each phase checks the archive and receipt again. The npm phase publishes with
 `--tag preview`; an existing version is reusable only with identical integrity.
 The Hub phase syncs the package and requires the exact version, integrity and
-Desktop compatibility to resolve. The final phase downloads public bytes,
+Desktop compatibility to resolve. A newly published package can appear on
+the npm version endpoint before the Hub can fetch its package index. In this
+post-publication phase, `package_not_found` and an index missing the exact
+version retry up to 40 times, 15 seconds apart. Other rejections and credential
+errors stop immediately; the final integrity and compatibility checks still
+apply. The final phase downloads public bytes,
 checks their SHA-256, and installs the exact npm version into a new native
 Harness profile before booting it and checking the preset and Hub RPC. The
 result is saved as `artifacts/local/desktop-public-install.json`. No model
