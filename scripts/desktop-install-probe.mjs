@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 // Loaded by the official Electron Host after native package-manager operations.
 import assert from 'node:assert/strict';
 import { readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
@@ -11,7 +12,7 @@ import { installModelSelection } from '@deepseek-ai/dsh-agent';
 export const inject = ['agents', 'agentPresets', 'llm', 'commands', 'tools', 'systemPrompt', 'subagents'];
 export function apply(ctx) {
   void run(ctx).catch(error => {
-    writeFileSync(join(process.env.DSH_HOME, 'install-probe-failure.txt'), error.stack ?? String(error));
+    writeFileSync(join(resolveDshHome(), 'install-probe-failure.txt'), error.stack ?? String(error));
     console.error(error);
   });
 }
@@ -83,7 +84,7 @@ async function run(ctx) {
     const preset = await ctx.agentPresets.resolve('dscode').catch(() => undefined);
     assert(!preset || preset.broken, 'Removed bundle still supplies its preset');
   } else {
-    const meta = JSON.parse(readFileSync(join(process.env.DSH_HOME, 'profiles/desktop/node_modules', process.env.DSCODE_INSTALL_PACKAGE, 'package.json'), 'utf8'));
+    const meta = JSON.parse(readFileSync(join(resolveDshHome(), 'profiles/desktop/node_modules', process.env.DSCODE_INSTALL_PACKAGE, 'package.json'), 'utf8'));
     assert.equal(meta.version, process.env.DSCODE_INSTALL_VERSION);
     const preset = await ctx.agentPresets.resolve('dscode');
     assert.equal(preset.broken, undefined, preset.broken);
@@ -162,7 +163,7 @@ async function run(ctx) {
     assert.match(diagnostic.result.text, /Host plugins:/);
     const docs = (await ctx.systemPrompt.assemble({ scope: agent })).sections.find(section => section.name === 'dscode:docs')?.text;
     assert(docs?.includes(`${process.env.DSCODE_INSTALL_PACKAGE}/docs/`), docs);
-    assert.match(readFileSync(join(process.env.DSH_HOME, 'profiles/desktop/node_modules', process.env.DSCODE_INSTALL_PACKAGE, 'docs/tui-commands.md'), 'utf8'), /Experimental Desktop diagnostics/);
+    assert.match(readFileSync(join(resolveDshHome(), 'profiles/desktop/node_modules', process.env.DSCODE_INSTALL_PACKAGE, 'docs/tui-commands.md'), 'utf8'), /Experimental Desktop diagnostics/);
     const emailService = ctx.get('dscodeEmail'); assert(emailService);
     for (const name of ['send_email', 'set_email_alias', 'resolve_email_recipient', 'email_send_status']) assert(ctx.tools.schemas(agent).some(tool => tool.name === name));
     const emailTool = (name, arguments_) => ctx.tools.execute({ name, arguments: arguments_, agent, callId: randomUUID(), signal: AbortSignal.timeout(10000) });
@@ -192,7 +193,7 @@ async function run(ctx) {
     assert.equal(board.value.columns.pending[0].title, 'Preserve delegation across installation');
     const coordinatorId = 'desktop-install-delegation';
     const coordinatorHandle = phase === 'installed'
-      ? await ctx.agents.create({ sessionId: coordinatorId, meta: { cwd: realpathSync(join(process.env.DSH_HOME, 'delegation-workspace')), agentPreset: 'dscode' }, agentOptions: { provider: 'lifecycle-fixture', model: 'scripted' }, setup })
+      ? await ctx.agents.create({ sessionId: coordinatorId, meta: { cwd: realpathSync(join(resolveDshHome(), 'delegation-workspace')), agentPreset: 'dscode' }, agentOptions: { provider: 'lifecycle-fixture', model: 'scripted' }, setup })
       : await ctx.agents.resume({ resumeSessionId: coordinatorId, setup });
     const coordinator = coordinatorHandle.agent;
     const control = (name, args, owner = coordinator) => ctx.tools.execute({ name, arguments: args, agent: owner, callId: randomUUID(), signal: AbortSignal.timeout(30000) });
@@ -217,7 +218,7 @@ async function run(ctx) {
       assert.equal(process.env.PATH, hostPath);
       shellPatchVerified = true;
     }
-    const savedChild = join(process.env.DSH_HOME, 'delegation-install.json');
+    const savedChild = join(resolveDshHome(), 'delegation-install.json');
     let childState, observed = false;
     try {
       inspectChild = async ({ sessionId }) => {
@@ -240,7 +241,7 @@ async function run(ctx) {
         const launched = await control('subagent', { name: 'persist', description: 'Installed lifecycle child', prompt: 'Return the scripted fixture response.', worktree: true, run_in_background: true });
         assert.equal(launched.value?.kind, 'continuable', JSON.stringify(launched));
         childState = { id: launched.value.subagentId, worktree: launched.value.worktree };
-        assert(childState.worktree.startsWith(realpathSync(join(process.env.DSH_HOME, 'delegation-workspace')) + '/'));
+        assert(childState.worktree.startsWith(realpathSync(join(resolveDshHome(), 'delegation-workspace')) + '/'));
         writeFileSync(savedChild, JSON.stringify(childState));
       } else {
         childState = JSON.parse(readFileSync(savedChild, 'utf8'));
@@ -261,7 +262,7 @@ async function run(ctx) {
       const children = await ctx.subagents.listChildren(coordinator.id);
       assert.equal(children.length, 1); assert.equal(children[0].id, childState.id);
     } finally { inspectChild = undefined; await coordinatorHandle.dispose(); }
-    const schedulingState = join(process.env.DSH_HOME, 'scheduler-install.json');
+    const schedulingState = join(resolveDshHome(), 'scheduler-install.json');
     for (const name of ['trigger_manage', 'trigger_jobs', 'trigger_scheduler', 'trigger_source']) assert(ctx.tools.schemas(agent).some(tool => tool.name === name));
     if (phase === 'installed') {
       assert.equal((await scheduling({ action: 'status' })).scheduler.enabled, false);
@@ -283,8 +284,8 @@ async function run(ctx) {
     await communication.state(agent).ready;
     assert(ctx.tools.schemas(agent).some(tool => tool.name === 'bash'));
     for (const name of ['list_sessions', 'read_session', 'send_session', 'reply_session']) assert(ctx.tools.schemas(agent).some(tool => tool.name === name));
-    const browserHome = join(process.env.DSH_HOME, 'browser');
-    const expectedLaunch = JSON.parse(readFileSync(join(process.env.DSH_HOME, 'browser-install-launch.json'), 'utf8'));
+    const browserHome = join(resolveDshHome(), 'browser');
+    const expectedLaunch = JSON.parse(readFileSync(join(resolveDshHome(), 'browser-install-launch.json'), 'utf8'));
     const browserCommand = async command => (await ctx.commands.execute(agent, '/browser ' + command, [], AbortSignal.timeout(30000))).result;
     const browserConfig = async command => {
       const result = await browserCommand(command + ' --json');
@@ -305,14 +306,14 @@ async function run(ctx) {
       assert.deepEqual(await browserConfig('status'), expectedLaunch);
       browserModeSettingsVerified = true;
     }
-    const { BrowserAccess } = await import(pathToFileURL(join(process.env.DSH_HOME, 'profiles/desktop/node_modules', process.env.DSCODE_INSTALL_PACKAGE, 'plugins/browser/access.mjs')).href);
+    const { BrowserAccess } = await import(pathToFileURL(join(resolveDshHome(), 'profiles/desktop/node_modules', process.env.DSCODE_INSTALL_PACKAGE, 'plugins/browser/access.mjs')).href);
     const browserAccess = new BrowserAccess(browserHome);
     const permissionCommand = async command => {
       const response = await ctx.commands.execute(agent, '/browser ' + command + ' --json', [], AbortSignal.timeout(10000));
       assert.equal(response.result.kind, 'success', response.result.text);
       return JSON.parse(response.result.text).permissions;
     };
-    const permissionState = join(process.env.DSH_HOME, 'browser-install-permissions.json');
+    const permissionState = join(resolveDshHome(), 'browser-install-permissions.json');
     if (phase === 'installed') {
       await permissionCommand('site allow https://lifecycle.example');
       await browserAccess.update('once', 'https://revoked.example');
@@ -345,7 +346,7 @@ async function run(ctx) {
       if (phase === 'reinstalled' && process.env.DSCODE_TEST_CHROME) {
         const started = await browserCommand('start');
         assert.equal(started.kind, 'success', started.text);
-        const { browserForAgent } = await import(pathToFileURL(join(process.env.DSH_HOME, 'profiles/desktop/node_modules', process.env.DSCODE_INSTALL_PACKAGE, 'plugins/browser/review.mjs')).href);
+        const { browserForAgent } = await import(pathToFileURL(join(resolveDshHome(), 'profiles/desktop/node_modules', process.env.DSCODE_INSTALL_PACKAGE, 'plugins/browser/review.mjs')).href);
         const browser = browserForAgent(agent), nativeCall = browser.client.callTool;
         browser.client.callTool = async (request, ...rest) => request.name === 'list_pages'
           ? { isError: true, content: [{ type: 'text', text: 'Fixture installed page list unavailable' }] }
@@ -433,7 +434,7 @@ async function run(ctx) {
     const sent = result.value;
     assert.equal(sent.delivery, 'accepted', JSON.stringify(sent));
     assert.equal(sent.wake, false);
-    const saved = join(process.env.DSH_HOME, 'deferred-message.json');
+    const saved = join(resolveDshHome(), 'deferred-message.json');
     if (phase === 'installed') writeFileSync(saved, JSON.stringify({ messageId: sent.messageId }));
     else {
       assert.equal(sent.messageId, JSON.parse(readFileSync(saved, 'utf8')).messageId);
@@ -461,10 +462,10 @@ async function run(ctx) {
   }
   if (phase === 'reinstalled' && process.env.DSCODE_TEST_CHROME) {
     const { verifyBrowserAccess } = await import('./browser-access-probe.mjs');
-    await verifyBrowserAccess(join(process.env.DSH_HOME, 'profiles/desktop/node_modules', process.env.DSCODE_INSTALL_PACKAGE));
+    await verifyBrowserAccess(join(resolveDshHome(), 'profiles/desktop/node_modules', process.env.DSCODE_INSTALL_PACKAGE));
     installedBrowserAccessVerified = true;
   }
-  writeFileSync(join(process.env.DSH_HOME, 'install-probe-result.json'), JSON.stringify({ phase, version: process.env.DSCODE_INSTALL_VERSION, nativeHost: true, customCancellationVerified, browserStopVerified, installedBrowserAccessVerified, browserConfigurationVerified, browserModeSettingsVerified, browserTabRefreshVerified, commandInputsVerified, browserResumeVerified, browserStatusVerified, shellPatchVerified }));
+  writeFileSync(join(resolveDshHome(), 'install-probe-result.json'), JSON.stringify({ phase, version: process.env.DSCODE_INSTALL_VERSION, nativeHost: true, customCancellationVerified, browserStopVerified, installedBrowserAccessVerified, browserConfigurationVerified, browserModeSettingsVerified, browserTabRefreshVerified, commandInputsVerified, browserResumeVerified, browserStatusVerified, shellPatchVerified }));
   console.log('DESKTOP_INSTALL_PROBE_PASSED ' + phase);
 }
 

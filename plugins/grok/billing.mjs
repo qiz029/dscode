@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -136,7 +137,7 @@ export function setGrokSubscription(next, at = Date.now()) {
  * instead of falling back to a bare tier name. One file read per refresh window keeps the
  * render path off the disk.
  */
-export function grokSubscriptionNow(home = process.env.DSH_HOME) {
+export function grokSubscriptionNow(home = resolveDshHome()) {
   if (state !== undefined) return state;
   if (home === undefined) return undefined;
   if (disk !== undefined && disk.home === home && Date.now() - disk.at < GROK_SUBSCRIPTION_TTL_MS) return disk.value;

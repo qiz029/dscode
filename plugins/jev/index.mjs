@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import z from '@deepseek-ai/schemastery';
 import { credentialRef } from '@deepseek-ai/dsh-credentials';
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment';
@@ -60,7 +61,7 @@ export function apply(ctx, config = {}) {
       const apiKey = await resolveKey();
       if (!apiKey || signal?.aborted) return undefined;
       const started = Date.now();
-      const home = process.env.DSH_HOME, id = randomUUID();
+      const home = resolveDshHome(), id = randomUUID();
       const recipients = sessionId && home ? metricRecipients(ctx.get('agents'), sessionId) : [];
       const save = entry => {
         for (const recipient of recipients) {

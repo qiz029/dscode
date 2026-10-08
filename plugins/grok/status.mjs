@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { grokAuthState, minutesLeft } from "./auth.mjs";
 import { grokSubscriptionNow, readGrokSubscription } from "./billing.mjs";
 
@@ -10,7 +11,7 @@ import { grokSubscriptionNow, readGrokSubscription } from "./billing.mjs";
  * @returns `{ status: { kind, expiresIn? }, subscription? }`; `kind` is the local login state
  *   (`ready`, `expired`, `missing`, `malformed`) and `expiresIn` is minutes on a ready login.
  */
-export function grokStatusSnapshot({ home = process.env.DSH_HOME, now = Date.now() } = {}) {
+export function grokStatusSnapshot({ home = resolveDshHome(), now = Date.now() } = {}) {
   const auth = grokAuthState({ now });
   const stored = grokSubscriptionNow() ?? (home === undefined ? undefined : readGrokSubscription(home));
   return {

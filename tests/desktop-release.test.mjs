@@ -33,7 +33,7 @@ function fixture(t) {
     combinedDesktopBrowser: true, customBrowserScreenshot: true, customBrowserAnnotation: true, combinedBrowserRevocation: true,
     browserPermissionsSurvivedRestart: true };
   write(join(directory, 'installation.json'), { ...candidate, packageSha256: candidate.sha256,
-    nativeInstall: true, installedHost: true, hubRpc: true, presetResolved: true });
+    nativeInstall: true, installedHost: true, hubRpc: true, presetResolved: true, defaultHome: true, componentsActive: true });
   const save = () => { write(join(directory, 'candidate.json'), candidate); write(join(directory, 'verification.json'), proof); };
   save(); return { root, directory, candidate, proof, save, write };
 }
@@ -83,6 +83,15 @@ test('publication requires successful native installation of the same archive', 
   // Only the build's bootstrap verifier may consume a Host-qualified archive
   // before recording its native-install result.
   assert.doesNotThrow(() => readDesktopRelease(f.root, { requireInstall: false }));
+});
+
+test('publication rejects installation proof that skipped default-home component activation', t => {
+  const f = fixture(t), path = join(f.directory, 'installation.json');
+  const proof = JSON.parse(readFileSync(path, 'utf8'));
+  for (const field of ['defaultHome', 'componentsActive']) {
+    f.write(path, { ...proof, [field]: false });
+    assert.throws(() => readDesktopRelease(f.root), new RegExp(field));
+  }
 });
 
 test('release version, npm integrity, filename and release notes are enforced', t => {

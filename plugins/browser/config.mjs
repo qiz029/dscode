@@ -1,9 +1,9 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import path, { join } from 'node:path';
 
-export const browserHome = () => join(process.env.DSH_HOME ?? process.env.DSCODE_HOME ?? join(homedir(), '.dscode'), 'browser');
+export const browserHome = () => join(resolveDshHome(), 'browser');
 export const DEFAULT_CONFIG = Object.freeze({ mode: 'persistent', headless: false });
 
 export function validateConfig(input, paths = path) {

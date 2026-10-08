@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
@@ -15,10 +16,10 @@ export async function verifyDesktopBrowser(ctx, { interactive = false, reload = 
   const service = ctx.get('dscodeCustom'), results = [];
   const key = `fixture-${randomUUID()}`, id = 'custom-desktop-browser', model = 'desktop-browser-vision';
   let pageRequests = 0, frameRequests = 0;
-  const revisionFile = join(process.env.DSH_HOME, 'browser-fixture-revision');
-  const fragmentFile = join(process.env.DSH_HOME, 'browser-fixture-fragment');
+  const revisionFile = join(resolveDshHome(), 'browser-fixture-revision');
+  const fragmentFile = join(resolveDshHome(), 'browser-fixture-fragment');
   const revision = () => existsSync(revisionFile) ? readFileSync(revisionFile, 'utf8').trim() : 'initial';
-  const frameReceipt = loadedRevision => writeFileSync(join(process.env.DSH_HOME, 'frame-document-receipt.json'),
+  const frameReceipt = loadedRevision => writeFileSync(join(resolveDshHome(), 'frame-document-receipt.json'),
     JSON.stringify({ pageRequests, frameRequests, loadedRevision }));
   const server = createServer(async (req, res) => {
     if (interactive && req.url === '/fixture-state') {
@@ -86,7 +87,7 @@ export async function verifyDesktopBrowser(ctx, { interactive = false, reload = 
           const ref = admitted.at(-1).data.content.find(block => block.type === 'image').attachment;
           const expected = await ctx.attachments.readImageRequest(ref, { ...requestImageDimensions(ref.width, ref.height, 2048 * 2048), maxBytes: 1024 * 1024 });
           assert.deepEqual(annotationImage, Buffer.from(expected.data));
-          writeFileSync(join(process.env.DSH_HOME, 'annotation-receipt.json'), JSON.stringify({ count: admitted.length,
+          writeFileSync(join(resolveDshHome(), 'annotation-receipt.json'), JSON.stringify({ count: admitted.length,
             hasImage: true, exactImageBytes: true, customHttpTransport: true, fullPreset: 'dscode', largeImageFixture, text: annotation.content.find(part => part.type === 'text').text }));
         }
       } else {
@@ -109,7 +110,7 @@ export async function verifyDesktopBrowser(ctx, { interactive = false, reload = 
       res.end(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: action ? 'tool_calls' : 'stop' }] })}\n\ndata: [DONE]\n\n`);
     } catch (error) {
       failure ??= error;
-      if (interactive) writeFileSync(join(process.env.DSH_HOME, 'browser-ui-failure.log'), error.stack ?? String(error));
+      if (interactive) writeFileSync(join(resolveDshHome(), 'browser-ui-failure.log'), error.stack ?? String(error));
       res.writeHead(500); res.end('Fixture request failed');
     }
   });
@@ -153,7 +154,7 @@ export async function verifyDesktopBrowser(ctx, { interactive = false, reload = 
       assert.equal(result.kind, 'success', result.text);
       return result;
     };
-    const permissionReceipt = join(process.env.DSH_HOME, 'desktop-browser-permissions.json');
+    const permissionReceipt = join(resolveDshHome(), 'desktop-browser-permissions.json');
     if (reload) {
       assert(agent.session.snapshotEvents().some(event => event.type === 'assistant/message'
         && event.data.message.content.some(block => block.text === 'DESKTOP_ANNOTATION_OK')), 'Resume lost the previous browser conversation');

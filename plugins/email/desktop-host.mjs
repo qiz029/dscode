@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { clientRequestSchema } from '@deepseek-ai/dsh-client-connection';
 import { DesktopEmail } from './desktop-service.mjs';
 import { createEmailContacts } from './contacts.mjs';
@@ -6,8 +7,7 @@ import { registerEmailTools } from '../email-tools/index.mjs';
 
 export const inject = ['agents', 'agentPresets', 'sessions'];
 export async function apply(ctx) {
-  if (!process.env.DSH_HOME) throw Error('Desktop email requires DSH_HOME.');
-  const service = new DesktopEmail({ home: process.env.DSH_HOME });
+  const service = new DesktopEmail({ home: resolveDshHome() });
   const contacts = createEmailContacts({ directory: service.inbox.directory });
   const sender = createEmailSender({ directory: service.inbox.directory,
     configurationHint: 'Open Email inbox → Mailbox connection and connect Gmail IMAP with an application password before sending. Gmail OAuth supports receiving only.' });

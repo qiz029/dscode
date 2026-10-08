@@ -8,6 +8,11 @@ Per-release notes live in [`docs/releases/`](releases/); the entries below summa
 
 ## [Unreleased]
 
+## [0.7.34] - 2026-10-08
+
+- Fix Desktop activation without an exported `DSH_HOME`: workspace discovery, email, scheduling and automatic review now resolve the native Harness home, including the default `~/.dsh`, blank overrides and supported tilde paths.
+- Keep browser state, memory, session communication/cards, delegation, review baselines, provider caches, diagnostics and usage records under that same resolved home. The terminal launcher continues to map its `DSCODE_HOME` into `DSH_HOME`; explicit memory and audit directories remain supported. Credentials and mail retain their existing account-store locations. This change does not move previously misplaced state automatically.
+- Public Desktop installation qualification now runs with `DSH_HOME` absent and requires all four affected components to activate. The native Host and signed macOS lifecycle verifiers also support this default-home scenario.
 - The demo guide separates DSCODE's workflow from the Hub's discovery contribution and adds a Desktop walkthrough draft with setup, reset and qualification boundaries. The existing terminal recording instructions remain available. Release-note links also work when read on GitHub Releases or as downloaded Markdown.
 - Desktop Hub publication retries the npm propagation window where the exact version is visible but the Hub still reports `package_not_found` or an older index. Retries are bounded; policy/credential failures and integrity mismatches still stop publication.
 

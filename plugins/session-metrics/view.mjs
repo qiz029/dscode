@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { readMetrics } from './store.mjs';
 import { t } from '../i18n/messages.mjs';
 import { estimateCost, peakEmoji } from './pricing.mjs';
@@ -67,7 +68,7 @@ export function summarize(rows, events = [], corrupt = false) {
  * @returns `{ turn, cost, calls, unknown }` per completed or running turn.
  */
 export function turnCostsFor(id, events = []) {
-  const entries = id && process.env.DSH_HOME ? readMetrics(process.env.DSH_HOME, id).rows : [];
+  const entries = id ? readMetrics(resolveDshHome(), id).rows : [];
   return attributeCostByTurn(entries, events).turns;
 }
 /**
@@ -229,7 +230,7 @@ export function formatFooter(metrics, context, columns = 80, rates, locale = 'en
  */
 export function sessionSpend(id) {
   try {
-    const ledger = id && process.env.DSH_HOME ? readMetrics(process.env.DSH_HOME, id) : { rows: [], corrupt: false };
+    const ledger = id ? readMetrics(resolveDshHome(), id) : { rows: [], corrupt: false };
     const data = id ? source?.(id) : undefined;
     const summary = summarize(ledger.rows, data?.events ?? [], ledger.corrupt);
     return { cost: summary.cost, unknown: summary.unknown, pending: summary.pending };
@@ -245,7 +246,7 @@ export function footerFor(id, stats, columns, provider = 'deepseek-official', lo
     // Keep the durable prompt reading visible instead of losing all telemetry.
     let data;
     try { data = id ? source?.(id) : undefined; } catch { /* use the TUI's durable projection */ }
-    const ledger = id && process.env.DSH_HOME ? readMetrics(process.env.DSH_HOME, id) : { rows: [], corrupt: false };
+    const ledger = id ? readMetrics(resolveDshHome(), id) : { rows: [], corrupt: false };
     const events = data?.events ?? [];
     // Identity alone is not enough: a session event list may be appended to in place.
     const hit = events.length > 0 ? footerCache.get(events) : undefined;

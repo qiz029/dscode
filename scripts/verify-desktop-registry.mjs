@@ -1,7 +1,7 @@
 // Native installation into a new profile. --local rehearses the same path
 // before publication; only the default exact npm spec proves public install.
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { delimiter, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
@@ -14,10 +14,11 @@ const runtime = resolve(process.argv[2] ?? '.research/desktop-release-runtime');
 if (process.argv.slice(3).some(arg => arg !== '--local')) throw Error('Usage: node scripts/verify-desktop-registry.mjs [runtime-directory] [--local]');
 const publicInstall = !process.argv.includes('--local');
 const candidate = readDesktopRelease(root, { requireInstall: publicInstall });
-const home = mkdtempSync(join(tmpdir(), 'dscode-desktop-registry-'));
+const temporary = mkdtempSync(join(tmpdir(), 'dscode-desktop-registry-'));
+const home = join(temporary, '.dsh');
 const profile = join(home, 'profiles/desktop-release-test');
 const env = Object.fromEntries(['PATH', 'TMPDIR', 'LANG'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
-Object.assign(env, { HOME: join(home, 'user'), DSH_HOME: home, DSH_AGENTS_HOME: join(home, 'agents'),
+Object.assign(env, { HOME: temporary,
   ZDOTDIR: home, DSH_TELEMETRY_DISABLED: '1', npm_config_registry: 'https://registry.npmjs.org', npm_config_ignore_scripts: 'true' });
 env.PATH = join(runtime, 'node_modules/.bin') + delimiter + env.PATH;
 async function run(entry, args, timeoutMs) {
@@ -31,7 +32,7 @@ async function run(entry, args, timeoutMs) {
   return output;
 }
 try {
-  mkdirSync(env.HOME); mkdirSync(profile, { recursive: true }); seedDesktopProviderCatalogs(home);
+  mkdirSync(profile, { recursive: true }); seedDesktopProviderCatalogs(home);
   const base = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'];
   writeFileSync(join(profile, 'package.json'), JSON.stringify({ private: true, type: 'module',
     dependencies: Object.fromEntries(['@deepseek-ai/dsh', ...base].map(name => [name, candidate.runtime])),
@@ -57,9 +58,9 @@ try {
   ]));
   const output = await run(join(profile, 'node_modules/@deepseek-ai/dsh/lib/bin.js'), ['--profile', 'desktop-release-test', '--no-open'], 90000);
   assert(output.includes('DESKTOP_REGISTRY_PASSED'), 'Installed Host never completed qualification');
-  const proof = { publicInstall, nativeInstall: true, installedHost: true, hubRpc: true, presetResolved: true,
+  const proof = { publicInstall, nativeInstall: true, installedHost: true, hubRpc: true, presetResolved: true, defaultHome: true, componentsActive: true,
     name: candidate.name, version: candidate.version, runtime: candidate.runtime, integrity: candidate.integrity, packageSha256: candidate.sha256 };
   mkdirSync(join(root, 'artifacts/local'), { recursive: true });
   writeFileSync(join(root, `artifacts/local/desktop-${publicInstall ? 'public' : 'local'}-install.json`), JSON.stringify(proof, null, 2) + '\n');
   console.log(JSON.stringify(proof));
-} finally { removeDesktopProbeHome(home); }
+} finally { removeDesktopProbeHome(home); rmSync(temporary, { recursive: true, force: true }); }

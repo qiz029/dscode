@@ -59,7 +59,7 @@ renderer interaction with the slash commands.
 
 A SQLite lease coordinates multiple processes and the background holds a heartbeat; a source session under recovery, an expired lease and a clear operation all stop an old result from committing. The consolidation model has no shell, MCP, file-write or delegation tools, and file paths are determined by the plugin.
 
-Directory resolution order: plugin `root` → `DSCODE_MEMORY_HOME` → `$DSCODE_HOME/memories` → `$DSH_HOME/memories` → `~/.local/share/dscode-hub/memories`. A source launch normally uses the project's `.runtime/memories`, and an npm launch uses the launcher's state directory. To share memory between installations, set the same `DSCODE_MEMORY_HOME` explicitly.
+Directory resolution order: plugin `root` → `DSCODE_MEMORY_HOME` → the native Harness home plus `memories`. Harness resolves a nonblank `DSH_HOME` (including supported tilde paths), otherwise `~/.dsh`. A source launch normally sets the project's `.runtime` as that home; the npm launcher maps its `DSCODE_HOME` into `DSH_HOME`. To share memory between installations, set the same `DSCODE_MEMORY_HOME` explicitly. Version 0.7.34 does not automatically move memory left in an earlier fallback directory.
 
 ```text
 memories/
