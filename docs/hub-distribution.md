@@ -142,7 +142,12 @@ npm run publish:desktop -- verify
 Each phase checks the archive and receipt again. The npm phase publishes with
 `--tag preview`; an existing version is reusable only with identical integrity.
 The Hub phase syncs the package and requires the exact version, integrity and
-Desktop compatibility to resolve. The final phase downloads public bytes,
+Desktop compatibility to resolve. A newly published package can appear on
+the npm version endpoint before the Hub can fetch its package index. In this
+post-publication phase, `package_not_found` and an index missing the exact
+version retry up to 40 times, 15 seconds apart. Other rejections and credential
+errors stop immediately; the final integrity and compatibility checks still
+apply. The final phase downloads public bytes,
 checks their SHA-256, and installs the exact npm version into a new native
 Harness profile before booting it and checking the preset and Hub RPC. The
 result is saved as `artifacts/local/desktop-public-install.json`. No model

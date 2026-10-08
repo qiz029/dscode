@@ -9,6 +9,7 @@ import { getAccessToken } from '../node_modules/@dsh-plugin-hub/cli/dist/auth.js
 import { resolvePublishToken, npmWithToken, NPM_USER } from './npm-token.mjs';
 import { withHubRetry } from './hub-retry.mjs';
 import { readDesktopRelease } from './desktop-release-artifact.mjs';
+import { waitForDesktopHub } from './desktop-hub-sync.mjs';
 
 const root = resolve(import.meta.dirname, '..'), phase = process.argv[2];
 if (!['npm', 'hub', 'verify', 'credentials'].includes(phase)) throw Error('Usage: npm run publish:desktop -- npm|hub|verify|credentials');
@@ -39,8 +40,8 @@ function publisher() {
   assert.equal(identity.stdout.trim(), NPM_USER, 'Unexpected npm publisher');
   return token;
 }
-async function checkHub() {
-  const record = await withHubRetry(() => client.package(candidate.name), { label: 'Desktop Hub lookup' });
+async function checkHub(record) {
+  record ??= await withHubRetry(() => client.package(candidate.name), { label: 'Desktop Hub lookup' });
   const release = record.versions.find(item => item.version === candidate.version);
   assert(release && !release.yanked, 'The exact Desktop version is not available in the Hub');
   assert.equal(release.source.kind, 'npm'); assert.equal(release.source.packageName, candidate.name);
@@ -62,9 +63,11 @@ if (phase === 'credentials') {
   }
 } else if (phase === 'hub') {
   await waitForNpm();
-  const result = await withHubRetry(() => client.syncPackage(candidate.name), { label: 'Desktop Hub sync' });
-  assert.equal(result.status, 'accepted', `Hub rejected the Desktop package: ${result.reason ?? result.status}`);
-  await checkHub(); console.log(`Hub lists ${candidate.name}@${candidate.version}.`);
+  const record = await waitForDesktopHub({ packageName: candidate.name, version: candidate.version,
+    sync: () => withHubRetry(() => client.syncPackage(candidate.name), { label: 'Desktop Hub sync' }),
+    lookup: () => withHubRetry(() => client.package(candidate.name), { label: 'Desktop Hub lookup' }),
+  });
+  await checkHub(record); console.log(`Hub lists ${candidate.name}@${candidate.version}.`);
 } else {
   const metadata = await waitForNpm();
   const url = new URL(metadata.dist.tarball);
