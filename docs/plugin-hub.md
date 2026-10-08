@@ -1,6 +1,6 @@
 # Plugin Hub in Harness Desktop
 
-The DSCODE Desktop candidate includes **Settings → Plugin Hub**, backed by
+The DSCODE Desktop plugin includes **Settings → Plugin Hub**, backed by
 [DSH Plugin Hub](https://dshpluginhub.ai). It uses the same public catalog as
 the Hub website and CLI. No Hub login is required to browse.
 
@@ -59,10 +59,10 @@ retrying; the Hub's operation history is not persisted.
 - Search queries and package lookups go to `api.dshpluginhub.ai`. Provider keys,
   conversation text, workspace files and local credentials are not sent by this
   catalog client. The agent may include task terms in a query you ask it to make.
-- This guide describes the source candidate. Public Desktop npm distribution is still
-  being qualified. Official Add plugin installation, Hub installation with
+- The Desktop plugin is published as `@toddzheng024/dscode-desktop@0.7.33`
+  on npm, with the `preview` tag. Official Add plugin installation, Hub installation with
   handoff to official management, and migration from the legacy probe name
   have passed on macOS Desktop 0.2.0-rc.2.
 
-See [Desktop candidate installation](browser-use.md#install-the-experimental-combined-desktop-package)
+See [Desktop installation](browser-use.md#install-the-experimental-combined-desktop-package)
 and [distribution](hub-distribution.md) for package setup and release status.

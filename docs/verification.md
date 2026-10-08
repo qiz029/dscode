@@ -2,6 +2,52 @@
 
 Status: living verification record. The maintained gates below include installed terminal imports, real-browser checks and experimental upstream Desktop Host, shared Web UI and macOS Electron probes; dated sections retain the evidence and limits of their original runs.
 
+## Public Desktop 0.7.33 — 2026-10-08
+
+The [v0.7.33 release run](https://github.com/qiz029/dscode/actions/runs/37836595281)
+completed successfully. Its build passed 1,068 unit/component cases at 79.98%
+full-source line coverage, both TypeScript checks, native integration, package
+checks and 63 eval cases. The independent Desktop job qualified the exact
+archive through Host startup/restart, real Chrome and a clean native install.
+
+The public npm launcher, terminal bundle and Desktop package all report version
+0.7.33 with the integrity values recorded by CI. The Hub exposes the matching
+public terminal profile and Desktop plugin. GitHub Release contains all seven
+expected assets: three terminal archives plus the Desktop archive, checksum,
+installation README and release notes. A direct download of the Desktop GitHub
+asset matches the tested archive and its checksum file:
+
+```text
+b4ae8c26b47056d956fc7a08a3eca24d12ee940c262b69d480c44a95928d8553
+```
+
+The publish job installed the exact public npm Desktop version into a fresh
+profile, checked locked integrity, booted that installed Host, resolved the
+DSCODE preset and exercised Hub RPC. An independent local check installed the
+public terminal launcher into a fresh directory, performed first installation
+from the public Hub, imported the installed terminal entries, dumped the native
+configuration and passed Hub doctor. Neither check used a model account.
+Local evidence is retained in `artifacts/local/public-distribution-audit.json`,
+`public-launcher-install.json`, and
+`public-release-0.7.33/public-verification/desktop-public-install.json`.
+
+The official macOS application separately passed installation, upgrade,
+incompatible-update refusal, removal and reinstallation using the earlier
+public candidate with SHA-256 `35388ea7ffa22b77f01bae7f47f5ab5ba794ee09affaac39659dba9d19c0053a`.
+Comparing every archive entry against the final public package found changes
+only in the package README and two user guides; runtime bytes, file modes and
+links are unchanged. The comparison is recorded in
+`artifacts/local/desktop-release-runtime-comparison.json`.
+
+The first two publish attempts stopped when the Hub's npm package-index request
+still reported `package_not_found`. The third attempt reused the same archived
+candidates, verified and skipped existing npm versions, completed Hub sync,
+verified public installation and attached the assets. No version was overwritten
+or retagged. A follow-up bounded retry handles this visibility gap; its nine
+focused retry/archive tests, documentation check and lint passed locally.
+Live model quality, native Computer Use permission qualification and other
+platform/runtime combinations remain outside this release's evidence.
+
 ## Desktop package identity and Plugin Hub candidate — 2026-10-08
 
 The source candidate uses `@toddzheng024/dscode-desktop`, with an exported icon,
@@ -64,11 +110,10 @@ results and missing release notes. The full release implementation gate passed
 integration, package checks and 63 eval cases; the final install-proof gate was
 also checked by its focused six-case suite.
 
-Still required before public Desktop distribution: the CI release rehearsal,
-public npm/Hub publication and public registry installation.
-Live model quality and native Computer Use permissions retain their previously
-documented qualification limits. No Desktop package has been published by
-these checks.
+At the end of these candidate checks, CI publication and public installation
+were still unverified. The public release record above supersedes those pending
+items. Live model quality and native Computer Use permissions retain their
+previously documented qualification limits.
 
 Run `npm run check` for the maintained regression gate:
 
