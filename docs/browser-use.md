@@ -621,13 +621,25 @@ Chrome toolbar installation and live-model understanding remain unverified.
 
 The source checkout can also package the DSCODE agent preset, custom-model
 and account settings, browser preview, durable session communication, cross-session
-memory and opt-in task scheduling together. This private package is not published to npm. It does
+memory and opt-in task scheduling together. Ordinary builds remain private;
+the separate [release process](hub-distribution.md#desktop-release-candidate-and-publication)
+qualifies a public candidate for 0.2.0-rc.2. Public npm distribution is still
+pending. The package does
 not yet include all DSCODE Host services. Its experimental
 [native Computer Use adapter](computer-use.md) has passed helper and lifecycle
 checks; window observation, screenshots and input await qualification with
 macOS Accessibility permission.
 Choose this package or the browser-only bundle; enabling both duplicates their
 browser services.
+
+The current candidate's package name is `@toddzheng024/dscode-desktop`. It also
+includes [Plugin Hub](plugin-hub.md) for community discovery and installation
+through the official manager. The earlier private
+`@toddzheng024/dscode-desktop-preset-probe` must be removed before installing
+this package; both register the same DSCODE components. Back up your Desktop
+state first. A separate macOS Desktop 0.2.0-rc.2 migration check preserved
+sessions, credentials, configuration and user patches when removing the old
+name and installing the formal package.
 
 DSCODE sessions in the same Desktop state directory can discover session cards,
 read other active DSCODE root sessions, send requests or notifications, and reply
@@ -683,8 +695,19 @@ validates without writing. This setup leaves the Desktop Host's global PATH and
 native Standard shell providers unchanged; shell sandbox and approval rules still
 apply.
 
-Open the official application once to initialize its Desktop profile, then
-fully quit it. Use the application's bundled command, adjusting the application
+Once a version has been published, **Plugins → Add plugin** also accepts
+`@toddzheng024/dscode-desktop@<version>`. Pin the version whose release notes
+match your Harness runtime. The `preview` npm tag follows the current Desktop
+preview. For archive installation, download the matching `.tgz` and `.sha256`
+from [GitHub Releases](https://github.com/qiz029/dscode/releases) and verify it
+with `shasum -a 256 -c <downloaded-file>.tgz.sha256` before installing. Dependency
+resolution still needs network access.
+
+To install through the official interface, open **Plugins → Add plugin**, enter
+the absolute `.tgz` path, install it and choose **Enable now**.
+
+For CLI installation, open the application once to initialize its Desktop
+profile, then fully quit it. Use its bundled command, adjusting the application
 path and replacing the package placeholder with the printed tarball path:
 
 ```bash
@@ -736,7 +759,7 @@ native installer rejects incompatible peers.
 To remove this experimental package, fully quit Desktop and run:
 
 ```bash
-"$desktop_dsh" plugin --profile desktop remove @toddzheng024/dscode-desktop-preset-probe --config.ignore-scripts=true
+"$desktop_dsh" plugin --profile desktop remove @toddzheng024/dscode-desktop --config.ignore-scripts=true
 ```
 
 On macOS Desktop `0.2.0-rc.2`, the combined package's native installation,

@@ -55,6 +55,8 @@ The [90-second demo script](docs/demo.md) has the shot list, the exact commands,
 
 ## 🆕 What's new
 
+**0.7.33 (release candidate)** — DSCODE for Harness Desktop gains a formal plugin identity and an integrated Plugin Hub. Search community plugins, review compatibility and install through the official manager. Desktop packaging and publication now have their own verification path. This version also includes browser permissions, previews and custom-provider improvements; see the [release notes](docs/releases/0.7.33.md).
+
 **0.7.32** — OpenCode Go now signs in only with an OpenCode account: `/opencode login` shows a code, opens the console and signs in in the background. The login renews itself and sends requests to the inference endpoint the console names for your organisation. The console API key from 0.7.31 is no longer read, so run `/opencode login` once. The footer shows the subscription's usage of its five-hour, weekly and monthly caps, and when an exhausted one lifts. The consent page names the OpenCode CLI, whose login client DSCODE uses.
 
 **0.7.31** — OpenCode Go joins `/provider`: `/provider opencode-go` stores the key from the OpenCode console and serves Go's chat-completions models — DeepSeek, GLM, Kimi, MiMo, LongCat, Hy and Space Bunny — with the reasoning efforts each one accepted on the live gateway, the session id Go asks for, and reasoning passed back across tool calls. A Go session searches the web through Exa, as OpenCode does, with no extra key. Qwen, MiniMax and Go's Grok and GPT models use other protocols and are not offered yet.
@@ -120,6 +122,8 @@ An experimental combined Desktop package adds the DSCODE preset, custom-model an
 <summary><b>Other install paths, upgrades and rollback</b></summary>
 
 The Desktop package includes DSCODE's unified-diff `apply_patch` command for its persistent, child and fresh shells. It leaves the Host PATH and native Standard shell providers unchanged.
+
+The source candidate now uses the package name `@toddzheng024/dscode-desktop` and includes [Plugin Hub](docs/plugin-hub.md): category/search discovery, package details, read-only conversation tools and reviewed installation through the official manager. Installed plugins are enabled and configured in the official Plugins page. Official Add plugin installation, Hub installation handoff and legacy probe migration have been checked on macOS Desktop 0.2.0-rc.2. Public distribution is still being qualified.
 
 **From source**
 
@@ -246,6 +250,7 @@ The bundle generates its modified modules at build time and never rewrites third
 | [Persistent shell and Ultra](docs/dscode-ultra.md) | Presets, reasoning effort, per-child effort and worktree isolation |
 | [Computer Use](docs/computer-use.md) | Native macOS Desktop adapter, app grants, image evidence and qualification limits |
 | [Browser use](docs/browser-use.md) | Browser setup, profiles, site permissions, Developer mode, WebMCP and task evaluation with DeepSeek or custom models |
+| [Plugin Hub](docs/plugin-hub.md) | Desktop community search, package details, compatibility checks and official installation handoff |
 | [Account login](docs/account-login.md) | Signing the DeepSeek route in with a browser account instead of an API key: the flow, the loopback callback, the limits |
 | [OpenCode Go](docs/opencode-go.md) | Running a session on an OpenCode Go subscription: the account login, footer usage, the models and their reasoning efforts, what is not supported yet |
 | [Custom model providers](docs/custom-providers.md) | Connect self-hosted and private APIs: protocols, model discovery, context windows, credentials and tool-call testing |

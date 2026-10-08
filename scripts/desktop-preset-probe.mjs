@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { readdirSync, readFileSync } from 'node:fs';
 import { verifyDesktopCustom } from './desktop-custom-probe.mjs';
 import { verifyDesktopBrowser } from './desktop-browser-probe.mjs';
+import { scopeOf } from '@deepseek-ai/dsh-scope';
 
 export const inject = ['agents', 'agentPresets', 'llm', 'tools', 'permissionPresets', 'commands', 'skills', 'attachments', 'credentials', 'connection', 'webServer'];
 export function apply(ctx) {
@@ -14,6 +15,19 @@ export function apply(ctx) {
 async function run(ctx) {
   const hostPath = process.env.PATH;
   await ctx.get('loader').await();
+  const origin = `http://127.0.0.1:${ctx.webServer.port}`;
+  const login = await fetch(ctx.connection.authenticatedUrl(origin), { redirect: 'manual' });
+  const cookie = login.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
+  const hubStatus = async headers => fetch(`${origin}/api/dscode-hub`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({ type: 'client-request', rpcId: 'hub-fixture', method: 'dscode-hub', payload: { action: 'status' } }) });
+  assert([401, 403].includes((await hubStatus({})).status));
+  assert([401, 403].includes((await hubStatus({ Cookie: cookie, Origin: 'https://untrusted.example' })).status));
+  const hubResponse = await hubStatus({ Cookie: cookie, Origin: origin });
+  assert.equal(hubResponse.status, 200); assert.equal(hubResponse.headers.get('cache-control'), 'no-store');
+  const hubResult = (await hubResponse.json()).result;
+  assert.equal(hubResult.ok, true, hubResult.error?.message);
+  assert.equal(hubResult.value.environment.platform, process.platform);
+  const hub = { hubSettingsRpc: true, hubSettingsAuth: true, hubRuntime: hubResult.value.environment.runtime };
   const preset = await ctx.agentPresets.resolve('dscode');
   assert.equal(preset.broken, undefined, preset.broken);
   assert.equal(ctx.permissionPresets.defaultPreset, 'workspace-write', 'Mounting the Desktop bundle must retain the native default');
@@ -21,7 +35,7 @@ async function run(ctx) {
   if (process.env.DSCODE_DESKTOP_PROBE_RELOAD === '1') {
     const receipt = await verifyDesktopCustom(ctx, true);
     const browser = process.env.DSCODE_DESKTOP_BROWSER === '1' ? await verifyDesktopBrowser(ctx, { reload: true }) : {};
-    console.log('DESKTOP_PRESET_PASSED ' + JSON.stringify({ ...receipt, ...browser }));
+    console.log('DESKTOP_PRESET_PASSED ' + JSON.stringify({ ...receipt, ...browser, ...hub }));
     ctx.get('appExit')(0);
     return;
   }
@@ -77,6 +91,7 @@ async function run(ctx) {
     },
   });
   assert.equal(ctx.permissionPresets.current(agent.session), 'workspace-write', 'A new Agent must not silently enter model review');
+  for (const name of ['plugin_hub_search', 'plugin_hub_info']) assert(ctx.tools.get(name, scopeOf(agent.ctx)), `Missing scoped ${name}`);
   const commandInputs = ['browser', 'computer', 'delegate', 'shell', 'review', 'opencode', 'memories', 'mailbox', 'trigger', 'triggers', 'dscode-doctor', 'dscode-mcp', 'dscode-skills'];
   const commandCatalog = ctx.commands.list(agent);
   assert.deepEqual(commandInputs.filter(name => !commandCatalog.find(command => command.name === name)?.input?.hint), [],
@@ -113,6 +128,7 @@ async function run(ctx) {
   const standardShell = await ctx.tools.execute({ name: 'bash', arguments: { command: 'printf "%s\\n" "$PATH"', description: 'Inspect native Standard shell PATH' },
     agent: standard.agent, callId: 'standard-shell-path', signal: AbortSignal.timeout(10000) });
   assert.equal(standardShell.isError, false, JSON.stringify(standardShell));
+  for (const name of ['plugin_hub_search', 'plugin_hub_info']) assert.equal(ctx.tools.get(name, scopeOf(standard.agent.ctx)), undefined, 'Hub tools leaked to the Standard preset');
   assert(!text({ result: standardShell }).includes('/installed/package/bin'), 'Native Standard inherited DSCODE shell helpers');
   await standard.dispose();
   const status = (await ctx.commands.execute(agent, '/shell status', [], new AbortController().signal)).result;
@@ -162,6 +178,6 @@ async function run(ctx) {
   assert.deepEqual(results.filter(row => row.result.isError), [], 'All workspace tools must succeed');
   const custom = await verifyDesktopCustom(ctx);
   const browser = process.env.DSCODE_DESKTOP_BROWSER === '1' ? await verifyDesktopBrowser(ctx) : {};
-  console.log('DESKTOP_PRESET_PASSED ' + JSON.stringify({ commandInputs, persistentShell: true, freshShell: true, bundledPatchHelper: true, freshPatchCheck: true, hostPathUnchanged: true, nativeStandardShellUnchanged: true, spawn: true, fork: true, childEffort: true, childShellIsolation: true, workspaceInstructionIsolation: true, workspaceSkillIsolation: true, workspaceHookIsolation: true, sessionStartOnce: true, workspaceDisposal: true, ...custom, ...browser, liveModelInference: false }));
+  console.log('DESKTOP_PRESET_PASSED ' + JSON.stringify({ commandInputs, persistentShell: true, freshShell: true, bundledPatchHelper: true, freshPatchCheck: true, hostPathUnchanged: true, nativeStandardShellUnchanged: true, spawn: true, fork: true, childEffort: true, childShellIsolation: true, workspaceInstructionIsolation: true, workspaceSkillIsolation: true, workspaceHookIsolation: true, sessionStartOnce: true, workspaceDisposal: true, hubToolsScoped: true, ...custom, ...browser, ...hub, liveModelInference: false }));
   ctx.get('appExit')(0);
 }

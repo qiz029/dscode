@@ -1,5 +1,5 @@
 globalThis.__ModuleLoader__.load({
-  id: '@toddzheng024/dscode-desktop-preset-probe',
+  id: '@toddzheng024/dscode-desktop',
   factory: require => {
     const { createElement: h, useState, useEffect, useRef } = require('react');
     const money = (cost, partial = false) => cost === null || partial && cost === 0 ? 'Unknown' : `$${cost.toFixed(4)}${partial ? '+' : ''}`;

@@ -1,5 +1,5 @@
 globalThis.__ModuleLoader__.load({
-  id: '@toddzheng024/dscode-desktop-preset-probe',
+  id: '@toddzheng024/dscode-desktop',
   factory: require => {
     const { createElement: h, useState, useEffect, useRef } = require('react');
     const control = { padding: '8px 10px', border: '1px solid #8886', borderRadius: 6, background: 'transparent', color: 'inherit', font: 'inherit', boxSizing: 'border-box', minWidth: 0, maxWidth: '100%' };

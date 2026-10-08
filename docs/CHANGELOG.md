@@ -8,6 +8,12 @@ Per-release notes live in [`docs/releases/`](releases/); the entries below summa
 
 ## [Unreleased]
 
+## [0.7.33] - 2026-10-08
+
+- The formal Desktop plugin is `@toddzheng024/dscode-desktop`, with an icon, localized identity, exact Harness compatibility and package-specific instructions. Public release candidates target Harness 0.2.0-rc.2 on macOS Apple Silicon; standalone applications and an automatic Desktop updater remain outside this delivery.
+- Plugin Hub adds native search, categories, details, compatibility checks and read-only conversation discovery. Confirmed npm installation delegates to the official manager and leaves plugins disabled; enabling, configuration and removal use official controls. Git-only catalog entries remain discoverable without an install action.
+- Desktop distribution gains an independently provisioned runtime, exact-archive Host/browser qualification, integrity-gated npm publication, Hub synchronization and GitHub release attachments. Publication uses the `preview` npm tag and remains conditional on the recorded release gates.
+
 - Cancelling a queued browser operation now settles without waiting for an earlier slow request. The cancelled operation never reaches Chrome, and later work still waits for the active request to finish. The same behavior applies to tab waits, handoff, resume and cleanup; cancellation after dispatch still cannot undo browser effects.
 
 - Browser permission and configuration command receipts include the current cached connection state, fixing false "disconnected" messages after permission edits. The state is read after asynchronous policy operations and is also included in `--json` output without contacting Chrome. Disconnected browsers no longer present a historical handoff as an active manual step.

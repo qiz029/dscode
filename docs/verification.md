@@ -2,6 +2,74 @@
 
 Status: living verification record. The maintained gates below include installed terminal imports, real-browser checks and experimental upstream Desktop Host, shared Web UI and macOS Electron probes; dated sections retain the evidence and limits of their original runs.
 
+## Desktop package identity and Plugin Hub candidate — 2026-10-08
+
+The source candidate uses `@toddzheng024/dscode-desktop`, with an exported icon,
+English/Chinese display metadata and a package-specific README. Ordinary packs
+remain private. `pack-desktop-preset.mjs --release` permits public candidates
+only for the qualified `0.2.0-rc.2` runtime; it does not publish them.
+
+The Hub integration shares the public Hub API and `@dsh-plugin-hub/schemas`
+contract across native Settings and read-only agent tools. Component/service
+checks cover search, cursor and numbered pagination, reported scan states,
+compatibility refusal, exact-version inspection, confirmation expiry,
+duplicate/concurrent installation, cancellation before and during installation,
+failed/restart-required outcomes, page remount and official-manager handoff.
+Manager mutations in these tests use fixtures, not live npm installations.
+
+Independent Host `0.2.0-rc.2` qualification passed initial and restart phases,
+including authenticated Hub RPC, cross-origin refusal, DSCODE-only Hub tools,
+custom-provider protocols, persistent/fresh/child shells and workspace scoping.
+The official macOS Electron application also rendered the Hub settings page,
+read the live public catalog, searched for `dscode`, opened its details and
+disabled installation of the terminal-only bundle. The public API returned ten
+categories, and a separate live request verified distinct first/second result
+pages. The rendered check used a disposable Desktop home and no model account.
+
+The maintained `npm run check` passed on implementation commit `b434c55`,
+including the pagination and installation race follow-ups (1,062 unit/component
+cases, 80.42% complete source inventory, both TypeScript checks, native
+integration, package checks and 63 eval cases). The focused 16-case suite and
+documentation checks passed as well.
+Retained local logs are `artifacts/local/desktop-hub-check-final.log`,
+`desktop-hub-native.log` and `desktop-hub-ui.log`; they are developer artifacts,
+not public release receipts.
+
+The official **Plugins → Add plugin** interface installed and enabled the
+formal package from a local archive in a fresh disposable Desktop home. Its Hub
+page searched for `dsh-theme-plugin@0.3.3`, displayed compatibility and reported
+scan details, inspected the package, requested confirmation, installed it
+**disabled**, and closed Settings to show the official plugin details. The theme
+was not enabled. The receipt is `artifacts/local/desktop-plugin-install-ui.json`.
+
+A separate six-phase official CLI/Desktop lifecycle check migrated the earlier
+`@toddzheng024/dscode-desktop-preset-probe` archive to the formal package name.
+Removing the old name before installing the new one preserved sessions,
+credentials, configuration and the user patch. Installation, upgrade, refusal
+of an incompatible update, removal and reinstallation passed; see
+`artifacts/local/desktop-install-name-migration.json`. Both checks used the
+private 0.7.32 archive with SHA-256
+`db0babbb9316c7eec97c13ad1c5684313f75955b334161d1f1edf983ea89efc4`.
+
+The 0.7.33 public candidate subsequently passed initial/reload Host qualification
+with real Chrome, screenshots, annotations and permission persistence. An
+independent runtime was provisioned from an empty directory; the native package
+manager then installed the archive in a new profile, checked locked integrity
+and booted the installed Host with the DSCODE preset and Hub RPC. Retained
+records are `artifacts/desktop/release/verification.json` and
+`artifacts/local/desktop-local-install.json`. Release artifact tests reject
+private/unsupported candidates, changed bytes, stale proofs, missing installation
+results and missing release notes. The full release implementation gate passed
+1,067 unit/component cases at 79.99% coverage, both TypeScript checks, native
+integration, package checks and 63 eval cases; the final install-proof gate was
+also checked by its focused six-case suite.
+
+Still required before public Desktop distribution: the CI release rehearsal,
+public npm/Hub publication and public registry installation.
+Live model quality and native Computer Use permissions retain their previously
+documented qualification limits. No Desktop package has been published by
+these checks.
+
 Run `npm run check` for the maintained regression gate:
 
 | Command | Scope |

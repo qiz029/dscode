@@ -4,6 +4,7 @@
 
 - `@toddzheng024/dscode`: the global `dscode` command; the first launch applies the Hub's `dscode` profile and later runs the installed version directly. It ships its own install-tool shims on `PATH`: `pnpm` is pinned to 10.15.1 for the profile install, and the `npx` shim pins DSH together with pnpm for a Hub release that still spawns a pinned-DSH `npx` command. Hub CLI 0.5.0 prepares and verifies the pinned DSH runtime itself — an exact-version `npm install` into `$DSCODE_HOME/.hub/runtimes/<version>`, then launch with the current Node — so a rewritten `PATH` cannot pick up a system version by mistake.
 - `@toddzheng024/dscode-bundle`: the complete Cordis composition, including the base layer, Computer Use, the modified TUI/runtime modules and this repository's plugins. Modified modules are generated at build time, and no third-party file is changed at install time.
+- `@toddzheng024/dscode-desktop`: the extension for official Harness Desktop, published under the npm `preview` tag. It has its own exact runtime compatibility and Hub listing, and is not part of the terminal Hub profile.
 - Hub profile `dscode`: the exact versions and integrity hashes of the bundle and the DSH runtime.
 
 The complete bundle pins the shared DSH dependencies and the vendored terminal's runtime dependencies explicitly, using the repository lockfile. The terminal's workspace package is compiled into the bundle; its dependencies must still be installed, including `chalk` and `ink`. Do not stack it with another base/TUI bundle in one profile: installing several root bundles in Hub order resolves a wide transitive dependency to the other rc line first. A standalone profile's pnpm hoisted + autoInstallPeers=false is the verified installation path. A direct `npm install` of the bundle hits Computer Use's old peer range; end users install through the launcher.
@@ -50,7 +51,7 @@ Cutting a release from this repository, in order. The rule that matters most: **
    gh run view <run-id>                 # job and step status
    gh run view --job=<job-id> --log-failed
    ```
-5. On a tag push the `publish` job runs: credential check → bundle → profile sync → launcher → attach the tarballs. **The launcher is published last on purpose**; a user's first launch fails when the launcher reaches npm before its bundle and its Hub profile. The order is enforced by the job, not by discipline.
+5. On a tag push the `publish` job runs: credential check → bundle → profile sync → launcher → Desktop npm/Hub publication and public installation verification → attach the tarballs. **The launcher is published last on purpose**; a user's first launch fails when the launcher reaches npm before its bundle and its Hub profile. The order is enforced by the job, not by discipline.
 6. Confirm the published result rather than the green check: the credential step prints `free to publish` (or `already on npm with the tested integrity` for a re-run), and the attach step either creates or updates the GitHub release the `dscode update` assets come from.
 
 7. The Homebrew tap follows on its own: `qiz029/homebrew-tap` runs a scheduled (and manually dispatchable) workflow that reads `npm view @toddzheng024/dscode version`, recomputes the launcher tarball's sha256 and commits the formula change. It is deliberately not wired to this repository's tag push — the launcher is the last stage the publish job releases, so a formula bumped earlier would send a user to a Hub profile that is not there yet.
@@ -63,7 +64,7 @@ Before tagging, a dry run needs no publication: Actions → Release → Run work
 |---|---|---|
 | `publish` fails in about 30 seconds at *Check the publishing credentials* with `... is already on npm with a different build; bump the version before pushing a release tag` | That version was already published from a different build. An identical `dist.integrity` is treated as a skippable re-run; anything else is a conflict. | Bump `package.json` and cut a new tag. Do not re-tag, and do not force-push the tag. |
 | `publish` fails at `test -n "$NPM_PUBLISH_TOKEN"` / `$DSH_HUB_TOKEN` | The repository secret is missing or empty. | Add it under Settings → Secrets and variables → Actions; see the table below. |
-| A credential that is present but dead: `npm credential OK` or `Hub credential OK` never prints and the step dies inside `npm whoami` or the profile read | The token expired or lost its scope. | Regenerate the granular npm token (Read and write for both `@toddzheng024` packages, bypass 2FA) and update the secret. |
+| A credential that is present but dead: `npm credential OK` or `Hub credential OK` never prints and the step dies inside `npm whoami` or the profile read | The token expired or lost its scope. | Regenerate the granular npm token (Read and write for the launcher, bundle and Desktop packages, bypass 2FA) and update the secret. |
 | `build` fails in under a minute | A code or packaging problem, not credentials (0.7.14 failed this way on a missing bundle export). | Read that step's log, fix, and bump the version again if it was already published. |
 | `make release`, `make verify` or `npm run doctor` fails inside a dscode session with `sandbox-exec: sandbox_apply: Operation not permitted` | The session's own sandbox refuses to apply a nested profile. | Run them from a normal terminal, or configure `plugins/tui-tools/sandbox-runner.mjs`; see [Verification](verification.md). |
 
@@ -79,7 +80,7 @@ npm test
 npm run verify:hub
 ```
 
-The same sequence is wrapped in Make targets: `make release` runs version-check, `npm run check`, `build:packages`, `release:hub`, `dist`, `verify:hub` in order and packs `release-candidates.tar.gz` (matching CI's build job); `make publish` runs the read-only credential check, then bundle, profile, launcher and release-asset upload (matching CI's publish job, requiring `NPM_PUBLISH_TOKEN`, `DSH_HUB_TOKEN` and, for attaching assets, `GH_TOKEN`). A single stage can be re-run with `make publish-bundle|publish-profile|publish-launcher`, and `make help` lists every target; the workflow itself does not call make.
+The same sequence is wrapped in Make targets: `make release` runs version-check, `npm run check`, `build:packages`, `release:hub`, `dist`, `verify:hub`, then Desktop preparation and exact-archive qualification in order and packs `release-candidates.tar.gz` (matching CI's build job); `make publish` runs the read-only credential check, then bundle, profile, launcher, Desktop publication/verification and release-asset upload (matching CI's publish job, requiring `NPM_PUBLISH_TOKEN`, `DSH_HUB_TOKEN` and, for attaching assets, `GH_TOKEN`). A single stage can be re-run with `make publish-bundle|publish-profile|publish-launcher`, and `make help` lists every target; the workflow itself does not call make.
 
 Artifacts live in `artifacts/npm/`: two npm tgz files, the Hub draft/release JSON and the `.dshprofile`. A build copies only whitelisted files, never user configuration, credentials or sessions; a release carries the original MIT licence and the modification notice.
 
@@ -102,11 +103,63 @@ Hub calls retry in a bounded way (`scripts/hub-retry.mjs`): a 5xx or transport f
 
 The publish script runs per stage: `npm run publish:hub -- bundle`, `npm run publish:hub -- profile`, `npm run publish:hub -- launcher`. Each stage verifies the hashes of the tested artifacts; before publishing the launcher it checks the exact version and integrity of the public Hub release. The profile stage first calls the Hub's `sync` interface (available since dsh-hub CLI 0.3.0) so Hub pulls the bundle from npm immediately instead of waiting for the hourly sync; after the sync it still requires Hub to list that exact version. Claiming still needs the publisher console, and login uses `dsh-hub login`.
 
+### Desktop release candidate and publication
+
+The Desktop package is qualified separately from the terminal runtime. Build it
+with Node 24 in an independent directory:
+
+```sh
+npm run prepare:desktop
+DSCODE_TEST_CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  npm run release:desktop -- .research/desktop-release-runtime
+node scripts/verify-desktop-registry.mjs .research/desktop-release-runtime --local
+```
+
+`prepare:desktop` provisions exact direct dependencies with install scripts
+disabled; it refuses to overwrite an unrelated project. `release:desktop`
+builds a public candidate only for Harness 0.2.0-rc.2, then unpacks those exact
+bytes for Host startup/restart, browser, annotation, isolation and authenticated
+Hub RPC checks. The source runtime is checked for unintended changes. The
+local install rehearsal additionally resolves dependencies in a new native
+Harness profile and boots the installed package; it does not establish public
+npm availability or drive the Electron UI.
+
+Artifacts under `artifacts/desktop/release/` include the `.tgz`, SHA-256 file,
+installation README, release notes, candidate receipt and qualification record.
+This generated directory is replaced on each build. `make desktop` runs the
+preparation and qualification steps; `make release` includes it and requires
+`DSCODE_TEST_CHROME`.
+
+After the release gates pass:
+
+```sh
+npm run publish:desktop -- credentials
+npm run publish:desktop -- npm
+npm run publish:desktop -- hub
+npm run publish:desktop -- verify
+```
+
+Each phase checks the archive and receipt again. The npm phase publishes with
+`--tag preview`; an existing version is reusable only with identical integrity.
+The Hub phase syncs the package and requires the exact version, integrity and
+Desktop compatibility to resolve. The final phase downloads public bytes,
+checks their SHA-256, and installs the exact npm version into a new native
+Harness profile before booting it and checking the preset and Hub RPC. The
+result is saved as `artifacts/local/desktop-public-install.json`. No model
+account is used, and no real-model quality claim follows from these probes.
+
+The existing npm token must permit the new Desktop package. Successful `whoami`
+proves authentication only; the first publish establishes write permission.
+Desktop publication does not replace the terminal profile, create a DMG, or
+implement an automatic Desktop updater. GitHub Release attaches the Desktop
+archive, checksum and instructions alongside the terminal assets. Follow the
+[Plugin Hub guide](plugin-hub.md) for discovery and official management.
+
 ### Login-free publishing (local machine)
 
 The account has auth-and-writes two-factor enabled, so `npm login`'s session token expires and every `npm publish` asks for a one-time code again. Use a **granular access token** instead, which the publish script picks up automatically:
 
-1. Generate a granular token on npm's Access Tokens page: tick *Bypass two-factor authentication*, grant Read and write only to `@toddzheng024/dscode` and `@toddzheng024/dscode-bundle` under Packages and scopes, and pick an expiry that suits you (repeat this step when it expires). Granular tokens can currently only be created on the website.
+1. Generate a granular token on npm's Access Tokens page: tick *Bypass two-factor authentication*, grant Read and write only to `@toddzheng024/dscode`, `@toddzheng024/dscode-bundle` and `@toddzheng024/dscode-desktop` under Packages and scopes, and pick an expiry that suits you (repeat this step when it expires). Granular tokens can currently only be created on the website.
 2. `npm run publish:token store` and paste the token at the `security` password prompt. It goes into the login keychain (service `dscode-npm-publish`) and never into `~/.npmrc`, the command line or the shell history.
 3. `npm run publish:token check` confirms the token authenticates as `toddzheng024`.
 
@@ -119,14 +172,14 @@ npm has announced that publishing directly with a bypass-2FA token is retired in
 Two workflows:
 
 - `.github/workflows/checks.yml`: runs `npm run check` on `macos-14` for every push/PR (a matrix of Node 22.19.0 and 24) and uploads the coverage artifacts; a newer push to the same ref cancels the previous run.
-- `.github/workflows/release.yml`: on a `v*` tag push (or a manual `workflow_dispatch`) it runs the `build` job first — `npm run check` → `npm run build:packages` → `npm run release:hub` → `npm run verify:hub` — uploading `artifacts/npm` and `artifacts/local/hub-verification.json` as the `release-candidates` artifact. The `publish` job depends on it and is attached to the `release` environment (add required reviewers under repository Settings → Environments for manual approval).
+- `.github/workflows/release.yml`: on a `v*` tag push (or a manual `workflow_dispatch`) it runs the `build` job first — `npm run check` → `npm run build:packages` → `npm run release:hub` → `npm run verify:hub` — uploading `artifacts/npm` and `artifacts/local/hub-verification.json` as the `release-candidates` artifact. A separate `desktop` job prepares Harness 0.2.0-rc.2 and verifies the exact public Desktop archive with real Chrome, then uploads `desktop-candidate`. The `publish` job depends on both jobs and is attached to the `release` environment (add required reviewers under repository Settings → Environments for manual approval).
 
 Publish credentials live in repository Secrets (Settings → Secrets and variables → Actions):
 
 | Secret | Purpose |
 | --- | --- |
 | `DSH_HUB_TOKEN` | Hub CI credential. `@dsh-plugin-hub/cli`'s `getAccessToken()` prefers it, so the pipeline runs no device login and does not depend on a 5-minute WorkOS access token. |
-| `NPM_PUBLISH_TOKEN` | npm granular token (tick *Bypass two-factor authentication*, granting Read and write only to `@toddzheng024/dscode` and `@toddzheng024/dscode-bundle`). `npm run publish:hub` writes it into a one-off `--userconfig` that never touches disk or the shell history. |
+| `NPM_PUBLISH_TOKEN` | npm granular token (tick *Bypass two-factor authentication*, granting Read and write to `@toddzheng024/dscode`, `@toddzheng024/dscode-bundle` and `@toddzheng024/dscode-desktop`, including permission to create the Desktop package on its first publication). `npm run publish:hub` writes it into a one-off `--userconfig` that never touches disk or the shell history. |
 
 Publishing runs in the three documented stages, each re-verifying the hashes checked above: `publish:hub -- bundle` → `publish:hub -- profile` (sync Hub from npm first, then require that exact version to resolve) → `publish:hub -- launcher`. **The launcher always follows the bundle and the public Hub release**, or the user's first launch fails. Claiming a new package in the Hub console is still manual; when the tag and the `package.json` version disagree the `build` job fails outright and nothing is published.
 

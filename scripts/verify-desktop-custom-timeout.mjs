@@ -71,7 +71,7 @@ try {
   assert.match(idleStages.at(-1).message, /idle timeout after 100ms/);
   assert(Date.now() - idleStarted < 10000);
   console.log('PASS configured model idle timeout remains enforced');
-  const hostSource = join(fixture.home, 'profiles/desktop/node_modules/@toddzheng024/dscode-desktop-preset-probe/plugins/custom/desktop-host.mjs');
+  const hostSource = join(fixture.home, 'profiles/desktop/node_modules/@toddzheng024/dscode-desktop/plugins/custom/desktop-host.mjs');
   receipt = {
     surface: 'official macOS Desktop authenticated settings RPC', coldStartMs: 35000, elapsedMs,
     runtime: JSON.parse(readFileSync(join(resolve(process.argv[2]), 'node_modules/@deepseek-ai/dsh/package.json'), 'utf8')).version,

@@ -10,11 +10,18 @@ import { createRequire } from 'node:module';
 import { stringify } from 'yaml';
 import { buildDesktopPreset, desktopPresetPackage } from './build-desktop-preset.mjs';
 import { packDesktopPreset } from './pack-desktop-preset.mjs';
+import { legacyDesktopPresetPackage } from './desktop-package.mjs';
 import { removeDesktopProbeHome, seedDesktopProviderCatalogs } from './desktop-probe-home.mjs';
 
 if (process.platform !== 'darwin' || !process.argv[2] || !process.argv[3]) throw Error('Usage on macOS: node scripts/verify-desktop-install.mjs <Harness.app> <matching-runtime-directory> [baseline-package.tgz]');
 const root = resolve(import.meta.dirname, '..'), app = resolve(process.argv[2]), runtimeDirectory = resolve(process.argv[3]);
-const baselinePackagePath = process.argv[4] && resolve(process.argv[4]);
+const argumentsAfterRuntime = process.argv.slice(4);
+const candidateIndex = argumentsAfterRuntime.indexOf('--candidate');
+if (candidateIndex >= 0 && !argumentsAfterRuntime[candidateIndex + 1]) throw Error('--candidate requires a package tarball');
+const candidatePath = candidateIndex < 0 ? null : resolve(argumentsAfterRuntime[candidateIndex + 1]);
+if (candidateIndex >= 0) argumentsAfterRuntime.splice(candidateIndex, 2);
+if (argumentsAfterRuntime.length > 1 || argumentsAfterRuntime.some(value => value.startsWith('--'))) throw Error('Expected one optional baseline tarball and --candidate <tarball>');
+const baselinePackagePath = argumentsAfterRuntime[0] && resolve(argumentsAfterRuntime[0]);
 execFileSync('codesign', ['--verify', '--deep', '--strict', app], { stdio: 'inherit' });
 const runtime = execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', join(app, 'Contents/Info.plist')], { encoding: 'utf8' }).trim();
 assert.equal(JSON.parse(readFileSync(join(runtimeDirectory, 'node_modules/@deepseek-ai/dsh/package.json'), 'utf8')).version, runtime);
@@ -107,10 +114,16 @@ try {
     const result = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', home], { cwd: staged, encoding: 'utf8' }))[0];
     return join(home, result.filename);
   };
-  const currentPackage = packDesktopPreset(runtimeDirectory, join(home, 'packages'));
+  const currentPackage = candidatePath ? { ...json(candidatePath + '.json'), path: candidatePath } : packDesktopPreset(runtimeDirectory, join(home, 'packages'));
+  assert.equal(currentPackage.name, desktopPresetPackage);
+  assert.equal(currentPackage.version, original.version);
+  assert.equal(currentPackage.runtime, runtime);
+  assert.equal(hash(currentPackage.path), currentPackage.sha256, 'Current package differs from its receipt');
   const initialPackage = baselinePackagePath ? json(baselinePackagePath + '.json') : currentPackage;
   const initial = baselinePackagePath ?? currentPackage.path;
-  assert.equal(initialPackage.name, desktopPresetPackage);
+  assert([desktopPresetPackage, legacyDesktopPresetPackage].includes(initialPackage.name), 'Baseline must be the formal Desktop package or its legacy probe');
+  const nameMigration = initialPackage.name !== desktopPresetPackage;
+  env.DSCODE_INSTALL_PACKAGE = initialPackage.name;
   assert.equal(initialPackage.runtime, runtime);
   assert.equal(hash(initial), initialPackage.sha256, 'Baseline package differs from its receipt');
   const implementationEntries = ['plugins/custom/config.mjs', 'plugins/browser/config.mjs', 'plugins/browser/files.mjs',
@@ -130,11 +143,11 @@ try {
   legacyConfigurationBaseline = Boolean(baselinePackagePath && baselineConfigSha256 !== currentConfigSha256);
   env.DSCODE_INSTALL_LEGACY_BASELINE = legacyConfigurationBaseline ? '1' : '0';
   const assertInstalledImplementation = expected => {
-    for (const [entry, digest] of Object.entries(expected)) assert.equal(hash(join(profile, 'node_modules', desktopPresetPackage, entry)), digest, `Installed ${entry} differs from its package`);
+    for (const [entry, digest] of Object.entries(expected)) assert.equal(hash(join(profile, 'node_modules', env.DSCODE_INSTALL_PACKAGE, entry)), digest, `Installed ${entry} differs from its package`);
   };
   const installedBrowserVersions = {};
   const assertInstalledBrowserVersion = (phase, expected) => {
-    const installedManifest = join(profile, 'node_modules', desktopPresetPackage, 'package.json');
+    const installedManifest = join(profile, 'node_modules', env.DSCODE_INSTALL_PACKAGE, 'package.json');
     const actual = json(createRequire(installedManifest).resolve('chrome-devtools-mcp/package.json')).version;
     assert.equal(actual, expected, 'Installed Chrome MCP differs from the package dependency');
     installedBrowserVersions[phase] = actual;
@@ -157,11 +170,11 @@ try {
   await command(['add', initial, '--ignore-scripts']);
   assertInstalledImplementation(baselineImplementation);
   assertInstalledBrowserVersion('installed', JSON.parse(execFileSync('tar', ['-xOf', initial, 'package/package.json'], { encoding: 'utf8' })).dependencies['chrome-devtools-mcp']);
-  assert(manifest().dsh.profile.bundles.includes(desktopPresetPackage));
+  assert(manifest().dsh.profile.bundles.includes(initialPackage.name));
   assert.equal(readFileSync(join(profile, 'cordis.patch.yml'), 'utf8'), userPatch);
   assert(!existsSync(join(profile, 'node_modules/@deepseek-ai/dsh')), 'Plugin install created a second core runtime');
   for (const native of initialPackage.nativePackages) {
-    const installed = json(join(profile, 'node_modules', desktopPresetPackage, 'node_modules', native.name, 'package.json'));
+    const installed = json(join(profile, 'node_modules', initialPackage.name, 'node_modules', native.name, 'package.json'));
     assert.equal(installed.name, native.name); assert.equal(installed.version, native.version);
   }
   const browserLaunch = { mode: 'persistent', headless: true,
@@ -177,7 +190,19 @@ try {
   const guardInode = statSync(guardPath).ino;
   const before = files.map(file => hash(join(home, file)));
   const patchBeforeUpgrade = readFileSync(join(profile, 'cordis.patch.yml'), 'utf8');
+  if (nameMigration) {
+    const sessionsBeforeMigration = sessionHashes();
+    await command(['remove', initialPackage.name, '--config.ignore-scripts=true']);
+    assert(!existsSync(join(profile, 'node_modules', initialPackage.name)));
+    assert.deepEqual(manifest().dsh.profile.bundles, baseline);
+    assert.deepEqual(files.map(file => hash(join(home, file))), before);
+    assert.deepEqual(sessionHashes(), sessionsBeforeMigration);
+    assert.equal(readFileSync(join(profile, 'cordis.patch.yml'), 'utf8'), patchBeforeUpgrade);
+    console.log('PASS legacy package removal preserves sessions, settings and user patches');
+  }
+  env.DSCODE_INSTALL_PACKAGE = desktopPresetPackage;
   await command(['add', upgraded, '--ignore-scripts']);
+  assert(!manifest().dsh.profile.bundles.includes(legacyDesktopPresetPackage));
   assertInstalledImplementation(currentImplementation);
   assertInstalledBrowserVersion('upgraded', original.dependencies['chrome-devtools-mcp']);
   assert.equal(readFileSync(join(profile, 'cordis.patch.yml'), 'utf8'), patchBeforeUpgrade);
@@ -236,10 +261,11 @@ try {
     waitingQuestionSurvivesUpgrade: true, installedChildAliasReserved: true,
     bundledNativePackages: currentPackage.nativePackages,
     olderImplementationMigration: Boolean(baselinePackagePath), baselinePackageSha256: initialPackage.sha256,
+    legacyPackageNameMigration: nameMigration, baselinePackageName: initialPackage.name, packageName: desktopPresetPackage,
     baselineConfigSha256, currentConfigSha256, changedImplementationEntries, baselineImplementation, currentImplementation,
     packageSha256: currentPackage.sha256, packageIntegrity: currentPackage.integrity, liveModelInference: false };
   mkdirSync(join(root, 'artifacts/local'), { recursive: true });
-  writeFileSync(join(root, 'artifacts/local', baselinePackagePath ? 'desktop-install-migration.json' : 'desktop-install.json'), JSON.stringify(receipt, null, 2) + '\n');
+  writeFileSync(join(root, 'artifacts/local', nameMigration ? 'desktop-install-name-migration.json' : baselinePackagePath ? 'desktop-install-migration.json' : 'desktop-install.json'), JSON.stringify(receipt, null, 2) + '\n');
   console.log('DESKTOP_INSTALL_PASSED ' + JSON.stringify(receipt));
 } finally {
   removeDesktopProbeHome(home);

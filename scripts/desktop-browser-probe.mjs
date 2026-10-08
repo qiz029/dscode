@@ -100,7 +100,8 @@ export async function verifyDesktopBrowser(ctx, { interactive = false, reload = 
         if (navigationUrl && requests === 6) action = ['mcp__browser__navigate_page', { pageId, url: navigationUrl }];
         if (requests === (largeImageFixture ? 5 : 4)) assert(body.messages.some(message => Array.isArray(message.content)
           && message.content.some(part => part.type === 'image_url')), 'Tool screenshot must reach the custom endpoint: ' + JSON.stringify(body.messages.filter(message => message.role === 'tool').map(message => ({ role: message.role, content: typeof message.content === 'string' ? message.content.slice(0, 1500) : '[non-text content]' }))));
-        if (action) assert(body.tools.some(tool => tool.function.name === action[0]), `Missing ${action[0]}`);
+        if (action) assert(body.tools.some(tool => tool.function.name === action[0]),
+          `Missing ${action[0]}; preceding tool results: ${JSON.stringify(results)}`);
       }
       const delta = action ? { tool_calls: [{ index: 0, id: `desktop-browser-${requests}`, function: { name: action[0], arguments: JSON.stringify(action[1]) } }] }
         : { content: annotation ? 'DESKTOP_ANNOTATION_OK' : 'DESKTOP_BROWSER_READY' };

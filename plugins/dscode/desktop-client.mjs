@@ -1,5 +1,5 @@
 globalThis.__ModuleLoader__.load({
-  id: '@toddzheng024/dscode-desktop-preset-probe',
+  id: '@toddzheng024/dscode-desktop',
   factory: require => {
     const { createElement: h, useState, useEffect, useRef } = require('react');
     const columns = [['pending', 'Pending'], ['running', 'Running'], ['verifying', 'Verifying'], ['complete', 'Complete']];
