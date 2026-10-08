@@ -629,6 +629,13 @@ macOS Accessibility permission.
 Choose this package or the browser-only bundle; enabling both duplicates their
 browser services.
 
+The current candidate's package name is `@toddzheng024/dscode-desktop`. It also
+includes [Plugin Hub](plugin-hub.md) for community discovery and installation
+through the official manager. The earlier private
+`@toddzheng024/dscode-desktop-preset-probe` must be removed before installing
+this package; both register the same DSCODE components. Back up your Desktop
+state first. Migration between these names still requires separate qualification.
+
 DSCODE sessions in the same Desktop state directory can discover session cards,
 read other active DSCODE root sessions, send requests or notifications, and reply
 through the production session bridge. `/session`, `/mailbox` and `/tasks` show
@@ -736,7 +743,7 @@ native installer rejects incompatible peers.
 To remove this experimental package, fully quit Desktop and run:
 
 ```bash
-"$desktop_dsh" plugin --profile desktop remove @toddzheng024/dscode-desktop-preset-probe --config.ignore-scripts=true
+"$desktop_dsh" plugin --profile desktop remove @toddzheng024/dscode-desktop --config.ignore-scripts=true
 ```
 
 On macOS Desktop `0.2.0-rc.2`, the combined package's native installation,

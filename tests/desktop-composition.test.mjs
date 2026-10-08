@@ -6,7 +6,7 @@ import React from 'react';
 import { composeDesktopClient } from '../scripts/compose-desktop-client.mjs';
 
 test('the combined Desktop client mounts settings and preview through one native registration', async () => {
-  const sources = ['custom', 'browser', 'providers', 'triggers', 'email', 'session-metrics', 'dscode'].map(plugin => readFileSync(new URL(`../plugins/${plugin}/desktop-client.mjs`, import.meta.url), 'utf8'));
+  const sources = ['custom', 'browser', 'providers', 'triggers', 'email', 'session-metrics', 'dscode', 'hub'].map(plugin => readFileSync(new URL(`../plugins/${plugin}/desktop-client.mjs`, import.meta.url), 'utf8'));
   const registrations = [], slots = [], tabs = [], requests = [];
   runInNewContext(composeDesktopClient('desktop-fixture', sources), { globalThis: { __ModuleLoader__: { load: value => registrations.push(value) } } });
   assert.equal(registrations.length, 1);
@@ -18,7 +18,7 @@ test('the combined Desktop client mounts settings and preview through one native
     slots: { inject: (_name, callback) => callback(), register: spec => { slots.push(spec); return () => {}; } },
     connection: { rpc: { call: async (path, method, payload) => { requests.push({ path, method, payload }); return { ok: true, value: {} }; } } },
   });
-  assert.equal(slots.length, 7);
+  assert.equal(slots.length, 8);
   assert.equal(tabs.length, 4);
   const settings = slots.find(slot => slot.name === 'settings.section');
   const preview = slots.find(slot => slot.name === 'sidebar.right.pane.tab');

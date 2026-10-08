@@ -90,6 +90,7 @@ export function apply(ctx) { void ctx.get('loader').await().then(() => console.l
   mkdirSync(join(home, 'user'));
   const env = Object.fromEntries(['PATH', 'TMPDIR', 'LANG', 'SYSTEMROOT'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
   Object.assign(env, { HOME: join(home, 'user'), DSH_HOME: home, DSH_AGENTS_HOME: join(home, 'agents'), DSH_TELEMETRY_DISABLED: '1', ZDOTDIR: home,
+    DSCODE_UI_PUBLIC_HUB: process.env.DSCODE_UI_PUBLIC_HUB === '1' ? '1' : '0',
     DSCODE_FIXTURE_MODEL_URL: `http://127.0.0.1:${server.address().port}/v1` });
   // Native Electron ignores Node's --import flag. Its fixture plugin applies the
   // guard before account interaction; preseeded catalogs require no network.

@@ -121,6 +121,8 @@ npm 启动器会核对已安装 bundle 与 Harness 依赖的推荐版本组合�
 
 Desktop 包为 DSCODE 的持久 shell、子任务 shell 和新建 shell 提供支持标准 unified diff 的 `apply_patch` 命令，不修改 Host 的 PATH 或原生 Standard shell provider。
 
+源码候选包现使用 `@toddzheng024/dscode-desktop` 包名，并包含 [Plugin Hub](docs/plugin-hub.md)：分类与搜索发现、插件详情、只读对话工具，以及经用户确认后通过官方管理器安装。已安装插件在官方 Plugins 页面启用和配置。公开分发和旧 probe 包迁移仍在验证中。
+
 **从源码运行**
 
 ```sh
@@ -247,6 +249,7 @@ Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第�
 | [持久 Shell 与 Ultra](docs/dscode-ultra.md) | preset、推理强度、子 agent effort 与 worktree 隔离 |
 | [Computer Use](docs/computer-use.md) | 原生 macOS Desktop 接入、应用授权、图片证据与验证边界 |
 | [浏览器操作](docs/browser-use.md) | 浏览器接入、profile、站点权限、Developer mode、WebMCP，以及 DeepSeek 或自定义模型的任务评测 |
+| [Plugin Hub](docs/plugin-hub.md) | Desktop 社区搜索、插件详情、兼容性检查与官方安装衔接 |
 | [账号登录](docs/account-login.md) | 用浏览器账号代替 API key 给 DeepSeek 路由授权：流程、回环回调与限制 |
 | [OpenCode Go](docs/opencode-go.md) | 用 OpenCode Go 订阅运行会话：账号登录、状态栏用量、模型及其推理强度、暂不支持的部分 |
 | [自定义模型服务](docs/custom-providers.md) | 接入自托管与私有 API：协议、模型发现、上下文窗口、密钥和工具调用测试 |

@@ -1,0 +1,23 @@
+// One public identity shared by local qualification and release builds.
+export const desktopPresetPackage = '@toddzheng024/dscode-desktop';
+export const desktopReleaseRuntime = '0.2.0-rc.2';
+export const legacyDesktopPresetPackage = '@toddzheng024/dscode-desktop-preset-probe';
+
+export function desktopPackageMetadata(version, runtime, { release = false } = {}) {
+  if (release && runtime !== desktopReleaseRuntime) {
+    throw Error(`Desktop publication requires qualified runtime ${desktopReleaseRuntime}; received ${runtime}`);
+  }
+  return {
+    name: desktopPresetPackage, version, private: !release,
+    description: 'DSCODE for Harness Desktop: coding collaboration, session memory, browser workflows and task management.',
+    license: 'MIT', type: 'module',
+    repository: { type: 'git', url: 'https://github.com/qiz029/dscode.git' },
+    homepage: 'https://github.com/qiz029/dscode#readme',
+    bugs: { url: 'https://github.com/qiz029/dscode/issues' },
+    keywords: ['dsh-plugin', 'deepseek-harness', 'desktop', 'coding', 'collaboration'],
+    engines: { node: '^22.19.0 || >=24.0.0', dsh: runtime },
+    peerDependencies: { '@deepseek-ai/dsh': runtime },
+    icon: './icon.svg',
+    publishConfig: { access: 'public', tag: 'preview' },
+  };
+}
