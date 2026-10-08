@@ -226,7 +226,7 @@ export function apply(ctx, config) {
       catch (error) { return { status: 'error', error: redact(error.message) }; }
     },
   }));
-  ctx.commands.register({ name: 'review', description: 'Independent read-only Git review: /review [--staged|--base REF|--commit REF] [--path PATH]', handler: async ({ agent, rawInput, signal }) => {
+  ctx.commands.register({ name: 'review', description: 'Independent read-only Git review: /review [--staged|--base REF|--commit REF] [--path PATH]', input: { hint: '[--staged|--base REF|--commit REF] [--path PATH]' }, handler: async ({ agent, rawInput, signal }) => {
     try {
       if (agent.status === 'running') return { kind: 'error', text: 'Stop the active agent turn before /review.' };
       const result = await run(agent, parseReviewCommand(rawInput), signal, true);

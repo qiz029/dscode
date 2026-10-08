@@ -79,7 +79,7 @@ export function requestBody(options, { entry, images } = {}) {
   if (effort !== undefined && reasoning !== undefined && wireEffort === undefined) {
     throw new LlmError(`OpenRouter model "${options.model}" does not offer reasoning effort "${effort}"`, 'UNSUPPORTED_REASONING_EFFORT');
   }
-  let messages = serializeMessages(options.messages, { model: options.model, system: options.system, images });
+  let messages = serializeMessages(options.messages, { model: options.model, system: options.system, images, dialect: { provider: options.provider ?? PROVIDER } });
   messages = withCacheBreakpoints(ultraRequest(options, messages), options.model);
   // Delegation tools are offered at every effort; workflow and ralph never are.
   const tools = (options.tools ?? []).filter(tool => tool.name !== 'workflow' && tool.name !== 'ralph')

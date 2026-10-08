@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "DSCODE Browser",
+  "version": "0.1.0",
+  "description": "Share selected browser tabs with your local DSCODE session.",
+  "minimum_chrome_version": "125",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7hXV+eosyq7w+kTH3h/jv/OLf92aNLA4XcI9rxVZr8pcdLewrdVWQRRYpp1Ug0NkcBjwoLyhWlhU1ulyEcs4HekF3l7EQpcUa8vKOMUxzzZSTqmUSVYXRoHd9Vl0plsMccL/uDCvqNCn3oi7eSpPuX0oAvOoUeyhM+2bPqSF1mMhZOqPp1U82fct09Wh68B5WQTCzzkm1GG4QqSPCjpvk1ht9GvuPXFyg2TWf/O6ZWkt94K4fgvoGdFNbwwOr8O5J+KKV3vVej1U+o7n6LbFC/9j9zzrHyneWgVNVkUAML7Uq23h5gI2ZEWGlp9Xz5UyTzYuJ/iJysbWflVErGBnQQIDAQAB",
+  "permissions": [
+    "debugger",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "worker.mjs",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

@@ -90,10 +90,10 @@ export function summarizeTrace(header, events, now = Date.now()) {
     findings: findings.slice(-15), timeline: timeline.slice(-25) };
 }
 
-export async function collectDoctorEvidence(ctx, { agent, cwd = agent?.session.header.cwd ?? process.cwd(), signal } = {}) {
+export async function collectDoctorEvidence(ctx, { agent, cwd = agent?.session.header.cwd ?? process.cwd(), signal, workspaceOnly = false } = {}) {
   const stored = await ctx.sessionPersistence.list({ signal });
   const matching = stored.filter(s => s.header.cwd === cwd);
-  const candidates = (matching.length ? matching : stored)
+  const candidates = (matching.length || workspaceOnly ? matching : stored)
     .sort((a, b) => b.header.createdAt - a.header.createdAt).slice(0, MAX_SESSIONS);
   const traces = [];
   if (agent && !candidates.some(s => s.header.id === agent.session.id)) candidates.unshift({ header: agent.session.header });

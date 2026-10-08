@@ -51,3 +51,12 @@ test('doctor collects current and recent persisted sessions and falls back when 
   assert.match(await analyzeDoctorEvidence(ctx, evidence, undefined), /No model route is available/);
   assert.match(doctorOverlay('/path/to/doctor-cli.mjs'), /dscode-doctor-cli/);
 });
+
+test('Desktop doctor does not fall back to another workspace when this workspace has no persisted history', async () => {
+  const current = { id: 'fresh', header: { id: 'fresh', cwd: '/fresh', createdAt: 2 }, snapshotEvents: () => [] };
+  let reads = 0;
+  const ctx = { sessionPersistence: { list: async () => [{ header: { id: 'unrelated', cwd: '/elsewhere', createdAt: 1 } }],
+    open: async () => { reads++; throw Error('Unrelated workspace was read'); } } };
+  const evidence = await collectDoctorEvidence(ctx, { agent: { session: current }, workspaceOnly: true });
+  assert.deepEqual(evidence.traces.map(trace => trace.id), ['fresh']); assert.equal(reads, 0);
+});

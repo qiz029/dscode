@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>DSCODE Browser</title>
+<link rel="stylesheet" href="popup.css">
+<body><h1>DSCODE Browser</h1>
+<p>Share the current tab with a local DSCODE session. The agent can read and operate shared pages and create new tabs. Other existing tabs stay private.</p>
+<label for="pairing">Pairing link</label><input id="pairing" type="password" autocomplete="off" spellcheck="false" placeholder="Paste from DSCODE">
+<button id="pair">Connect and share this tab</button>
+<button id="share" hidden>Share this tab too</button>
+<button id="stop" hidden>Stop all sharing</button>
+<p id="status" role="status"></p><ul id="tabs"></ul>
+<script type="module" src="popup.mjs"></script></body></html>

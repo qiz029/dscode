@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { MemoryStore } from '../plugins/memory/store.mjs';
 import { rollout, extraction, consolidation, redact } from '../plugins/memory/content.mjs';
 import { runPipeline, defaults } from '../plugins/memory/pipeline.mjs';
-import { apply, resolveConfig } from '../plugins/memory/index.mjs';
+import { apply, applyDesktop, resolveConfig } from '../plugins/memory/index.mjs';
+import { currentCharge } from '../plugins/session-metrics/attribution.mjs';
 
 test('memory rejects fractional counts before work starts, while allowing fractional idle hours', t => {
   for (const key of ['maxPerRun', 'maxCandidates', 'maxInputChars', 'maxConsolidationChars', 'timeoutMs']) {
@@ -122,7 +123,7 @@ test('expired memories leave the handbook without re-extracting the same source 
 
 test('plugin uses independent effort, injects summary, retrieves sources, and honors switches', async t => {
   const f = fixture(t), handlers = new Map(), tools = new Map(), commands = new Map(), sections = [];
-  const calls = [];
+  const calls = [], charges = [];
   const session = { id: 'current', header: { agentPreset: 'dscode' }, requestHeader: () => ({ config: { provider: 'fixture', model: 'fixture', reasoningEffort: 'ultra' } }) };
   const ctx = {
     sessions: { list: () => [session] }, sessionPersistence: f.args.persistence,
@@ -131,6 +132,7 @@ test('plugin uses independent effort, injects summary, retrieves sources, and ho
     systemPrompt: { section: s => sections.push(s) }, tools: { register: tool => tools.set(tool.name, tool) }, commands: { register: c => commands.set(c.name, c) },
     llm: { async *stream(options) {
       calls.push(options);
+      charges.push(currentCharge());
       const input = JSON.parse(options.messages[0].content[0].text);
       const value = await f.args.generate('', input, {}, options.reasoningEffort);
       yield { type: 'block-start', index: 0, blockType: 'text' };
@@ -144,6 +146,7 @@ test('plugin uses independent effort, injects summary, retrieves sources, and ho
     await command('run');
     for (let i = 0; i < 100 && !f.store.get('snapshot')?.summary; i++) await new Promise(resolve => setTimeout(resolve, 10));
     assert.deepEqual(calls.map(c => c.reasoningEffort), ['low', 'high']);
+    assert.deepEqual(charges, ['current', 'current'].map(sessionId => ({ sessionId, purpose: 'memory' })), 'manual run is charged to its invoking session');
     assert(calls.every(c => c.tools === undefined && c.sessionId === undefined));
     assert.match(sections[0].text({ scope: { session } }), /pnpm/);
     const result = await tools.get('memory_search').execute({ query: 'pnpm' }, { agent: { session } });
@@ -155,4 +158,89 @@ test('plugin uses independent effort, injects summary, retrieves sources, and ho
     await command('global-off');
     assert.equal(f.store.get('generate'), false);
   } finally { await handlers.get('dispose')(); }
+});
+
+test('an interleaved session cannot move an active memory run or its later consolidation to another cost ledger', async t => {
+  const f = fixture(t), handlers = new Map(), commands = new Map(), calls = [];
+  const entered = Promise.withResolvers(), release = Promise.withResolvers();
+  const session = id => ({ id, header: { agentPreset: 'dscode' }, requestHeader: () => ({ config: { provider: 'fixture', model: id } }) });
+  const a = session('session-a'), b = session('session-b');
+  const ctx = { sessions: { list: () => [a, b] }, sessionPersistence: f.args.persistence,
+    on: (event, callback) => handlers.set(event, callback), effect: callback => handlers.set('dispose', callback()),
+    systemPrompt: { section() {} }, tools: { register() {} }, commands: { register: c => commands.set(c.name, c) },
+    llm: { async *stream(options) {
+      calls.push({ model: options.model, charge: currentCharge(), sessionId: options.sessionId });
+      if (calls.length === 1) { entered.resolve(); await release.promise; }
+      const input = JSON.parse(options.messages[0].content[0].text);
+      const value = await f.args.generate('', input, {}, options.reasoningEffort);
+      yield { type: 'block-start', index: 0, blockType: 'text' };
+      yield { type: 'block-end', index: 0, block: { type: 'text', text: JSON.stringify(value) } };
+      yield { type: 'finish', reason: { kind: 'stop' } };
+    } },
+  };
+  apply(ctx, { root: f.root });
+  const command = (agentSession, rawInput) => commands.get('memories').handler({ agent: { session: agentSession }, rawInput });
+  const idle = async () => {
+    const deadline = Date.now() + 3000;
+    while (!(await command(a, 'status')).text.includes('Worker: idle')) {
+      assert(Date.now() < deadline, 'Memory worker did not settle');
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+  };
+  const started = s => handlers.get('session/event')(s, { type: 'request/header', data: { header: s.requestHeader() } });
+  try {
+    started(a);
+    await Promise.race([entered.promise, new Promise((_, reject) => { const timer = setTimeout(() => reject(Error('Extraction did not start')), 3000); timer.unref(); })]);
+    started(b); // B starts while A's extraction is suspended.
+    release.resolve(); await idle();
+    assert.deepEqual(calls, Array.from({ length: 2 }, () => ({ model: a.id, charge: { sessionId: a.id, purpose: 'memory' }, sessionId: undefined })));
+    await command(a, 'note Keep pnpm.'); await idle();
+    assert.equal(calls.length, 3);
+    assert.deepEqual(calls[2].charge, { sessionId: a.id, purpose: 'memory' }, 'manual note must not inherit the last unrelated session');
+  } finally { release.resolve(); await handlers.get('dispose')(); }
+});
+
+test('Desktop mounts memory in existing and new DSCODE agents and withdraws every live registration on unload', async t => {
+  const f = fixture(t), events = new Map(), commands = new Map();
+  const make = (id, preset) => {
+    const tools = new Map(), sections = [], disposers = [];
+    const session = { id, header: { agentPreset: preset }, requestHeader: () => undefined };
+    const agent = { session, ctx: { preset, effect: cb => disposers.push(cb()), inject: (_deps, cb) => {
+      cb({ tools: { register: tool => tools.set(tool.name, tool) }, systemPrompt: { section: section => sections.push(section) } });
+      const fiber = Promise.resolve();
+      fiber.dispose = async () => { tools.clear(); sections.length = 0; };
+      disposers.push(fiber.dispose); return fiber;
+    } } };
+    return { agent, tools, sections, async dispose() { for (const dispose of disposers) await dispose(); } };
+  };
+  const existing = make('existing', 'dscode'), standard = make('standard', 'standard'), later = make('later', 'dscode');
+  let close;
+  const ctx = { sessions: { list: () => [existing.agent.session, standard.agent.session] },
+    agents: { list: () => [existing.agent, standard.agent] }, agentPresets: { composedPreset: scope => scope.preset },
+    sessionPersistence: f.args.persistence, llm: {}, on: (event, handler) => events.set(event, handler),
+    effect: cb => { close = cb(); }, commands: { register: command => commands.set(command.name, command) },
+  };
+  await applyDesktop(ctx, { root: f.root });
+  try {
+    assert(existing.tools.has('memory_search')); assert.equal(standard.tools.size, 0);
+    assert.equal(standard.sections.length, 0);
+    const handler = commands.get('memories').handler;
+    for (const rawInput of ['global-off', 'clear', 'note overwrite preferences', 'off']) {
+      assert.equal((await handler({ agent: standard.agent, rawInput })).kind, 'error');
+    }
+    assert.equal(f.store.get('generate', true), true); assert.equal(f.store.notes().length, 0);
+    assert.equal(f.store.get('clearedAt'), null); assert(f.store.enabled('standard'));
+    await events.get('agent/created')({ agent: later.agent });
+    await events.get('agent/created')({ agent: later.agent });
+    assert.equal(later.sections.length, 1); assert(later.tools.has('memory_search'));
+    const staleTool = later.tools.get('memory_search'), staleSection = later.sections[0];
+    await existing.dispose(); assert.equal(existing.tools.size, 0);
+    await close();
+    assert.equal(later.tools.size, 0); assert.equal(later.sections.length, 0);
+    assert.equal((await staleTool.execute({ query: 'pnpm' }, { agent: later.agent })).disabled, true);
+    assert.equal(staleSection.text({ scope: later.agent }), '');
+    assert.equal((await handler({ agent: later.agent, rawInput: 'clear' })).kind, 'error');
+    assert.equal(f.store.db.prepare('SELECT count(*) AS count FROM leases').get().count, 0);
+    await events.get('agent/created')({ agent: existing.agent }); assert.equal(existing.tools.size, 0);
+  } finally { await later.dispose(); }
 });

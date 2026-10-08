@@ -1,4 +1,5 @@
 import { openRouterPriceVersion, openRouterRates } from '../openrouter/models.mjs';
+import { isOpenRouterRoute } from '../providers/catalog.mjs';
 
 // USD per million tokens. Snapshot of the official page opened 2026-09-11.
 // https://api-docs.deepseek.com/quick_start/pricing/
@@ -16,7 +17,7 @@ const OPENROUTER_PRICES = {
 
 /** The price table a ledger entry for this route is estimated with. */
 export function priceVersionFor(provider, model) {
-  if (provider !== 'openrouter') return PRICE_VERSION;
+  if (!isOpenRouterRoute(provider)) return PRICE_VERSION;
   return model !== undefined && openRouterRates(model) !== undefined ? openRouterPriceVersion() : OPENROUTER_PRICE_VERSION;
 }
 
@@ -24,7 +25,7 @@ const promptTokens = usage => (usage.inputTokens ?? 0) + (usage.cacheReadTokens 
 
 export function estimateCost(provider, model, usage, time) {
   if (!usage || !Number.isFinite(time)) return null;
-  if (provider === 'openrouter') {
+  if (isOpenRouterRoute(provider)) {
     // A model that lists no cache-read or cache-write price bills that input at the input rate.
     const live = openRouterRates(model, promptTokens(usage));
     if (live) return charge(usage, [live.cacheRead ?? live.input, live.input, live.output], live.cacheWrite ?? live.input);
@@ -53,7 +54,7 @@ function deepSeekRates(model, time) {
  */
 export function cacheReadRatio(provider, model, time = Date.now()) {
   let rates;
-  if (provider === 'openrouter') {
+  if (isOpenRouterRoute(provider)) {
     const live = openRouterRates(model);
     rates = live ? [live.cacheRead ?? live.input, live.input] : OPENROUTER_PRICES[model];
   } else if (provider === 'deepseek-official') rates = deepSeekRates(model, time);

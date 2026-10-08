@@ -1,4 +1,5 @@
 import { IMAGE_OFFLOAD_REQUIRED_CODE, LlmAdapter, LlmError, ReasoningEffortId, attributionHeaders, contentHasImage, offloadedImageText, projectOffloadedImages, requiredImageOffload } from '@deepseek-ai/dsh-llm';
+import { requestImageDimensions } from '@deepseek-ai/dsh-attachment';
 import { listOpenRouterModels, openRouterModel } from './models.mjs';
 import { PROVIDER, effortInfo, errorCode, errorMessage, modelReasoning, requestBody, retryAfterMs, sseData, translate } from './wire.mjs';
 
@@ -59,7 +60,7 @@ export class OpenRouterAdapter extends LlmAdapter {
   }
 
   providerInfo(provider) {
-    return { id: provider, name: 'OpenRouter' };
+    return { id: provider, name: this.config.displayName ?? 'OpenRouter' };
   }
 
   providerRetryPolicy() {
@@ -212,7 +213,8 @@ export class OpenRouterAdapter extends LlmAdapter {
     if (attachments === undefined) throw new LlmError(`${this.label} image input requires the durable attachment service.`, 'UNSUPPORTED_CONTENT');
     const refs = new Map();
     for (const message of messages) collectImages(message.content, refs);
-    const versions = new Map(await Promise.all([...refs.values()].map(async ref => [ref.attachmentId, await attachments.readImageRequest(ref, IMAGE_POLICY, signal)])));
+    const versions = new Map(await Promise.all([...refs.values()].map(async ref => [ref.attachmentId, await attachments.readImageRequest(ref,
+      { ...requestImageDimensions(ref.width, ref.height, IMAGE_POLICY.maxPixels), maxBytes: IMAGE_POLICY.maxBytes }, signal)])));
     const offloadImages = requiredImageOffload(
       messages,
       { representation: 'base64', maxBytes: connection.maxRequestImageBytes, byteQuantum: 1 },

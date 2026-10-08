@@ -105,7 +105,7 @@ export const AGGREGATE_BUDGET_BYTES = 60 * 1024;
 // would silently replace what the user wrote with what the project wrote. Ancestors
 // are then added nearest-first while the budget allows, and a source that would
 // overflow is skipped whole rather than truncated mid-file.
-export function writeWorkspaceInstructions({ cwd, home, stateDir }) {
+export function writeWorkspaceInstructions({ cwd, home, stateDir, outputDir = join(stateDir, 'workspace-instructions') }) {
   const files = ancestorInstructionFiles({ cwd, home });
   if (!files.length) return undefined;
   const userGlobal = join(stateDir, 'AGENTS.md');
@@ -122,7 +122,7 @@ export function writeWorkspaceInstructions({ cwd, home, stateDir }) {
     kept.add(source);
     bytes += size;
   }
-  const directory = join(stateDir, 'workspace-instructions');
+  const directory = outputDir;
   mkdirSync(directory, { recursive: true });
   writeFileSync(join(directory, 'AGENTS.md'), written.filter(source => kept.has(source)).map(source => texts.get(source)).join('\n\n') + '\n', { mode: 0o600 });
   return directory;

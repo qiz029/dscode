@@ -34,7 +34,7 @@ export class OpenCodeGoAdapter extends OpenRouterAdapter {
   }
 
   providerInfo(provider) {
-    return { id: provider, name: LABEL };
+    return { id: provider, name: this.config.displayName ?? LABEL };
   }
 
   async listModels(provider) {

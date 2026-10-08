@@ -13,6 +13,9 @@ const root = fixture.root;
 after(fixture.close);
 import { apply, CHILD_LIMIT, CHILD_NAME, delegateMessage, DOCS_SECTION, SHELL_POLICY } from '../plugins/dscode/index.mjs';
 import { spawnSync } from 'node:child_process';
+import { childTarget, withChildTarget } from '../plugins/dscode/child-target.mjs';
+import { apply as control } from '../plugins/dscode/control.mjs';
+import { isAdjacentAgentSendMessageTool } from '@deepseek-ai/dsh-subagent/internal';
 
 
 const { DeepSeekAdapter, resolveAdapterOptions } = await import(pathToFileURL(`${root}/node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js`));
@@ -207,18 +210,18 @@ test('children are addressed by /name and the parent by /', async () => {
   apply({ effect() {}, tools: { register() {} }, systemPrompt: { section() {} }, on: (event, cb) => { if (event === 'tools/execute') execute = cb; }, commands: { register() {} }, agents: { list: () => [...live.values()], get: id => live.get(id) } });
   const start = (name, id) => execute({ name: 'subagent', arguments: { name, description: 'read it', prompt: 'go' }, agent: owner }, () => { live.set(id, { status: 'running', session: { id, header: { origin: 'subagent', parentSession: 'root' } } }); return { kind: 'continuable', subagentId: id }; });
   assert.deepEqual(await start('reader', 'child-1'), { kind: 'continuable', subagentId: 'child-1' });
-  await assert.rejects(start('reader', 'child-2'), /already used by a live child/);
+  await assert.rejects(start('reader', 'child-2'), /already used by a live, resumable or starting child/);
   await assert.rejects(start('1st', 'child-2'), /starting and ending with a letter/);
   await assert.rejects(start('a'.repeat(11), 'child-2'), /1-10 characters/);
   assert.deepEqual(await start('writer', 'child-2'), { kind: 'continuable', subagentId: 'child-2' });
   const seen = [];
-  const relay = exec => { seen.push(exec.arguments.agent_id); return 'ok'; };
+  const relay = exec => { seen.push(childTarget(exec)); return 'ok'; };
   const exec = (name, agent_id, agent = owner) => { const call = { name, arguments: { agent_id, message: 'hi' }, agent }; return execute(call, () => relay(call)); };
   assert.equal(await exec('send_message', '/reader'), 'ok');
   assert.equal(await exec('interrupt_agent', '/writer'), 'ok');
   assert.equal(await exec('send_message', 'child-2'), 'ok');
   assert.deepEqual(seen, ['child-1', 'child-2', 'child-2']);
-  await assert.rejects(exec('send_message', '/nobody'), /Unknown child \/nobody\. Live children: \/reader, \/writer/);
+  await assert.rejects(exec('send_message', '/nobody'), /Unknown child \/nobody\. Available children: \/reader, \/writer/);
   await assert.rejects(exec('send_message', '/'), /no parent/);
   const child = { session: { id: 'child-1', header: { origin: 'subagent', parentSession: 'root' }, requestHeader: () => ({ config: { reasoningEffort: 'high' } }) }, options: {} };
   assert.equal(await exec('send_message', '/', child), 'ok');
@@ -227,6 +230,72 @@ test('children are addressed by /name and the parent by /', async () => {
   assert.deepEqual(await start('reader', 'child-3'), { kind: 'continuable', subagentId: 'child-3' }, 'a name is free again once its child is gone');
   assert.equal(await exec('send_message', '/reader'), 'ok');
   assert.equal(seen.at(-1), 'child-3');
+});
+
+test('native control receives resolved targets without modifying frozen calls and releases routing after failure', async () => {
+  const registered = new Map(), deliveries = [], interruptions = [];
+  const owner = { id: 'parent' }, signal = new AbortController().signal;
+  control({ tools: { register: tool => registered.set(tool.name, tool) }, subagents: {
+    sendMessage: async (...args) => { deliveries.push(args); if (args[1] === 'failed-child') throw Error('Delivery rejected'); return 'message-id'; },
+    interrupt: (...args) => interruptions.push(args),
+  } });
+  const send = registered.get('send_message'), interrupt = registered.get('interrupt_agent');
+  assert(isAdjacentAgentSendMessageTool(send), 'Native parent-return guidance relies on this non-enumerable marker');
+  const args = Object.freeze({ agent_id: '/reader', message: 'Continue' });
+  const call = Object.freeze({ token: Symbol('native-call'), arguments: args, agent: owner, signal });
+  const runContext = Object.freeze({ ...call });
+  assert.deepEqual(await withChildTarget(call, 'child-id', () => send.execute(args, runContext)), { messageId: 'message-id' });
+  assert.deepEqual(deliveries[0], [owner, 'child-id', [{ type: 'text', text: 'Continue' }], { signal }]);
+  assert.equal(args.agent_id, '/reader'); assert.match(send.output.render(args, {})[0].text, /\/reader/);
+  assert.equal(childTarget(runContext), '/reader', 'Resolved target must not outlive the call');
+  await assert.rejects(withChildTarget(call, 'failed-child', () => send.execute(args, runContext)), /Delivery rejected/);
+  assert.equal(childTarget(runContext), '/reader');
+  assert.throws(() => send.execute(args, runContext), /policy is unavailable/);
+  assert.deepEqual(await withChildTarget(call, 'child-id', () => interrupt.execute(args, runContext)), { accepted: true });
+  assert.deepEqual(interruptions[0], ['child-id', { kind: 'ancestor', agent: owner }]);
+  const direct = Object.freeze({ agent_id: 'native-id', message: 'Direct ID' });
+  await send.execute(direct, { arguments: direct, agent: owner, signal });
+  assert.equal(deliveries.at(-1)[1], 'native-id');
+});
+
+test('named children resolve from the native parent catalog after restart without waking them for lookup', async () => {
+  let execute, reads = 0;
+  const rows = [
+    { id: 'old-reader', mode: 'continuable', label: '/reader · Old task' },
+    { id: 'cold-reader', mode: 'continuable', label: '/reader · Current task' },
+    { id: 'one-shot', mode: 'one-shot', label: '/once · Finished foreground task' },
+    { id: 'invalid-name', mode: 'continuable', label: '/bad/name · Not a DSCODE alias' },
+  ];
+  const owner = { session: { id: 'resumed-root', header: {}, requestHeader: () => ({ config: {} }) }, options: {} };
+  apply({ effect() {}, tools: { register() {} }, systemPrompt: { section() {} }, commands: { register() {} },
+    on: (event, cb) => { if (event === 'tools/execute') execute = cb; }, agents: { list: () => [], get: () => undefined },
+    subagents: { listChildren: async id => { assert.equal(id, owner.session.id); reads++; return rows; } },
+  });
+  const call = { name: 'send_message', arguments: Object.freeze({ agent_id: '/reader', message: 'Continue the existing task' }), agent: owner };
+  let delivered = 0;
+  assert.equal(await execute(call, async () => { delivered++; return childTarget(call); }), 'cold-reader');
+  assert.equal(delivered, 1); assert.equal(reads, 1); assert.equal(call.arguments.agent_id, '/reader');
+  await assert.rejects(execute({ name: 'subagent', arguments: { name: 'reader' }, agent: owner }, () => assert.fail('Duplicate alias launched')), /already used/);
+  await assert.rejects(execute({ name: 'send_message', arguments: { agent_id: '/once' }, agent: owner }, () => assert.fail('Disposed one-shot was resumed')), /Unknown child/);
+  rows.push({ id: 'latest-one-shot', mode: 'one-shot', label: '/reader · Finished later task' });
+  await assert.rejects(execute({ name: 'send_message', arguments: { agent_id: '/reader' }, agent: owner }, () => assert.fail('An older alias was silently selected')), /Unknown child/);
+});
+
+test('concurrent child starts reserve names across asynchronous catalog reads and release failed starts', async () => {
+  let execute;
+  const owner = { session: { id: 'concurrent-alias-root', header: {} }, options: {} };
+  apply({ effect() {}, tools: { register() {} }, systemPrompt: { section() {} }, commands: { register() {} },
+    on: (event, cb) => { if (event === 'tools/execute') execute = cb; }, agents: { list: () => [], get: () => undefined },
+    subagents: { listChildren: async () => [] },
+  });
+  let release, entered;
+  const started = new Promise(resolve => { entered = resolve; });
+  const call = () => ({ name: 'subagent', arguments: { name: 'reader' }, agent: owner });
+  const first = execute(call(), async () => { entered(); return new Promise(resolve => { release = resolve; }); });
+  await started;
+  try { await assert.rejects(execute(call(), () => assert.fail('Duplicate name dispatched concurrently')), /already used/); }
+  finally { release({ isError: true, content: [] }); await first; }
+  assert.equal(await execute(call(), async () => 'retried'), 'retried');
 });
 
 test('/delegate hands the main agent the coordinator protocol only from a clean Git root', async () => {

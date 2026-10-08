@@ -4,17 +4,19 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { auditStore } from '../plugins/auto-review/audit.mjs';
+import { registerBrowserReview } from '../plugins/browser/review.mjs';
 const directories = [];
 after(() => directories.forEach(path => rmSync(path, { recursive: true, force: true })));
 import assert from 'node:assert/strict';
 import { apply } from '../plugins/auto-review/index.mjs';
+import { currentCharge } from '../plugins/session-metrics/attribution.mjs';
 import { escalationDiagnosticGrant, needsMcpApproval, redact, parseDecision } from '../plugins/auto-review/policy.mjs';
 
-function fixture({ decision = 'allow', timeout = false, budget = 2, policy = 'ask', jev } = {}) {
+function fixture({ decision = 'allow', timeout = false, budget = 2, browserBudget = 100, policy = 'ask', jev } = {}) {
   const auditDirectory = mkdtempSync(join(tmpdir(), 'dscode-review-test-'));
   directories.push(auditDirectory);
   const records = () => auditStore(auditDirectory).read('fixture-session');
-  const hooks = {}, commands = {}, notices = [], requests = [];
+  const hooks = {}, commands = {}, notices = [], requests = [], charges = [];
   // DSH 0.1.7 reserved `auto`, so the reviewed preset is DSCODE's own `auto-review`.
   let permission = 'auto-review', human = 0;
   const events = [{ seq: 0, type: 'turn/start', data: {} }, { seq: 1, type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'Update this project and run its tests.' }] } }];
@@ -26,6 +28,7 @@ function fixture({ decision = 'allow', timeout = false, budget = 2, policy = 'as
     permissionPresets: { current: () => permission }, approval: { effectivePolicy: () => policy }, logger: { info() {} },
     llm: { async *stream(options) {
       requests.push(options);
+      charges.push(currentCharge());
       if (timeout) await new Promise(resolve => setTimeout(resolve, 40));
       const text = decision === 'invalid' ? '{}' : JSON.stringify({ decision, reason: 'Fixture decision' });
       yield { type: 'block-start', index: 0, blockType: 'text' };
@@ -34,7 +37,7 @@ function fixture({ decision = 'allow', timeout = false, budget = 2, policy = 'as
       yield { type: 'finish', reason: { kind: 'stop' } };
     } },
   };
-  apply(ctx, { provider: '', model: '', timeoutMs: 10, maxOutputTokens: 768, maxReviewsPerTurn: budget, auditDirectory });
+  apply(ctx, { provider: '', model: '', timeoutMs: 10, maxOutputTokens: 768, maxReviewsPerTurn: budget, maxBrowserReviewsPerTurn: browserBudget, auditDirectory });
   let cursor = 0;
   async function pending(name = 'bash', args = { command: 'npm test', sandbox_permissions: 'danger-full-access' }, signal = new AbortController().signal) {
     const exec = { name, arguments: args, agent, callId: `call-${++cursor}`, signal };
@@ -42,8 +45,16 @@ function fixture({ decision = 'allow', timeout = false, budget = 2, policy = 'as
     return { exec, gate, req: { agent, callId: exec.callId, toolName: name, signal } };
   }
   const answer = req => hooks['approval/request'](req, async () => { human++; return 'allowed-once'; });
-  return { records, hooks, commands, agent, events, requests, notices, pending, answer, setMode: value => { permission = value; }, human: () => human };
+  return { records, hooks, commands, agent, events, requests, charges, notices, pending, answer, setMode: value => { permission = value; }, human: () => human };
 }
+
+test('automatic approval charges its owner as auxiliary review without a wire session identity', async () => {
+  const f = fixture();
+  assert.equal(await f.answer((await f.pending()).req), 'allowed-once');
+  assert.equal(f.requests[0].sessionId, undefined, 'Independent review must not enter session-bound prompt shaping');
+  assert.equal(f.requests[0].purpose, 'review');
+  assert.deepEqual(f.charges[0], { sessionId: f.agent.session.id, purpose: 'review' });
+});
 
 test('a custom reviewer route skips cloud Jev and reviews with the selected model', async () => {
   let cloudCalls = 0;
@@ -134,6 +145,24 @@ test('per-turn model budget routes subsequent requests to human', async () => {
   assert.equal(f.requests.length, 2);
   assert.equal(f.human(), 1);
   assert.match(f.commands['review-usage'].handler({ agent: f.agent }).text, /246 input \/ 24 output/);
+});
+
+test('review usage totals include Jev history and keep malformed or partial readings unknown', async () => {
+  const f = fixture({ jev: { approval: async () => ({ decision: 'allow', reason: 'Fixture Jev decision',
+    model: 'fixture', usage: { input_tokens: 100, output_tokens: 0 } }) } });
+  await f.answer((await f.pending()).req);
+  let text = f.commands['review-usage'].handler({ agent: f.agent }).text;
+  assert.match(text, /100 input \/ 0 output/); assert.match(text, /0 attempts with incomplete/);
+  // Read persisted audit rows as well as newly produced ones, without rewriting history.
+  const store = auditStore(directories.at(-1));
+  store.append(f.agent.session.id, { provider: 'fixture', usageComplete: true, usage: { inputTokens: 20, outputTokens: 5 } });
+  store.append(f.agent.session.id, { provider: 'openrouter', source: 'jev', usageComplete: true, usage: { input_tokens: 7, output_tokens: 1 } });
+  store.append(f.agent.session.id, { provider: 'openrouter', source: 'jev', usageComplete: true, usage: { input_tokens: '50', output_tokens: -1 } });
+  store.append(f.agent.session.id, { provider: 'fixture', usageComplete: false, usage: { inputTokens: 3, outputTokens: 2 } });
+  store.append(f.agent.session.id, { provider: 'fixture', usageComplete: true, usage: {} });
+  text = f.commands['review-usage'].handler({ agent: f.agent }).text;
+  assert.match(text, /130 input \/ 8 output/); assert.match(text, /3 attempts with incomplete\/unknown usage/);
+  assert.equal(store.read(f.agent.session.id)[2].usage.input_tokens, 7, 'Historical audit retains its original shape');
 });
 
 test('cancellation never grants or invokes human', async () => {
@@ -318,4 +347,32 @@ test("the reviewer model's own human verdict still reaches the user after a defe
   assert.equal(await f.answer(req), 'allowed-once');
   assert.equal(f.requests.length, 1);
   assert.equal(f.human(), 1, 'a deferred verdict that the reviewer cannot settle asks the user');
+});
+
+test('browser action budget is independent while denial and human fallback policy remain shared', async () => {
+  const f = fixture({ budget: 1, browserBudget: 1 });
+  const shell = await f.pending(); await f.answer(shell.req);
+  const browser = await f.pending('mcp__browser__click', { pageId: 1, uid: '1_2' });
+  assert.equal(browser.gate.kind, 'ask');
+  assert.equal(await f.answer(browser.req), 'allowed-once');
+  assert.equal(f.human(), 0, 'an exhausted shell budget must not consume the browser budget');
+  const again = await f.pending(); await f.answer(again.req);
+  assert.equal(f.human(), 1, 'ordinary budget still falls back to a person');
+  const browserAgain = await f.pending('mcp__browser__click', { pageId: 1, uid: '1_3' });
+  await f.answer(browserAgain.req);
+  assert.equal(f.human(), 2, 'an exhausted browser budget must also ask a person');
+});
+
+test('WebMCP review includes host-observed page and untrusted tool definition, or falls back to a human', async t => {
+  const f = fixture();
+  await f.answer((await f.pending('mcp__browser__execute_webmcp_tool', { pageId: 4, toolName: 'save' })).req);
+  assert.equal(f.human(), 1);
+  assert.equal(f.requests.length, 0);
+  const definition = { name: 'save', description: 'Save a project draft', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true } };
+  t.after(registerBrowserReview(f.agent, { pages: [{ id: 4, url: 'https://fixture.example/project' }], observedAt: 'fixture', siteTools: new Map([[4, { definitions: new Map([['save', JSON.stringify(definition)]]) }]]) }));
+  await f.answer((await f.pending('mcp__browser__execute_webmcp_tool', { pageId: 4, toolName: 'save', input: '{}' })).req);
+  assert.equal(f.requests.length, 1, 'a claimed read-only hint never bypasses review');
+  assert.match(JSON.stringify(f.requests[0].messages), /https:\/\/fixture.example\/project/);
+  assert.match(JSON.stringify(f.requests[0].messages), /Save a project draft/);
+  assert.match(JSON.stringify(f.requests[0].messages), /untrusted/);
 });

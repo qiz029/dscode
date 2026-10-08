@@ -4,6 +4,7 @@ import { estimateCost, peakEmoji } from './pricing.mjs';
 import { balanceNow, trustedNow } from './balance.mjs';
 import { grokSubscriptionNow } from '../grok/billing.mjs';
 import { goUsageNow } from '../opencode-go/usage.mjs';
+import { canonicalProvider } from '../providers/catalog.mjs';
 import { sessionAverageTps } from './rate.mjs';
 import { attributeCostByTurn, evaluateBudget, parseBudget } from './turns.mjs';
 let source;
@@ -53,6 +54,7 @@ export function summarize(rows, events = [], corrupt = false) {
     turns: attribution.turns,
     lastTurn: attribution.lastTurn,
     unattributed: attribution.unattributed,
+    unattributedUnknown: attribution.unattributedUnknown,
   };
 }
 
@@ -158,6 +160,7 @@ function figure(text, width) {
 }
 
 function footerFigures(metrics, context, rates, locale = 'en', provider = 'deepseek-official') {
+  provider = canonicalProvider(provider);
   const label = key => t(locale, key);
   const ctx = figure(Number.isFinite(context) ? `${Math.round(context)}%` : '--', FIGURE.percent);
   const cache = figure(metrics.cache === null ? '--' : `${metrics.cache.toFixed(1)}%`, FIGURE.share);

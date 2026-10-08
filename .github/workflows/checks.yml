@@ -27,8 +27,14 @@ jobs:
       # that skips this step fails tests/ink-frame.test.mjs with "the composer rode up".
       - run: npm run setup
       - run: npm run check
+      - name: Real Chrome and native browser tools
+        run: npm run test:browser
+      - name: Browser evaluation pipeline (scripted, no model score)
+        run: npm run eval:browser -- --self-test
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: coverage-node-${{ matrix.node }}
-          path: artifacts/local/coverage/
+          name: checks-node-${{ matrix.node }}
+          path: |
+            artifacts/local/coverage/
+            artifacts/local/browser-eval-*/

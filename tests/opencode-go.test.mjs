@@ -116,6 +116,7 @@ test('models, refusals and errors name the route', async () => {
 test('the plugin registers the route, and a provider switch lands on a Go model', async () => {
   const registered = {};
   applyGo({
+    provide: (name, service) => { registered[name] = service; },
     logger: { error() {}, warn() {} }, get: () => undefined,
     fiber: { entry: { options: { id: 'dscode-opencode-go' } } },
     on: () => {},
@@ -127,6 +128,7 @@ test('the plugin registers the route, and a provider switch lands on a Go model'
     effect: dispose => { registered.dispose = dispose(); },
   }, {});
   registered.dispose?.();
+  assert(registered.dscodeOpenCodeLogin instanceof OpenCodeLogin);
   assert.deepEqual(registered.directory, [{ provider: 'opencode-go', displayName: 'OpenCode Go', settingsNs: 'dscode-opencode-go', settingsPath: [] }]);
   assert.deepEqual(registered.routes, ['opencode-go']);
   assert(registered.adapter instanceof OpenCodeGoAdapter);

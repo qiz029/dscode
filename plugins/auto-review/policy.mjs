@@ -17,7 +17,11 @@ const CHROME_READS = new Set([
   'list_pages', 'take_snapshot', 'get_console_message', 'list_console_messages',
   'get_network_request', 'list_network_requests', 'performance_analyze_insight',
 ]);
-export function needsMcpApproval(name) {
+export function needsMcpApproval(name, args = {}) {
+  if (name === 'browser_stop') return true;
+  // Browser-owned tools are pinned at discovery. Reads that can save to disk
+  // still need review; do not trust a server's readOnlyHint or arbitrary names.
+  if (name.startsWith('mcp__browser__') && CHROME_READS.has(name.slice('mcp__browser__'.length)) && !Object.keys(args).some(key => /file|path/i.test(key))) return false;
   return name.startsWith('mcp__') && !(name.startsWith('mcp__chrome__') && CHROME_READS.has(name.slice('mcp__chrome__'.length)));
 }
 

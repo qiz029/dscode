@@ -32,14 +32,17 @@ const word = input => {
 };
 const usage = text => { throw new Error(`Usage: /trigger ${text}`); };
 const exactId = (input, syntax) => { const [id, rest] = word(input); if (!id || rest) usage(syntax); return id; };
-const schedulerText = state => `Scheduler: ${state.running ? 'running' : 'stopped — pending work waits; use /trigger scheduler install (macOS), or run dscode trigger scheduler start under a service manager'}`;
+const schedulerText = state => `Scheduler: ${state.running ? 'running' : `stopped — pending work waits; ${state.next_step ?? 'use /trigger scheduler install (macOS), or run dscode trigger scheduler start under a service manager'}`}${state.requires_open_application ? '; requires Desktop to stay open' : ''}${state.error ? `; ${state.error}` : ''}`;
 
 export function triggerCommand({ management, mutationProblem }) {
+  const schedulerActions = management.schedulerActions ?? ['status', 'install'];
+  const help = management.schedulerDescription ? TRIGGER_HELP.replace('status | install', schedulerActions.join(' | '))
+    .replace('Scheduler install starts the shared\nservice for all registered projects.', management.schedulerDescription) : TRIGGER_HELP;
   return async ({ agent, rawInput = '', commandId, signal }) => {
     try {
       signal?.throwIfAborted();
       const [verb, input] = word(rawInput), action = verb || 'list';
-      if (['help', '--help', '-h'].includes(action)) return ok(TRIGGER_HELP);
+      if (['help', '--help', '-h'].includes(action)) return ok(help);
       const project = management.workspace(agent);
       const mutate = () => {
         signal?.throwIfAborted();
@@ -93,8 +96,8 @@ export function triggerCommand({ management, mutationProblem }) {
       }
       if (action === 'scheduler') {
         const operation = input || 'status';
-        if (!['status', 'install'].includes(operation)) usage('scheduler [status|install]');
-        if (operation === 'install') mutate();
+        if (!schedulerActions.includes(operation)) usage(`scheduler [${schedulerActions.join('|')}]`);
+        if (operation !== 'status') mutate();
         const result = await management.scheduler({ action: operation });
         return ok([...(result.messages ?? []), schedulerText(result.scheduler ?? result)].join('\n'));
       }
@@ -134,7 +137,7 @@ export function triggerCommand({ management, mutationProblem }) {
         }
         return ok([formatJob(result.job), schedulerText(result.scheduler), 'Queued durably; this command does not wait for the agent run.'].join('\n'));
       }
-      return { kind: 'error', text: `Unknown action "${action}".\n${TRIGGER_HELP}` };
+      return { kind: 'error', text: `Unknown action "${action}".\n${help}` };
     } catch (error) { return { kind: 'error', text: error.message }; }
   };
 }

@@ -1,0 +1,6 @@
+body { width: 330px; margin: 18px; color: #20242c; background: #fafafa; font: 14px/1.5 system-ui; }
+h1 { font-size: 19px; } label, input, button { display: block; box-sizing: border-box; width: 100%; }
+input, button { padding: 9px; margin: 8px 0; border: 1px solid #c8cbd0; border-radius: 6px; }
+button { cursor: pointer; background: #fff; } button:disabled { opacity: .5; }
+#stop { border-color: #bd4520; color: #a13613; } [hidden] { display: none; }
+li { overflow-wrap: anywhere; } #status { font-weight: 600; }

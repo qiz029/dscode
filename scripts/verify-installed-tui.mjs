@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 const [profile, bundle] = process.argv.slice(2);
 assert(profile && bundle, 'Usage: node scripts/verify-installed-tui.mjs <profile directory> <bundle name>');
 const require = createRequire(resolve(profile, 'package.json'));
-for (const entry of ['startup', 'tui']) {
+for (const entry of ['startup', 'tui', 'browser']) {
   const specifier = `${bundle}/${entry}`;
   const loaded = await import(pathToFileURL(require.resolve(specifier)).href);
   assert.equal(typeof loaded.apply, 'function', `${specifier} must export a plugin entry point`);

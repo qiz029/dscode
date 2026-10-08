@@ -41,6 +41,10 @@ try {
         assert.equal(pkg.dependencies[dependency], version, `The bundle must carry the locked terminal dependency ${dependency}`);
       }
       assert(!Object.hasOwn(pkg.dependencies, terminal.name), 'the terminal is vendored, not a workspace dependency');
+      assert.equal(pkg.dependencies['@modelcontextprotocol/sdk'], lock.packages['node_modules/@modelcontextprotocol/sdk'].version, 'browser transport is a production dependency');
+      assert(existsSync(join(destination, 'plugins/browser/SKILL.md')), 'browser operating instructions must ship with the plugin');
+      assert(existsSync(join(destination, 'extensions/browser/manifest.json')), 'browser extension must ship in the published bundle');
+      assert.equal(pkg.dependencies.ws, lock.packages['node_modules/ws'].version, 'extension relay WebSocket transport must be a pinned production dependency');
       assert.match(readFileSync(join(destination, 'vendor/terminal/index.js'), 'utf8'), /dscode-no-history-expansion-v1/);
       // The preset is a declaration row inside the bundle's own composition patch since
       // DSH 0.1.7 retired preset discovery from directories.

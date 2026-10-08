@@ -3,6 +3,9 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials';
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment';
 import { DEFAULT_ENDPOINT, DEFAULT_MODEL, requestDecisions } from './client.mjs';
 import { DEFAULT_THRESHOLDS, approvalQuestions, approvalState, approvalVerdict } from './approval.mjs';
+import { randomUUID } from 'node:crypto';
+import { appendMetric } from '../session-metrics/store.mjs';
+import { metricRecipients } from '../session-metrics/attribution.mjs';
 
 // Jev is a decisions model, not a chat model: it answers typed questions about
 // supplied state and never generates prose. The service below exposes exactly one
@@ -55,10 +58,20 @@ export function apply(ctx, config = {}) {
     approval: async ({ action, context, sessionId, signal } = {}) => {
       if (!options.enabled) return undefined;
       const apiKey = await resolveKey();
-      if (!apiKey) return undefined;
+      if (!apiKey || signal?.aborted) return undefined;
       const started = Date.now();
+      const home = process.env.DSH_HOME, id = randomUUID();
+      const recipients = sessionId && home ? metricRecipients(ctx.get('agents'), sessionId) : [];
+      const save = entry => {
+        for (const recipient of recipients) {
+          try { appendMetric(home, recipient, { id, time: started, sessionId, provider: 'openrouter', model: options.model, purpose: 'review', source: 'jev', ...entry }); }
+          catch { ctx.logger.warn('Jev cost telemetry could not be saved.'); }
+        }
+      };
+      save({ kind: 'start' });
+      let response;
       try {
-        const response = await requestDecisions({
+        response = await requestDecisions({
           endpoint: options.endpoint, model: options.model, apiKey,
           state: approvalState({ action, context }), questions: approvalQuestions(),
           sessionId, timeoutMs: options.timeoutMs, signal,
@@ -69,6 +82,15 @@ export function apply(ctx, config = {}) {
       } catch (error) {
         ctx.logger.warn(`jev: ${error.message}`);
         return undefined;
+      } finally {
+        // The Decisions API bypasses llm.stream. Preserve its reported charge,
+        // including an unusable verdict; never price an unknown attempt as zero.
+        const raw = response?.usage;
+        const usage = Number.isSafeInteger(raw?.input_tokens) && raw.input_tokens >= 0 && Number.isSafeInteger(raw?.output_tokens) && raw.output_tokens >= 0
+          ? { inputTokens: raw.input_tokens, outputTokens: raw.output_tokens } : null;
+        save({ kind: 'end', endTime: Date.now(), usage,
+          ...(typeof response?.model === 'string' ? { model: response.model.slice(0, 256) } : {}),
+          cost: Number.isFinite(raw?.cost) && raw.cost >= 0 ? raw.cost : null, priceVersion: 'openrouter-decisions-billed' });
       }
     },
   };

@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { scopeChainOf } from '@deepseek-ai/dsh-scope';
 
 export const COLUMNS = ['pending', 'running', 'verifying', 'complete'];
 export const PRIORITIES = ['high', 'normal', 'low'];
@@ -127,11 +128,12 @@ export class DelegateBoard {
     const board = this.load(sessionId);
     const task = this.task(sessionId, id);
     if (task.stage !== 'pending') throw new Error(`Task ${id} is ${task.stage}; only a pending task can be re-planned`);
-    const before = { priority: task.priority, dependsOn: task.dependsOn };
-    if (nextPriority !== undefined) task.priority = priority(nextPriority);
-    if (refs !== undefined) task.dependsOn = this.resolve(board.tasks, refs, task);
-    try { this.acyclic(board.tasks); } catch (error) { Object.assign(task, before); throw error; }
-    task.updatedAt = Date.now();
+    const updated = { ...task,
+      ...(nextPriority === undefined ? {} : { priority: priority(nextPriority) }),
+      ...(refs === undefined ? {} : { dependsOn: this.resolve(board.tasks, refs, task) }),
+    };
+    this.acyclic(board.tasks.map(current => current === task ? updated : current));
+    Object.assign(task, updated, { updatedAt: Date.now() });
     this.save(sessionId);
     return task;
   }
@@ -171,9 +173,10 @@ export class DelegateBoard {
   reopen(sessionId, id, reason, child) {
     const task = this.task(sessionId, id);
     if (task.stage === 'pending') throw new Error(`Task ${id} is already pending`);
-    const name = child === undefined ? task.child : this.checkName(sessionId, child, task);
+    const name = this.checkName(sessionId, child === undefined ? task.child : child, task);
+    const note = text(reason, 'reason', 2000);
     delete task.subagentId; delete task.verification; delete task.worktree;
-    Object.assign(task, { stage: 'pending', child: name, note: text(reason, 'reason', 2000), waiting: false, updatedAt: Date.now() });
+    Object.assign(task, { stage: 'pending', child: name, note, waiting: false, updatedAt: Date.now() });
     this.save(sessionId);
     return task;
   }
@@ -237,9 +240,21 @@ export function boardSummary(columns, { running, limit }) {
   return parts.join('');
 }
 
-// The in-process TUI reads the current root session's board through this bridge,
-// the same way the footer reads session metrics.
-let source;
-export function setBoardSource(next) { source = next; return () => { if (source === next) source = undefined; }; }
+// Readers share the owning policy's live board, including its cache. Sources
+// belong to their policy scope, which may be a standing preset or one Agent.
+const sources = new Map();
+export function setBoardSource(next, scope) {
+  sources.set(scope, next);
+  return () => { if (sources.get(scope) === next) sources.delete(scope); };
+}
 /** `{ columns, running, limit }` for a root session, or undefined when no board source is mounted. */
-export function delegateBoardFor(sessionId) { return source?.(sessionId); }
+export function delegateBoardFor(sessionId, scope) {
+  if (scope !== undefined) {
+    for (const owner of scopeChainOf(scope)) if (sources.has(owner)) return sources.get(owner)(sessionId);
+    return sources.get(undefined)?.(sessionId);
+  }
+  for (const [owner, read] of sources) {
+    if (owner?.session?.id !== undefined && owner.session.id !== sessionId) continue;
+    const value = read(sessionId); if (value) return value;
+  }
+}

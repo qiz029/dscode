@@ -64,7 +64,7 @@ export async function schedulerTick({ home, store, active, dscodePath, now = Dat
   }
 }
 
-export async function runScheduler({ home, dscodePath, once = false, signal, spawnWorker, report = console.error }) {
+export async function runScheduler({ home, dscodePath, once = false, signal, spawnWorker, onReady, report = console.error }) {
   const lease = await acquireTriggerLease(home, '_scheduler');
   if (!lease) throw new Error('the scheduler is already running for this state directory');
   let store, sources;
@@ -72,7 +72,9 @@ export async function runScheduler({ home, dscodePath, once = false, signal, spa
   try {
     store = new JobStore(home);
     sources = new SourceSupervisor({ home, store, report });
+    await onReady?.();
     do {
+      if (signal?.aborted) break;
       if (!once) sources.tick();
       await schedulerTick({ home, store, active, dscodePath, spawnWorker, report });
       if (once) break;

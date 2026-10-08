@@ -14,6 +14,7 @@ import { parse } from 'yaml';
 export function dscodeComposition(root) {
   return readFileSync(join(root, 'presets/dscode/agent.cordis.yml'), 'utf8')
     .replace('DSCODE_POLICY_PLUGIN', JSON.stringify(join(root, 'plugins/dscode/index.mjs')))
+    .replace('DSCODE_CONTROL_PLUGIN', JSON.stringify(join(root, 'plugins/dscode/control.mjs')))
     .replace('DSCODE_REVIEW_PLUGIN', JSON.stringify(join(root, 'plugins/code-review/index.mjs')))
     .replace('DSCODE_COMPACTION_PLUGIN', JSON.stringify(join(root, 'plugins/compaction/engine.mjs')));
 }

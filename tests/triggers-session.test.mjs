@@ -72,8 +72,10 @@ test('binding survives another host, while new mode leaves it untouched', async 
 
 test('a failed initial flush cannot publish a persistent binding', async t => {
   const f = fixture(t);
-  const ctx = { agents: { create: async () => ({ agent: { session: { id: 's', header: { cwd: f.home } } } }) }, sessions: { flush: async () => { throw Error('disk full'); } } };
+  let disposed = false;
+  const ctx = { agents: { create: async () => ({ agent: { session: { id: 's', header: { cwd: f.home } } }, dispose: async () => { disposed = true; } }) }, sessions: { flush: async () => { throw Error('disk full'); } } };
   await assert.rejects(openTriggerSession(ctx, { ...f.definition, triggerId: 'monitor' }, { home: f.home }), /disk full/);
+  assert(disposed, 'Failed admission must release the owned Agent');
   assert.throws(() => readFileSync(bindingPath(f.home, 'monitor')), /ENOENT/);
 });
 
@@ -190,10 +192,10 @@ test('each resumed run replaces the old goal and caps only its own spend', async
   let goal = { id: 'old', revision: 5, phase: 'blocked', roundsStarted: 20 };
   let cost = 100;
   const calls = [], listeners = new Map(), done = Promise.withResolvers();
-  const agent = { id: 's1', session, followup: m => calls.push(['prompt', m]) };
+  const agent = { id: 's1', session, followup: m => calls.push(['prompt', m]), cancel() {}, whenIdle: async () => {} };
   const ctx = {
     get: key => key === 'loader' ? { await: async () => {} } : code => done.resolve(code),
-    agents: { create: async () => ({ agent }) },
+    agents: { create: async () => ({ agent, dispose: async () => {} }) },
     sessions: { flush: async () => calls.push(['flush']) },
     agentDefaultModel: { currentSelection: () => ({ provider: 'fixture', model: 'fixture' }) },
     goals: {
@@ -201,7 +203,7 @@ test('each resumed run replaces the old goal and caps only its own spend', async
       clear: (_agent, ref) => { calls.push(['clear', ref]); goal = undefined; },
       create: (_agent, request) => { assert.equal(goal, undefined); goal = { id: 'new', revision: 1, phase: 'active', roundsStarted: 1, ...request }; },
     },
-    on: (name, callback) => listeners.set(name, callback),
+    on: (name, callback) => { listeners.set(name, callback); return () => listeners.delete(name); },
   };
   await runTriggerHost(ctx, { optionsPath, home: f.home, spend: () => ({ cost }) });
   assert.deepEqual(calls.find(c => c[0] === 'clear'), ['clear', { id: 'old', revision: 5 }]);

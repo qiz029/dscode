@@ -1,4 +1,5 @@
 import { WebError } from '@deepseek-ai/dsh-web';
+import { canonicalProvider, isOpenRouterRoute } from '../providers/catalog.mjs';
 
 // Web search through OpenRouter's web plugin, and the provider `ctx.web` is pinned to:
 // it searches with the session's own route, so an OpenRouter session never needs a
@@ -96,9 +97,9 @@ export class RoutedSearchProvider {
   async pick() {
     const { openrouter, deepseek: lookup, exa, currentProvider, hasKey } = this.routes;
     const deepseek = lookup();
-    const route = currentProvider();
+    const route = canonicalProvider(currentProvider());
     if (route?.startsWith('custom-')) throw new WebError('Web search is not configured for Custom. Configure a separate search provider explicitly.', 'WEB_PROVIDER_CREDENTIAL_MISSING');
-    if (route === 'openrouter') return openrouter;
+    if (isOpenRouterRoute(route)) return openrouter;
     if (route === 'opencode-go' && exa) return exa;
     if (route === 'deepseek-official' && deepseek) return deepseek;
     if (deepseek && await hasKey('DEEPSEEK_API_KEY')) return deepseek;

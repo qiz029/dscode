@@ -17,7 +17,8 @@ export function outgoingEmail({ to, subject, body, idempotency_key }) {
   return { to, subject, body, idempotency_key };
 }
 
-export function createEmailSender({ directory = createEmailInbox().directory, transportFactory = options => nodemailer.createTransport(options) } = {}) {
+export function createEmailSender({ directory = createEmailInbox().directory, transportFactory = options => nodemailer.createTransport(options),
+  configurationHint = 'Configure Gmail with an application password in /email first.' } = {}) {
   const credentials = emailStore(join(directory, 'imap'));
   const outbox = emailStore(join(directory, 'outbox'));
   const filename = key => hash(key) + '.json';
@@ -37,7 +38,7 @@ export function createEmailSender({ directory = createEmailInbox().directory, tr
           return existing.receipt;
         }
         const config = credentials.read('connection.json')?.config;
-        if (!config || config.host !== 'imap.gmail.com' || !address(config.account) || !config.password) throw Error('Configure Gmail with an application password in /email first.');
+        if (!config || config.host !== 'imap.gmail.com' || !address(config.account) || !config.password) throw Error(configurationHint);
         if (signal?.aborted) return { status: 'cancelled' };
         const messageId = `<${randomUUID()}@${config.account.split('@')[1]}>`;
         const receipt = { status: 'uncertain', messageId, from: config.account, to: mail.to, subject: mail.subject, attemptedAt: new Date().toISOString() };

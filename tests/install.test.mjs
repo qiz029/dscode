@@ -156,7 +156,7 @@ test('the piped installer prefers the prebuilt package for this platform, and DS
 /** A local tree the installer accepts; `scripts/harness.mjs` records its arguments instead of provisioning. */
 function localTree(work) {
   const tree = join(work, 'tree');
-  for (const entry of ['bin', 'scripts', 'packages', 'plugins', 'tests', 'presets', 'config', 'docs']) mkdirSync(join(tree, entry), { recursive: true });
+  for (const entry of ['bin', 'scripts', 'packages', 'plugins', 'extensions', 'tests', 'presets', 'config', 'docs']) mkdirSync(join(tree, entry), { recursive: true });
   writeFileSync(join(tree, 'package.json'), '{"name":"fake-harness","version":"1.2.3"}\n');
   writeFileSync(join(tree, 'package-lock.json'), '{}\n');
   writeFileSync(join(tree, '.npmrc'), '');

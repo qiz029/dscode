@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cronToCalendarInterval, crontabLine, launchAgent, agentPath } from '../plugins/triggers/launchd.mjs';
 import { normalizeTrigger } from '../plugins/triggers/config.mjs';
-import { readRuns } from '../plugins/triggers/log.mjs';
+import { readRuns, runTailPath } from '../plugins/triggers/log.mjs';
 import { setEnabledFlag, scaffoldTrigger, runTriggerCli, parseTriggerArgs } from '../plugins/triggers/cli.mjs';
 import { parse as parseYaml } from 'yaml';
 
@@ -183,7 +183,10 @@ test('a poll source only runs when its check says there is work', async t => {
 
   write('echo found a new commit; exit 0');
   assert.equal(await runTriggerCli(['run', 'nightly'], { ...deps, now: NOW + 60 * 1000 }), 0);
-  assert.equal(spawns, 1, 'the first match in a window runs');
+  if (spawns !== 1) {
+    const last = readRuns(f.home, { triggerId: 'nightly' })[0];
+    assert.fail(`the first match in a window runs: ${readFileSync(runTailPath(f.home, 'nightly', last.runId), 'utf8')}`);
+  }
   // A replayed scheduler tick in the SAME window is the same firing, so it does
   // not start a second session; only the next window re-evaluates the check.
   assert.equal(await runTriggerCli(['run', 'nightly'], { ...deps, now: NOW + 2 * 60 * 1000 }), 0);

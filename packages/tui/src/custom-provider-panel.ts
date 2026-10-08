@@ -6,6 +6,7 @@ import { PASTE_START_MARKER, PASTE_END_MARKER, PASTE_BRACKET_TIMEOUT_MS, stripPa
 export interface CustomModel {
   id: string; name?: string; contextWindow?: number; maxTokens?: number
   contextSource?: string; outputSource?: string; thinking?: string
+  inputModalities?: ('text' | 'image')[]
 }
 export interface CustomProfile {
   id: string; name: string; baseURL: string; api: string; auth: string
@@ -53,7 +54,7 @@ export function CustomProviderPanel({ client, initialId, select, back }: {
   const [adopted, setAdopted] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [stages, setStages] = useState<ProbeStage[]>([])
+  const [report, setReport] = useState<{ model: string; stages: ProbeStage[] } | null>(null)
   const pending = useRef<AbortController | undefined>(undefined)
   const alive = useRef(true)
   const saving = useRef(false)
@@ -62,7 +63,7 @@ export function CustomProviderPanel({ client, initialId, select, back }: {
   const width = Math.max(20, (terminal?.columns ?? 80) - 4)
   const height = Math.max(3, (terminal?.rows ?? 24) - 10)
   const go = (next: typeof page): void => { pasteUntil.current = 0; setPage(next); setCursor(0); setEditing(false); setError('') }
-  const open = (p: CustomProfile): void => { setProfile(structuredClone(p)); setKey(''); setStages([]); go('provider') }
+  const open = (p: CustomProfile): void => { setProfile(structuredClone(p)); setKey(''); setReport(null); go('provider') }
   useEffect(() => {
     alive.current = true
     void client.list().then(value => {
@@ -81,7 +82,7 @@ export function CustomProviderPanel({ client, initialId, select, back }: {
       if (alive.current && !controller.signal.aborted) setError(clean(reason instanceof Error ? reason.message : String(reason)).split(key || '\u0000').join('[redacted]'))
     }).finally(() => { if (pending.current === controller) pending.current = undefined; if (alive.current) setBusy(false) })
   }
-  const change = (value: Partial<CustomProfile>): void => { setProfile(p => ({ ...p, ...value })); setStages([]) }
+  const change = (value: Partial<CustomProfile>): void => { setProfile(p => ({ ...p, ...value })); setReport(null) }
   const model = profile.models[modelIndex]
   const changeModel = (value: Partial<CustomModel>): void => {
     change({ models: profile.models.map((m, i) => i === modelIndex ? { ...m, ...value } : m) })
@@ -109,10 +110,10 @@ export function CustomProviderPanel({ client, initialId, select, back }: {
   } else if (page === 'provider') {
     rows.push(
       { label: 'Name', value: profile.name, edit: v => change({ name: v }) },
-      { label: 'Base URL', value: profile.baseURL, edit: v => { if (v !== profile.baseURL) change({ baseURL: v, backend: 'generic', models: profile.models.map(m => ({ ...clearReportedLimits(m), thinking: 'default' })) }) } },
-      { label: 'API format', value: profile.api, choices: protocols, edit: v => { if (v !== profile.api) change({ api: v, auth: v === 'anthropic' ? 'x-api-key' : 'bearer' }) } },
+      { label: 'Base URL', value: profile.baseURL, edit: v => { if (v !== profile.baseURL) change({ baseURL: v, backend: 'generic', models: profile.models.map(m => ({ ...clearReportedLimits(m), thinking: 'default', inputModalities: ['text'] })) }) } },
+      { label: 'API format', value: profile.api, choices: protocols, edit: v => { if (v !== profile.api) change({ api: v, auth: v === 'anthropic' ? 'x-api-key' : 'bearer', models: profile.models.map(m => ({ ...m, inputModalities: ['text'] })) }) } },
       { label: 'Authentication', value: profile.auth, choices: ['none', 'bearer', 'x-api-key'], edit: v => change({ auth: v }) },
-      { label: 'API key', value: key, secret: true, edit: v => { setKey(v); setStages([]) } },
+      { label: 'API key', value: key, secret: true, edit: v => { setKey(v); setReport(null) } },
       { label: 'Idle timeout (ms)', value: String(profile.timeoutMs), edit: v => change({ timeoutMs: Number(v) }) },
       { label: 'Discover models', action: discover },
       ...profile.models.map((m, i) => ({ label: m.id, value: m.contextWindow ? `${m.contextWindow} ctx · ${m.contextSource ?? 'user'}` : 'Context required', action: () => { setModelIndex(i); go('model') } })),
@@ -122,11 +123,16 @@ export function CustomProviderPanel({ client, initialId, select, back }: {
     if (snapshot.providers.some(p => p.id === profile.id)) rows.push({ label: 'Remove provider…', action: () => go('remove') })
   } else if (page === 'model' && model) {
     rows.push(
-      { label: 'Model ID', value: model.id, edit: v => { if (v !== model.id) changeModel({ ...clearReportedLimits(model), id: v, name: v, thinking: 'default' }) } },
+      { label: 'Model ID', value: model.id, edit: v => { if (v !== model.id) changeModel({ ...clearReportedLimits(model), id: v, name: v, thinking: 'default', inputModalities: ['text'] }) } },
       { label: `Context (${model.contextSource ?? 'unknown'})`, value: model.contextWindow?.toString() ?? '', edit: v => changeModel({ contextWindow: v ? Number(v) : undefined, contextSource: 'user' }) },
       { label: `Output budget (${model.outputSource ?? 'default'})`, value: model.maxTokens?.toString() ?? '', edit: v => changeModel({ maxTokens: v ? Number(v) : undefined, outputSource: 'user' }) },
       { label: 'Thinking', value: model.thinking ?? 'default', choices: profile.backend === 'omlx' ? ['default', 'off', 'on'] : ['default'], edit: v => changeModel({ thinking: v }) },
-      { label: 'Test text, streaming and tools', action: () => work(async signal => { const result = await client.test(profile, model.id, key, signal); if (!signal.aborted && alive.current) setStages(result) }) },
+      { label: 'Input', value: model.inputModalities?.includes('image') ? 'Text and images' : 'Text only', choices: ['Text only', 'Text and images'], edit: v => changeModel({ inputModalities: v === 'Text and images' ? ['text', 'image'] : ['text'] }) },
+      { label: 'Test text, streaming and tools', action: () => work(async signal => {
+        setReport(null)
+        const stages = await client.test(profile, model.id, key, signal)
+        if (!signal.aborted && alive.current) setReport({ model: model.id, stages })
+      }) },
       { label: 'Save and switch to this model', action: () => { if (!model.contextWindow) setError('Enter a context window first'); else save(model.id) } },
       { label: 'Remove model from draft', action: () => { change({ models: profile.models.filter((_, i) => i !== modelIndex) }); go('provider') } },
       { label: 'Back to provider', action: () => go('provider') },
@@ -202,7 +208,8 @@ export function CustomProviderPanel({ client, initialId, select, back }: {
     createElement(Text, { bold: true }, `Custom${page === 'list' ? '' : ' · ' + clean(profile.name || 'New provider')}`),
     ...lines,
     ...(editing && selected?.choices ? selected.choices.map(choice => createElement(Text, { key: choice, bold: choice === draft, wrap: 'truncate-end' }, truncateColumns(`  ${choice === draft ? '›' : ' '} ${choice}`, width))) : []),
-    ...stages.map(s => createElement(Text, { key: s.name, color: s.status === 'failed' ? 'red' : undefined, wrap: 'truncate-end' }, truncateColumns(clean(`${s.name}: ${s.status}${s.message ? ' · ' + s.message : ''}`), width))),
+    report ? createElement(Text, { bold: true, wrap: 'truncate-end' }, truncateColumns(clean(`Test results: ${report.model}`), width)) : undefined,
+    ...(report?.stages ?? []).map(s => createElement(Text, { key: s.name, color: s.status === 'failed' ? 'red' : undefined, wrap: 'truncate-end' }, truncateColumns(clean(`${s.name}: ${s.status}${s.message ? ' · ' + s.message : ''}`), width))),
     error ? createElement(Text, { color: 'red', wrap: 'truncate-end' }, truncateColumns(error, width)) : undefined,
     page === 'provider' && profile.baseURL ? createElement(Text, { dimColor: true, wrap: 'truncate-end' }, clean(`Request: ${profile.baseURL.replace(/\/+$/, '')}/${profile.api === 'anthropic' ? 'messages' : profile.api === 'responses' ? 'responses' : 'chat/completions'}`)) : undefined,
     createElement(Text, { dimColor: true }, busy ? 'Working… Esc cancels network requests' : editing ? selected?.choices ? '↑↓ choose · Enter apply · Esc cancel' : 'Enter apply · Ctrl+U clear · Esc cancel' : '↑↓ navigate · Enter edit/select · ←→ choice · Esc back'),

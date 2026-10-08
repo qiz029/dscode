@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, cpSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -16,7 +15,11 @@ const read = path=>JSON.parse(readFileSync(path,'utf8'));
 const release=read(join(out,'hub-release.json'));
 const pkg=read(join(out,'bundle/package.json'));
 const pack=read(join(out,'bundle-pack.json'))[0];
-const home=mkdtempSync(join(tmpdir(),'dscode-hub-verify-'));
+// Linux workspace-write hides /tmp outside the active workspace. Keep the
+// installed runtime outside that scratch mount, as a normal Hub home would be.
+const verificationRoot=join(root,'artifacts/local');
+mkdirSync(verificationRoot,{recursive:true});
+const home=mkdtempSync(join(verificationRoot,'dscode-hub-verify-'));
 const launcherRoot=join(home,'launcher');
 const launcherPack=read(join(out,'launcher-pack.json'))[0];
 await new Promise((resolve,reject)=>{
@@ -85,7 +88,7 @@ try {
     assert.equal(read(join(profile,'node_modules/@deepseek-ai',name,'package.json')).version,release.dsh,name);
   }
   mkdirSync(join(profile,'probe'));
-  for(const file of ['probe-plugin.mjs','dscode-probe.mjs','session-messaging-probe.mjs','session-cards-probe.mjs','memory-probe.mjs']) {
+  for(const file of ['probe-plugin.mjs','dscode-probe.mjs','session-messaging-probe.mjs','session-cards-probe.mjs','memory-probe.mjs','browser-probe.mjs']) {
     writeFileSync(join(profile,'probe',file),readFileSync(join(root,'scripts',file),'utf8').replaceAll("'../plugins/",`'../node_modules/${pkg.name}/plugins/`));
   }
   cpSync(join(root,'scripts/hook-fixture.mjs'),join(home,'hook-fixture.mjs'));
@@ -100,6 +103,15 @@ try {
   const shippedStandardPreset=readFileSync(join(profile,'node_modules/@deepseek-ai/dsh-web-app/presets/standard.patch.yml'),'utf8');
   writeFileSync(overlay,`- id: dscode-session-cards\n  config:\n    enabled: false\n- id: dscode-memory\n  config:\n    generate: false\n- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- insert:\n    - id: harness-probe\n      name: ${JSON.stringify(join(profile,'probe/probe-plugin.mjs'))}\n`+shippedStandardPreset);
   const installedRuntime=join(profile,'node_modules/@deepseek-ai/dsh/lib/bin.js');
+  if (process.env.DSCODE_VERIFY_BROWSER === '1') {
+    mkdirSync(join(home, 'browser'), { recursive: true });
+    writeFileSync(join(home, 'browser/config.json'), JSON.stringify({ mode: 'isolated', headless: true, ...(process.env.DSCODE_TEST_CHROME ? { executablePath: process.env.DSCODE_TEST_CHROME } : {}) }));
+    const browserPatch = join(home, 'browser.patch.yml');
+    writeFileSync(browserPatch, `- id: tui-startup\n  disabled: true\n- id: tui-runner\n  disabled: true\n- id: dscode-session-cards\n  config:\n    enabled: false\n- id: dscode-memory\n  config:\n    generate: false\n- insert:\n    - id: browser-probe\n      name: ${JSON.stringify(join(profile, 'probe/browser-probe.mjs'))}\n`);
+    const browserOutput = await exec(installedRuntime, ['--profile', 'dscode', '--patch', browserPatch]);
+    assert(browserOutput.includes('BROWSER_RUNTIME_PROBE_PASSED'), browserOutput);
+    console.log('PASS installed bundle browser tools, approvals and durable screenshots');
+  }
   const result=await exec(installedRuntime,['--profile','dscode','--patch',overlay],{DSH_TUI_PROBE_REPORT:join(home,'probe.json')});
   assert(result.includes('HARNESS_PROBE_PASSED'),result);
   assert.match(read(join(home,'probe.json')).dscode.childWorktree, /spawn foreground and fork background cwd/);

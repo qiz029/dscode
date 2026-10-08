@@ -5,6 +5,14 @@ artifacts
 .runtime
 packages/tui/lib
 research
+.research
+.npm-cache
+.env
+.env.*
+!.env.example
+config/*.local.yml
+config/*.local.json
+.DS_Store
 eval/private
 npm-debug.log
 

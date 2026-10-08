@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, stat, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { CustomStore, validateProfile, endpoint, keyRef, isCustomKey, PROTOCOLS } from '../plugins/custom/config.mjs';
 import { CustomAdapter, authHeaders } from '../plugins/custom/adapter.mjs';
@@ -86,6 +87,34 @@ test('atomic store rejects stale editors, preserves multiple providers, and stay
     await store.update(saved.revision, p => [...p, profile('anthropic', { id: 'custom-second' })]);
     assert.equal((await store.read()).providers.length, 2);
     assert(!/apiKey|synthetic/.test(await readFile(store.path, 'utf8')));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('a saved blank output override survives a fresh store and still uses the calculated default budget', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'custom-blank-output-'));
+  try {
+    const store = new CustomStore(join(dir, 'providers.yaml'));
+    const p = profile('chat-completions', { models: [
+      { ...model, maxTokens: undefined, outputSource: 'user' },
+      { ...model, id: 'unknown-output', maxTokens: undefined },
+      { ...model, id: 'missing-server-output', maxTokens: undefined, outputSource: 'server' },
+    ] });
+    await store.update((await store.read()).revision, () => [p]);
+    const fresh = (await new CustomStore(store.path).read()).providers[0];
+    assert.equal(fresh.models[0].maxTokens, undefined);
+    assert.equal(fresh.models[0].outputSource, 'user');
+    assert.equal(fresh.models[1].outputSource, undefined);
+    assert.equal(fresh.models[2].outputSource, undefined);
+    const adapter = new CustomAdapter({ profile: () => fresh });
+    const info = await adapter.resolveModel(fresh.id, model.id);
+    assert.equal(info.defaultMaxTokens, 4096);
+    assert.equal(effectiveContextWindow(info.context, info), 28672);
+    // An explicit number can replace the choice without changing schema version.
+    fresh.models[0].maxTokens = 2000;
+    await store.update((await store.read()).revision, () => [fresh]);
+    const updated = (await new CustomStore(store.path).read()).providers[0].models[0];
+    assert.equal(updated.maxTokens, 2000);
+    assert.equal(updated.outputSource, 'user');
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -192,4 +221,48 @@ test('cancellation propagates and releases the per-provider queue', async () => 
   controller.abort();
   await assert.rejects(first, e => e.code === 'ABORTED');
   assert.equal((await second).at(-1).reason.kind, 'stop');
+});
+
+
+test('oMLX discovery cancellation during optional metadata closes HTTP and rejects partial success', { timeout: 5000 }, async t => {
+  const metadataStarted = Promise.withResolvers(), metadataClosed = Promise.withResolvers();
+  const controller = new AbortController();
+  const server = createServer((request, response) => {
+    if (request.url === '/v1/models') {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({ data: [{ id: 'qwen', owned_by: 'omlx', max_model_len: 32768 }] }));
+    } else if (request.url === '/v1/models/status') {
+      response.once('close', () => metadataClosed.resolve());
+      metadataStarted.resolve();
+    } else { response.writeHead(404); response.end(); }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { controller.abort(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  const service = new CustomProviders({ credentials: { resolve: async () => ({ value: 'synthetic' }) } });
+  const pending = service.discover(profile('chat-completions', { baseURL: `http://127.0.0.1:${server.address().port}/v1` }), '', controller.signal)
+    .then(result => ({ result }), error => ({ error }));
+  await metadataStarted.promise;
+  controller.abort();
+  const outcome = await pending;
+  await metadataClosed.promise;
+  assert.equal(outcome.result, undefined, 'Cancelled metadata must not return a successful partial catalog');
+  assert.match(outcome.error?.message ?? '', /Discovery cancelled/);
+});
+
+for (const [name, metadata] of [
+  ['missing endpoint', undefined],
+  ['non-array models', { models: {} }],
+  ['null response', null],
+  ['malformed entries', { models: [null, 42, { id: 'qwen', max_context_window: 65536, max_tokens: 8192 }] }],
+  ['oversized optional output', { models: [{ id: 'qwen', max_tokens: 65536 }] }],
+  ['invalid optional limits', { models: [{ id: 'qwen', max_context_window: -1, max_tokens: '8192' }] }],
+]) test(`oMLX discovery tolerates ${name} without losing valid catalog limits`, async () => {
+  const service = new CustomProviders({ credentials: { resolve: async () => ({ value: 'synthetic' }) }, fetch: async url => {
+    if (!url.endsWith('/status')) return Response.json({ data: [{ id: 'qwen', owned_by: 'omlx', max_model_len: 32768, max_output_tokens: 4096 }] });
+    return metadata === undefined ? new Response('', { status: 404 }) : Response.json(metadata);
+  } });
+  const result = await service.discover(profile());
+  assert.equal(result.backend, 'omlx');
+  assert.equal(result.models[0].contextWindow, name === 'malformed entries' ? 65536 : 32768);
+  assert.equal(result.models[0].maxTokens, name === 'malformed entries' ? 8192 : 4096);
 });

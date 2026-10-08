@@ -25,6 +25,7 @@ const DEFAULT_BASE_URL = 'https://opencode.ai/inference/go/openai/v1';
 // Each `.volatile()` field arrives as a reference the Settings form and a profile edit both
 // write, so every read below sees the current value.
 export const Config = z.object({
+  providerName: z.union(['opencode-go', 'dscode-opencode-go']).default('opencode-go'),
   apiKeyEnv: z.string().role('credential-ref').default(GRANT_REF).volatile(),
   streamIdleTimeoutMs: z.number().min(1).default(300000).volatile(),
   maxRequestImageBytes: z.number().step(1).min(1).default(20 * 1024 * 1024).volatile(),
@@ -45,6 +46,8 @@ export function resolveOptions(config = {}) {
 }
 
 export function apply(ctx, config = {}) {
+  const provider = config.providerName ?? PROVIDER;
+  const displayName = provider === 'dscode-opencode-go' ? 'DSCODE OpenCode Go' : 'OpenCode Go';
   // `/opencode` owns the login, so Settings must not generate a form for this entry.
   ctx.inject(['settings'], settingsCtx => {
     settingsCtx.effect(() => settingsCtx.settings.configure({ auto: false }, ctx.fiber));
@@ -79,6 +82,7 @@ export function apply(ctx, config = {}) {
     throw new LlmError(`${name}: not signed in to OpenCode Go; run /opencode login`, 'MISSING_CREDENTIAL');
   };
   const adapter = new OpenCodeGoAdapter({
+    displayName,
     options,
     version: dscodeVersion(),
     resolveAccount: signedIn,
@@ -87,25 +91,26 @@ export function apply(ctx, config = {}) {
   });
   // Keep the subscription's usage fresh for the status line while signed in.
   const refreshUsage = () => currentGoUsage({ home, resolveAuth: () => session.auth() });
+  const login = new OpenCodeLogin({
+    store: grants,
+    grant: () => session.current(),
+    onSignedIn: () => { void refreshUsage().catch(() => {}); },
+    log: message => ctx.logger.info(`${name}: ${message}`),
+  });
+  ctx.provide('dscodeOpenCodeLogin', login);
+  ctx.effect(() => () => login.dispose());
   ctx.inject(['commands'], commandsCtx => {
-    const login = new OpenCodeLogin({
-      store: grants,
-      grant: () => session.current(),
-      onSignedIn: () => { void refreshUsage().catch(() => {}); },
-      log: message => ctx.logger.info(`${name}: ${message}`),
-    });
-    commandsCtx.effect(() => () => login.dispose());
     commandsCtx.commands.register(openCodeCommand(login, () => readLanguage()));
   });
-  ctx.llm.registerConfigurableProviders([{ provider: PROVIDER, displayName: 'OpenCode Go', settingsNs: ctx.fiber.entry?.options.id ?? NS, settingsPath: [] }]);
-  const registration = ctx.llm.registerAdapter([PROVIDER], adapter);
+  ctx.llm.registerConfigurableProviders([{ provider, displayName, settingsNs: ctx.fiber.entry?.options.id ?? NS, settingsPath: [] }]);
+  const registration = ctx.llm.registerAdapter([provider], adapter);
   // The retry policy is captured at registration: re-register when an edit changes it.
   let registeredPolicy = options().retryPolicy;
   ctx.on('loader/volatile-update', () => {
     let policy;
     try { policy = options().retryPolicy; } catch (error) { ctx.logger.warn(error); return; }
     if (deepEqualJson(policy, registeredPolicy)) return;
-    registration.replace([PROVIDER]);
+    registration.replace([provider]);
     registeredPolicy = policy;
   });
   void refreshUsage().catch(() => {});

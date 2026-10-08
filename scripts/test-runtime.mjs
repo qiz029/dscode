@@ -101,7 +101,7 @@ export function createTestRuntime({ tui = false, runtime = false, patched = true
 export function copyVerificationSource(directory) {
   // Never copy .env, local overlays, credentials or runtime state into fixtures.
   unlinkSync(join(directory, 'plugins'));
-  for (const name of ['scripts', 'presets', 'bin', 'packages', 'plugins', 'tests', 'docs']) cpSync(join(root, name), join(directory, name), { recursive: true });
+  for (const name of ['scripts', 'presets', 'bin', 'packages', 'plugins', 'extensions', 'tests', 'docs']) cpSync(join(root, name), join(directory, name), { recursive: true });
   mkdirSync(join(directory, 'config'));
   for (const name of readdirSync(join(root, 'config'))) if (!name.includes('.local.')) cpSync(join(root, 'config', name), join(directory, 'config', name));
   for (const name of ['package.json', 'package-lock.json', 'LICENSE', 'README.md', 'install.sh', '.env.example', '.npmrc']) cpSync(join(root, name), join(directory, name));

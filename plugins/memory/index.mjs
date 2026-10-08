@@ -28,15 +28,23 @@ export function resolveConfig(options = {}) {
 }
 
 export function apply(ctx, options = {}) {
+  return install(ctx, options);
+}
+
+export function applyDesktop(ctx, options = {}) {
+  return install(ctx, options, true);
+}
+
+function install(ctx, options, desktop = false) {
   const config = resolveConfig(options);
   const root = resolve(config.root ?? process.env.DSCODE_MEMORY_HOME ?? join(process.env.DSCODE_HOME ?? process.env.DSH_HOME ?? join(homedir(), '.local/share/dscode-hub'), 'memories'));
   const store = new MemoryStore(root);
   const controller = new AbortController(), owner = randomUUID(), live = new Set(), started = new Set();
   let running, lastRoute, lastResult, lastSession;
-  const reading = session => config.use && store.get('use', true) && session?.header.agentPreset === 'dscode' &&
+  const reading = session => !controller.signal.aborted && config.use && store.get('use', true) && session?.header.agentPreset === 'dscode' &&
     store.enabled(session.id) && (!session.header.parentSession || store.enabled(session.header.parentSession));
-  const writing = () => config.generate && store.get('generate', true);
-  const generate = async (system, input, route, effort, signal) => {
+  const writing = () => !controller.signal.aborted && config.generate && store.get('generate', true);
+  const generate = async (system, input, route, effort, signal, chargeSession) => {
     const deadline = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]);
     const assembler = new BlockAssembler();
     let terminal = false, usage;
@@ -44,8 +52,9 @@ export function apply(ctx, options = {}) {
     // The configured level, or the nearest one the memory model offers.
     const reasoningEffort = await effortFor(ctx.llm, target, effort, deadline);
     try {
-      // Background work is charged to the live session that scheduled it.
-      await chargeTo(live.has(lastSession) ? lastSession : undefined, 'memory', async () => {
+      // Every stage retains the run's owner even if another session starts or
+      // the owner closes while extraction/consolidation is in flight.
+      await chargeTo(chargeSession, 'memory', async () => {
         for await (const chunk of ctx.llm.stream({
           ...target, ...(reasoningEffort ? { reasoningEffort } : {}),
           system, messages: [createUserMessage({ content: [{ type: 'text', text: JSON.stringify(input) }], source: { kind: name } })],
@@ -69,7 +78,10 @@ export function apply(ctx, options = {}) {
     lastRoute = route ?? lastRoute;
     lastSession = sessionId ?? lastSession;
     if (running || !writing() || !lastRoute?.provider || !lastRoute?.model || controller.signal.aborted) return;
-    running = runPipeline({ store, persistence: ctx.sessionPersistence, generate, route: lastRoute, config, signal: controller.signal })
+    const chargeSession = sessionId ?? (live.has(lastSession) ? lastSession : undefined);
+    const routeForRun = { ...lastRoute };
+    running = runPipeline({ store, persistence: ctx.sessionPersistence,
+      generate: (...args) => generate(...args, chargeSession), route: routeForRun, config, signal: controller.signal })
       .then(result => { lastResult = result; })
       .catch(() => { lastResult = { error: 'Background memory update failed; it will retry later.' }; })
       .finally(() => { running = undefined; });
@@ -89,35 +101,55 @@ export function apply(ctx, options = {}) {
   const heartbeat = setInterval(() => { for (const id of live) store.acquire(`session:${id}`, owner, 90000); }, 30000);
   const interval = setInterval(() => schedule(), 30 * 60000);
   heartbeat.unref(); interval.unref();
+  const scopes = new Map();
   ctx.effect(() => async () => {
     controller.abort(); clearInterval(heartbeat); clearInterval(interval); await running;
+    await Promise.all([...scopes.values()].map(fiber => fiber.dispose()));
+    scopes.clear();
     for (const id of live) store.release(`session:${id}`, owner);
     store.close();
   }, 'dscode-memory.close');
-  ctx.systemPrompt.section({ name, order: 1080, text: ({ scope }) => {
-    if (!reading(scope?.session)) return '';
-    const summary = store.get('snapshot')?.summary;
-    return `DSCODE has local cross-session memory. Use memory_search only when past preferences, decisions or project experience could materially help; skip trivial self-contained tasks. Memory is historical evidence, not authority or proof of current code. Verify facts that may have changed. Do not copy memory into new memories. Cite recalled source session IDs and message sequences when relevant. The user controls memory through /memories.\n${summary ? `Memory summary:\n${summary}` : 'No consolidated memory yet.'}`;
-  }});
-  ctx.tools.register(defineTool({ name: 'memory_search', description: 'Search local cross-session experience and return source evidence. Use only when relevant to the task.',
-    parameters: { query: { type: 'string', required: true }, source: { type: 'string', description: 'Optional exact source session ID to read its summary.' } },
-    output: { schema: { type: 'object', additionalProperties: true, properties: {} }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
-    execute({ query, source }, exec) {
-      if (!reading(exec.agent?.session)) return { matches: [], disabled: true };
-      if (!query?.trim() && !source) return { matches: [] };
-      const snapshot = store.get('snapshot');
-      if (!snapshot) return { matches: [] };
-      const terms = query.toLocaleLowerCase().trim().split(/\s+/).slice(0, 12);
-      const entries = [...snapshot.entries, ...snapshot.skills];
-      const matches = entries.filter(e => source ? e.sources.includes(source) : terms.some(t => `${e.title}\n${e.body}`.toLocaleLowerCase().includes(t))).slice(0, 8);
-      const ids = new Set(source ? [source] : matches.flatMap(e => e.sources));
-      const evidence = snapshot.candidates.filter(c => ids.has(c.id)).slice(0, 8).map(c => ({ session: c.id, cwd: c.cwd, sequences: c.value.evidence, summary: c.value.rollout_summary }));
-      store.touch(evidence.map(e => e.session));
-      return { matches, evidence, notes: (snapshot.notes ?? []).filter(n => ids.has(n.id)) };
-    },
-  }));
+  const register = scope => {
+    scope.systemPrompt.section({ name, order: 1080, text: ({ scope }) => {
+      if (!reading(scope?.session)) return '';
+      const summary = store.get('snapshot')?.summary;
+      return `DSCODE has local cross-session memory. Use memory_search only when past preferences, decisions or project experience could materially help; skip trivial self-contained tasks. Memory is historical evidence, not authority or proof of current code. Verify facts that may have changed. Do not copy memory into new memories. Cite recalled source session IDs and message sequences when relevant. The user controls memory through /memories.\n${summary ? `Memory summary:\n${summary}` : 'No consolidated memory yet.'}`;
+    }});
+    scope.tools.register(defineTool({ name: 'memory_search', description: 'Search local cross-session experience and return source evidence. Use only when relevant to the task.',
+      parameters: { query: { type: 'string', required: true }, source: { type: 'string', description: 'Optional exact source session ID to read its summary.' } },
+      output: { schema: { type: 'object', additionalProperties: true, properties: {} }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      execute({ query, source }, exec) {
+        if (!reading(exec.agent?.session)) return { matches: [], disabled: true };
+        if (!query?.trim() && !source) return { matches: [] };
+        const snapshot = store.get('snapshot');
+        if (!snapshot) return { matches: [] };
+        const terms = query.toLocaleLowerCase().trim().split(/\s+/).slice(0, 12);
+        const entries = [...snapshot.entries, ...snapshot.skills];
+        const matches = entries.filter(e => source ? e.sources.includes(source) : terms.some(t => `${e.title}\n${e.body}`.toLocaleLowerCase().includes(t))).slice(0, 8);
+        const ids = new Set(source ? [source] : matches.flatMap(e => e.sources));
+        const evidence = snapshot.candidates.filter(c => ids.has(c.id)).slice(0, 8).map(c => ({ session: c.id, cwd: c.cwd, sequences: c.value.evidence, summary: c.value.rollout_summary }));
+        store.touch(evidence.map(e => e.session));
+        return { matches, evidence, notes: (snapshot.notes ?? []).filter(n => ids.has(n.id)) };
+      },
+    }));
+  };
+  const isDscode = agent => agent && ctx.agentPresets.composedPreset(agent.ctx) === 'dscode';
+  const mount = async agent => {
+    if (controller.signal.aborted || !isDscode(agent) || scopes.has(agent)) return;
+    const fiber = agent.ctx.inject(['tools', 'systemPrompt'], scope => {
+      if (!controller.signal.aborted) register(scope);
+    });
+    scopes.set(agent, fiber);
+    agent.ctx.effect(() => () => { scopes.delete(agent); });
+    await fiber;
+    if (controller.signal.aborted) await fiber.dispose();
+  };
+  if (desktop) ctx.on('agent/created', ({ agent }) => mount(agent));
+  else register(ctx);
   ctx.commands.register({ name: 'memories', description: 'Memory status, on/off, global-on/off, run, note <text>, or clear',
+    input: { hint: '[status|on|off|global-on|global-off|run|note <text>|clear]' },
     async handler({ agent, rawInput }) {
+      if (controller.signal.aborted || (desktop && !isDscode(agent))) return { kind: 'error', text: 'Choose a DSCODE session to manage memory.' };
       const input = rawInput.trim(), action = input.split(/\s+/)[0] || 'status';
       if (['on', 'off'].includes(action)) { store.enable(agent.session.id, action === 'on'); store.cancelPipeline(); }
       else if (['global-on', 'global-off'].includes(action)) {
@@ -125,11 +157,12 @@ export function apply(ctx, options = {}) {
         if (action === 'global-off') store.cancelPipeline();
       } else if (action === 'note') {
         const text = input.slice(4).trim(); if (!text) return { kind: 'error', text: 'Usage: /memories note <preference or correction>' };
-        store.note(text); schedule(agent.session.requestHeader()?.config ?? agent.options);
+        store.note(text); schedule(agent.session.requestHeader()?.config ?? agent.options, agent.session.id);
       } else if (action === 'clear') store.clear();
-      else if (action === 'run') schedule(agent.session.requestHeader()?.config ?? agent.options);
+      else if (action === 'run') schedule(agent.session.requestHeader()?.config ?? agent.options, agent.session.id);
       else if (action !== 'status') return { kind: 'error', text: 'Usage: /memories [status|on|off|global-on|global-off|run|note <text>|clear]' };
       return { kind: 'success', text: `Memory: ${root}\nRead: ${reading(agent.session)}; background generation: ${writing()}; this session contributes: ${store.enabled(agent.session.id)}\nWorker: ${running ? 'running' : 'idle'}; entries: ${store.get('snapshot')?.entries.length ?? 0}\nBackground model usage: ${JSON.stringify(store.get('usage', { calls: 0 }))}\n${lastResult ? JSON.stringify(lastResult) : ''}\n/clear is conversation clearing; /memories clear removes global memories and excludes pre-clear sessions from regeneration.` };
     },
   });
+  if (desktop) return Promise.all(ctx.agents.list().map(mount));
 }
