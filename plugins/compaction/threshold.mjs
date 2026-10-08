@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { cacheReadRatio } from '../session-metrics/pricing.mjs';
 import { ensureOpenRouterModels } from '../openrouter/models.mjs';
 
@@ -70,7 +71,7 @@ export function fitsInWindow(totalTokens, modelInfo) {
 
 /** The route's threshold ratio, waiting for the OpenRouter listing when it has not loaded yet. */
 export async function pricedThresholdRatio(provider, model, now = Date.now()) {
-  if (provider === 'openrouter') await ensureOpenRouterModels({ home: process.env.DSH_HOME, now });
+  if (provider === 'openrouter') await ensureOpenRouterModels({ home: resolveDshHome(), now });
   return thresholdForCacheRatio(cacheReadRatio(provider, model, now));
 }
 

@@ -1,5 +1,4 @@
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { communicationPanel, createCommunicationFeed, foldCommunication } from './tasks.mjs';
 import { SessionBridge } from './server.mjs';
 import { CommunicationService } from './communication.mjs';
@@ -8,7 +7,7 @@ import { discover, request } from './client.mjs';
 export const name = 'dscode-session-bridge';
 export const inject = ['agents', 'sessions', 'sessionTitle', 'sessionCards', 'commands', 'systemPrompt', 'tools'];
 export async function apply(ctx) {
-  const home = process.env.DSH_HOME ?? process.env.DSCODE_HOME ?? join(homedir(), '.local/share/dscode-hub');
+  const home = resolveDshHome();
   const homeOption = `--home '${home.replaceAll("'", "'\\''")}'`;
   const bridge = new SessionBridge(ctx, home);
   await bridge.start();

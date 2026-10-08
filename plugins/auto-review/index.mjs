@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import z from '@deepseek-ai/schemastery';
 import { BlockAssembler, createSystemMessage, createUserMessage } from '@deepseek-ai/dsh-llm';
 import { REVIEW_POLICY, escalationDiagnosticGrant, needsMcpApproval, redact, fingerprint, contextFor, parseDecision } from './policy.mjs';
@@ -22,8 +23,7 @@ export const Config = z.object({
 
 export function apply(ctx, config) {
   if (Boolean(config.provider) !== Boolean(config.model)) throw new Error('Auto review requires both provider and model, or neither');
-  if (!config.auditDirectory && !process.env.DSH_HOME) throw new Error('Auto review requires DSH_HOME or auditDirectory');
-  const audit = auditStore(config.auditDirectory ?? join(process.env.DSH_HOME, 'auto-review'));
+  const audit = auditStore(config.auditDirectory ?? join(resolveDshHome(), 'auto-review'));
   const calls = new WeakMap();
   const budgets = new WeakMap();
   const mode = agent => ctx.permissionPresets.current(agent.session);

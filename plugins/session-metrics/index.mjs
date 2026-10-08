@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { randomUUID } from 'node:crypto';
 import { appendMetric } from './store.mjs';
 import { estimateCost, priceVersionFor } from './pricing.mjs';
@@ -30,7 +31,7 @@ export function apply(ctx) {
     snapshots.set(session, { seq: session.seq, value });
     return { ...value, currentTps: smoothedRate.get(session), requestActive };
   }));
-  const home = process.env.DSH_HOME;
+  const home = resolveDshHome();
   // Remaining balance is best-effort decoration: resolve the key lazily (never
   // inject the credentials service, so a missing one cannot fail startup), keep
   // the request on a five-minute cache, and never let it reach the render path.

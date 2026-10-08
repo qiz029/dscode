@@ -2,7 +2,7 @@
 
 ## Desktop feature summary
 
-The 0.7.33 Desktop preview installs into official Harness Desktop. Its qualified
+The 0.7.34 Desktop preview installs into official Harness Desktop. Its qualified
 target is macOS Apple Silicon with Harness runtime **0.2.0-rc.2**. Present the
 DSCODE workflow and the Plugin Hub contribution separately:
 
@@ -30,7 +30,7 @@ this complete timed walkthrough has not been rehearsed with a live model.
 ### Prepare
 
 1. Use a disposable Desktop profile and a scratch workspace. Install
-   `@toddzheng024/dscode-desktop@0.7.33` through **Plugins → Add plugin**, then
+   `@toddzheng024/dscode-desktop@0.7.34` through **Plugins → Add plugin**, then
    choose **Enable now**. Select the **DSCODE** preset. Follow the
    [installation guide](browser-use.md#install-the-experimental-combined-desktop-package)
    if migrating from the old probe package.
@@ -42,7 +42,7 @@ this complete timed walkthrough has not been rehearsed with a live model.
    **0.3.3**; the live catalog may offer a newer exact version. Rehearse that
    version before using it in a recording. An incompatible or unavailable entry
    is a reason to show discovery only, without claiming installation succeeded.
-4. Keep the [0.7.33 release page](https://github.com/qiz029/dscode/releases/tag/v0.7.33)
+4. Keep the [0.7.34 release page](https://github.com/qiz029/dscode/releases/tag/v0.7.34)
    ready for the installation and distribution closing shot. The public npm
    package and GitHub archive carry the same qualified bytes.
 
@@ -79,7 +79,7 @@ usage/delegation view after rehearsing it with the selected model.
 - Keep standalone DMG delivery, coordinated update/changelog UI, Profile
   rollback and native Computer Use permission qualification out of this demo's
   claims. See [Plugin Hub](plugin-hub.md), [Browser use](browser-use.md) and the
-  [release notes](releases/0.7.33.md) for the shipped behavior and limits.
+  [release notes](releases/0.7.34.md) for the shipped behavior and limits.
 
 ## The 90-second terminal demo
 

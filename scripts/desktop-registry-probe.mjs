@@ -1,11 +1,23 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 
-export const inject = ['agentPresets', 'connection', 'webServer'];
+export const inject = ['agentPresets', 'connection', 'webServer', 'agents', 'commands'];
 export function apply(ctx) {
   void run(ctx).catch(error => { console.error(error.stack); ctx.get('appExit')(1); });
 }
 async function run(ctx) {
   await ctx.get('loader').await();
+  assert.equal(process.env.DSH_HOME, undefined, 'Qualification must include ordinary Desktop home resolution');
+  assert.equal(resolveDshHome(), join(homedir(), '.dsh'));
+  assert(ctx.get('dscodeEmail'), 'Email failed to activate');
+  assert(ctx.get('dscodeTriggers'), 'Scheduling failed to activate');
+  assert(existsSync(join(resolveDshHome(), 'config/hooks.local.json')), 'Workspace discovery failed to activate');
+  const handle = await ctx.agents.create({ sessionId: 'registry-home-check', meta: { cwd: homedir(), agentPreset: 'dscode' },
+    setup: async scope => { await ctx.agentPresets.mount(scope, 'dscode'); } });
+  assert(ctx.commands.find(handle.agent, 'review-usage'), 'Automatic review failed to activate');
   const preset = await ctx.agentPresets.resolve('dscode');
   assert(preset); assert.equal(preset.broken, undefined, preset.broken);
   const origin = `http://127.0.0.1:${ctx.webServer.port}`;
@@ -17,5 +29,6 @@ async function run(ctx) {
   assert.equal(response.status, 200);
   const result = (await response.json()).result;
   assert.equal(result.ok, true, result.error?.message);
+  await handle.dispose();
   console.log('DESKTOP_REGISTRY_PASSED'); ctx.get('appExit')(0);
 }

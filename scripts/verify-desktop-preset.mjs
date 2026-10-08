@@ -1,6 +1,6 @@
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
@@ -12,11 +12,14 @@ if (!process.argv[2]) throw Error('Usage: node scripts/verify-desktop-preset.mjs
 const root = resolve(import.meta.dirname, '..'), runtime = resolve(process.argv[2]);
 const modules = join(runtime, 'node_modules');
 const browser = process.argv.includes('--browser');
+const defaultHome = process.argv.includes('--default-home');
 const candidateIndex = process.argv.indexOf('--candidate');
 if (candidateIndex >= 0 && !process.argv[candidateIndex + 1]) throw Error('--candidate requires a package tarball');
 const candidatePath = candidateIndex < 0 ? null : resolve(process.argv[candidateIndex + 1]);
 if (browser && !process.env.DSCODE_TEST_CHROME) throw Error('--browser requires DSCODE_TEST_CHROME pointing to a test Chrome executable');
-const home = mkdtempSync(join(tmpdir(), 'dscode-desktop-preset-'));
+const temporary = mkdtempSync(join(tmpdir(), 'dscode-desktop-preset-'));
+const home = defaultHome ? join(temporary, 'user/.dsh') : temporary;
+mkdirSync(home, { recursive: true });
 try {
   seedDesktopProviderCatalogs(home);
   symlinkSync(modules, join(home, 'node_modules'));
@@ -55,7 +58,7 @@ try {
     { insert: [{ id: 'desktop-preset-probe', name: join(home, 'probe.mjs') }] },
   ]));
   const env = Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'LANG', 'SYSTEMROOT'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
-  const userHome = join(home, 'user');
+  const userHome = defaultHome ? dirname(home) : join(home, 'user');
   writeFileSync(join(home, 'AGENTS.md'), 'GLOBAL_FIXTURE_GUIDANCE\n');
   const hookGroup = text => [{ hooks: [{ type: 'command', command: `printf '${text}\\n' >> hook-log` }] }];
   mkdirSync(join(home, 'config'));
@@ -74,6 +77,7 @@ try {
     writeFileSync(join(skill, 'SKILL.md'), `---\nname: ${label}-skill\ndescription: ${label} fixture skill\n---\n${label} workspace only.\n`);
   }
   Object.assign(env, { HOME: userHome, DSH_HOME: home, DSH_AGENTS_HOME: join(home, 'agents'), DSH_TELEMETRY_DISABLED: '1', ZDOTDIR: home });
+  if (defaultHome) { delete env.DSH_HOME; delete env.DSH_AGENTS_HOME; }
   const receipt = {}, phases = [];
   for (const reload of [false, true]) {
     const child = spawn(process.execPath, [join(modules, '@deepseek-ai/dsh/lib/bin.js'), '--profile', 'test', '--no-open'], {
@@ -96,10 +100,11 @@ try {
   mkdirSync(join(root, 'artifacts/local'), { recursive: true });
   const packageSha256 = createHash('sha256').update(readFileSync(packagePath)).digest('hex');
   const report = JSON.stringify({ ...receipt, phases, packageSha256, packageName: packageManifest.name, packageVersion: packageManifest.version,
-    surface: 'independent native Host', renderedUi: false, npmPackRoundtrip: true, sourceRuntimeUnchanged: true, runtimeSources }, null, 2) + '\n';
+    surface: 'independent native Host', defaultHome, renderedUi: false, npmPackRoundtrip: true, sourceRuntimeUnchanged: true, runtimeSources }, null, 2) + '\n';
   writeFileSync(join(root, `artifacts/local/desktop-preset-${runtimeSources.runtime}${browser ? '-browser' : ''}.json`), report);
   writeFileSync(join(root, 'artifacts/local/desktop-preset.json'), report);
   console.log('DESKTOP_PRESET_PASSED ' + JSON.stringify(receipt));
 } finally {
   removeDesktopProbeHome(home);
+  if (defaultHome) rmSync(temporary, { recursive: true, force: true });
 }

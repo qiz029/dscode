@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import z from '@deepseek-ai/schemastery';
 import { LlmError, RetryPolicySchema, assertUsableApiKey, resolveImageAttachmentAccess, resolveRetryPolicy } from '@deepseek-ai/dsh-llm';
 import { credentialRef } from '@deepseek-ai/dsh-credentials';
@@ -73,7 +74,7 @@ export function apply(ctx, config = {}) {
     if (credentials !== undefined) return (await credentials.resolve(ref))?.value || undefined;
     return launchEnvironmentOf(ctx).get(ref)?.value || undefined;
   };
-  const home = process.env.DSH_HOME;
+  const home = resolveDshHome();
   const ensureModels = () => ensureOpenRouterModels({ home });
   const adapter = new OpenRouterAdapter({
     displayName,

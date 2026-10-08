@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import z from "@deepseek-ai/schemastery";
 import { RetryPolicySchema, resolveRetryPolicy } from "@deepseek-ai/dsh-llm";
 import { credentialRef } from "@deepseek-ai/dsh-credentials";
@@ -72,7 +73,7 @@ export function apply(ctx, config = {}) {
     }
   };
   options();
-  const home = process.env.DSH_HOME;
+  const home = resolveDshHome();
   /** The credential the route calls with, or undefined: the catalog must load without a login. */
   const resolveTokenSafe = async () => {
     const ref = options().apiKeyEnv;

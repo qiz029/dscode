@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -13,8 +14,7 @@ export const inject = ['agents', 'agentPresets', 'skills', 'sessionProjections',
 
 /** Session-owned discovery; Desktop's process cwd is not a workspace identity. */
 export function apply(ctx) {
-  const stateDir = process.env.DSH_HOME;
-  if (!stateDir) throw Error('Desktop workspace discovery requires DSH_HOME');
+  const stateDir = resolveDshHome();
   mkdirSync(join(stateDir, 'config'), { recursive: true });
   const installationHooks = join(stateDir, 'config/hooks.local.json');
   if (!existsSync(installationHooks)) writeFileSync(installationHooks, '{"hooks":{}}\n', { mode: 0o600, flag: 'wx' });

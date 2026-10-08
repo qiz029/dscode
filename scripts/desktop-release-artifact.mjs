@@ -43,7 +43,7 @@ export function readDesktopRelease(root, { requireInstall = true } = {}) {
     const installation = JSON.parse(readFileSync(join(directory, 'installation.json'), 'utf8'));
     for (const field of ['name', 'version', 'runtime', 'integrity']) assert.equal(installation[field], candidate[field], `Desktop install ${field} mismatch`);
     assert.equal(installation.packageSha256, candidate.sha256, 'Desktop install archive mismatch');
-    for (const field of ['nativeInstall', 'installedHost', 'hubRpc', 'presetResolved']) assert.equal(installation[field], true, `Missing installed Desktop qualification: ${field}`);
+    for (const field of ['nativeInstall', 'installedHost', 'hubRpc', 'presetResolved', 'defaultHome', 'componentsActive']) assert.equal(installation[field], true, `Missing installed Desktop qualification: ${field}`);
   }
   return { ...candidate, path, proof, manifest };
 }

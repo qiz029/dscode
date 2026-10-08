@@ -59,7 +59,7 @@ retrying; the Hub's operation history is not persisted.
 - Search queries and package lookups go to `api.dshpluginhub.ai`. Provider keys,
   conversation text, workspace files and local credentials are not sent by this
   catalog client. The agent may include task terms in a query you ask it to make.
-- The Desktop plugin is published as `@toddzheng024/dscode-desktop@0.7.33`
+- The Desktop plugin is published as `@toddzheng024/dscode-desktop@0.7.34`
   on npm, with the `preview` tag. Official Add plugin installation, Hub installation with
   handoff to official management, and migration from the legacy probe name
   have passed on macOS Desktop 0.2.0-rc.2.

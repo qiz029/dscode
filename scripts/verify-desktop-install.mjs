@@ -1,7 +1,7 @@
 // Real signed macOS carrier + native dsh plugin add/remove in a disposable home.
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -16,6 +16,9 @@ import { removeDesktopProbeHome, seedDesktopProviderCatalogs } from './desktop-p
 if (process.platform !== 'darwin' || !process.argv[2] || !process.argv[3]) throw Error('Usage on macOS: node scripts/verify-desktop-install.mjs <Harness.app> <matching-runtime-directory> [baseline-package.tgz]');
 const root = resolve(import.meta.dirname, '..'), app = resolve(process.argv[2]), runtimeDirectory = resolve(process.argv[3]);
 const argumentsAfterRuntime = process.argv.slice(4);
+const defaultHomeIndex = argumentsAfterRuntime.indexOf('--default-home');
+const defaultHome = defaultHomeIndex >= 0;
+if (defaultHome) argumentsAfterRuntime.splice(defaultHomeIndex, 1);
 const candidateIndex = argumentsAfterRuntime.indexOf('--candidate');
 if (candidateIndex >= 0 && !argumentsAfterRuntime[candidateIndex + 1]) throw Error('--candidate requires a package tarball');
 const candidatePath = candidateIndex < 0 ? null : resolve(argumentsAfterRuntime[candidateIndex + 1]);
@@ -25,15 +28,18 @@ const baselinePackagePath = argumentsAfterRuntime[0] && resolve(argumentsAfterRu
 execFileSync('codesign', ['--verify', '--deep', '--strict', app], { stdio: 'inherit' });
 const runtime = execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', join(app, 'Contents/Info.plist')], { encoding: 'utf8' }).trim();
 assert.equal(JSON.parse(readFileSync(join(runtimeDirectory, 'node_modules/@deepseek-ai/dsh/package.json'), 'utf8')).version, runtime);
-const home = mkdtempSync(join(tmpdir(), 'dscode-desktop-install-'));
+const temporary = mkdtempSync(join(tmpdir(), 'dscode-desktop-install-'));
+const home = defaultHome ? join(temporary, 'user/.dsh') : temporary;
+mkdirSync(home, { recursive: true });
 const profile = join(home, 'profiles/desktop'), executable = join(app, 'Contents/MacOS/DeepSeek Harness');
 const cli = join(app, 'Contents/Resources/runtime/cli/bin/dsh');
 const env = Object.fromEntries(['PATH', 'TMPDIR', 'LANG'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
-Object.assign(env, { HOME: join(home, 'user'), DSH_HOME: home, DSH_AGENTS_HOME: join(home, 'agents'), ZDOTDIR: home,
+Object.assign(env, { HOME: defaultHome ? dirname(home) : join(home, 'user'), DSH_HOME: home, DSH_AGENTS_HOME: join(home, 'agents'), ZDOTDIR: home,
   DSH_TELEMETRY_DISABLED: '1', DSCODE_INSTALL_PACKAGE: desktopPresetPackage,
   DSCODE_INSTALL_LEGACY_BASELINE: '0' });
 if (process.env.DSCODE_TEST_CHROME) env.DSCODE_TEST_CHROME = process.env.DSCODE_TEST_CHROME;
-mkdirSync(env.HOME);
+if (defaultHome) { delete env.DSH_HOME; delete env.DSH_AGENTS_HOME; }
+mkdirSync(env.HOME, { recursive: true });
 const json = path => JSON.parse(readFileSync(path, 'utf8'));
 const manifest = () => json(join(profile, 'package.json'));
 const hash = path => createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -183,9 +189,9 @@ try {
   writeFileSync(join(home, 'browser/config.json'), JSON.stringify(browserLaunch, null, 2) + '\n', { mode: 0o600 });
   writeFileSync(join(home, 'browser-install-launch.json'), JSON.stringify(browserLaunch));
   await boot('installed', initialPackage.version);
-  const files = ['user/.dscode/providers.yaml', 'user/.dscode/credentials.yaml', 'browser/config.json', 'browser/permissions.json', 'browser/permissions.guard.sqlite',
+  const files = [relative(home, join(env.HOME, '.dscode/providers.yaml')), relative(home, join(env.HOME, '.dscode/credentials.yaml')), 'browser/config.json', 'browser/permissions.json', 'browser/permissions.guard.sqlite',
     'config/desktop-scheduler.json', 'profiles/desktop/.dsh/triggers/lifecycle-scheduled.yml',
-    'desktop-email/preferences.json', ...readdirSync(join(home, 'user/.dscode/email')).filter(name => name.endsWith('.json')).map(name => 'user/.dscode/email/' + name)];
+    'desktop-email/preferences.json', ...readdirSync(join(env.HOME, '.dscode/email')).filter(name => name.endsWith('.json')).map(name => relative(home, join(env.HOME, '.dscode/email', name)))];
   const guardPath = join(home, 'browser/permissions.guard.sqlite');
   const guardInode = statSync(guardPath).ino;
   const before = files.map(file => hash(join(home, file)));
@@ -234,7 +240,7 @@ try {
   assert.deepEqual(files.map(file => hash(join(home, file))), before);
   await boot('reinstalled', original.version);
   assert.equal(statSync(guardPath).ino, guardInode, 'Installation operations replaced the shared permission guard');
-  const receipt = { runtime, surface: 'official macOS Desktop and bundled CLI', nativeInstall: true, nativeUpgrade: true,
+  const receipt = { runtime, surface: 'official macOS Desktop and bundled CLI', defaultHome, nativeInstall: true, nativeUpgrade: true,
     incompatibleUpdateRejected: true, previousVersionBootsAfterRejection: true, nativeRemove: true, baseHostBootsAfterRemoval: true,
     customConfigurationPreserved: true, customModelChoicesPreserved: true, customDefaultOutputPreserved: !legacyConfigurationBaseline,
     customNumericOutputPreserved: legacyConfigurationBaseline,
@@ -269,4 +275,5 @@ try {
   console.log('DESKTOP_INSTALL_PASSED ' + JSON.stringify(receipt));
 } finally {
   removeDesktopProbeHome(home);
+  if (defaultHome) rmSync(temporary, { recursive: true, force: true });
 }

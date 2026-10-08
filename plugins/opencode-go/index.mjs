@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import z from '@deepseek-ai/schemastery';
 import { LlmError, RetryPolicySchema, resolveImageAttachmentAccess, resolveRetryPolicy } from '@deepseek-ai/dsh-llm';
 import { credentialRef } from '@deepseek-ai/dsh-credentials';
@@ -65,7 +66,7 @@ export function apply(ctx, config = {}) {
     }
   };
   options();
-  const home = process.env.DSH_HOME;
+  const home = resolveDshHome();
   // The login lives in the shared credential store beside the provider keys.
   const grants = {
     read: async () => (await ctx.get('credentials')?.resolve(GRANT_REF))?.value || undefined,

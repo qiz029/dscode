@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
@@ -118,7 +119,7 @@ export async function verifyDesktopCustom(ctx, reload = false) {
     const nativeKey = `native-${randomUUID()}`;
     await ctx.credentials.set('DESKTOP_FIXTURE_NATIVE_KEY', nativeKey);
     assert.equal((await ctx.credentials.resolve('DESKTOP_FIXTURE_NATIVE_KEY'))?.value === nativeKey, true);
-    assert(readFileSync(join(process.env.DSH_HOME, '.credentials.yaml'), 'utf8').includes(nativeKey));
+    assert(readFileSync(join(resolveDshHome(), '.credentials.yaml'), 'utf8').includes(nativeKey));
     assert(!readFileSync(sharedPath, 'utf8').includes(nativeKey));
     return { customImageProtocols: protocols, customCredentialStorage: true, nativeCredentialFallback: true, customHostRestart: reload, customSettingsRpc: true, customSettingsAuth: true };
   } finally {

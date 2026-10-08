@@ -1,4 +1,4 @@
-import { homedir } from 'node:os';
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { resolve, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm';
@@ -37,7 +37,7 @@ export function applyDesktop(ctx, options = {}) {
 
 function install(ctx, options, desktop = false) {
   const config = resolveConfig(options);
-  const root = resolve(config.root ?? process.env.DSCODE_MEMORY_HOME ?? join(process.env.DSCODE_HOME ?? process.env.DSH_HOME ?? join(homedir(), '.local/share/dscode-hub'), 'memories'));
+  const root = resolve(config.root ?? process.env.DSCODE_MEMORY_HOME ?? join(resolveDshHome(), 'memories'));
   const store = new MemoryStore(root);
   const controller = new AbortController(), owner = randomUUID(), live = new Set(), started = new Set();
   let running, lastRoute, lastResult, lastSession;

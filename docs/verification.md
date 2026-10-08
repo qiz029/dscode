@@ -2,6 +2,48 @@
 
 Status: living verification record. The maintained gates below include installed terminal imports, real-browser checks and experimental upstream Desktop Host, shared Web UI and macOS Electron probes; dated sections retain the evidence and limits of their original runs.
 
+## Desktop default-home activation regression — 2026-10-08
+
+A user installing public 0.7.33 through the official macOS application reported
+four inactive entries: workspace discovery, email, scheduling and automatic
+review. All four required the optional `DSH_HOME` environment variable, while
+the upstream application normally resolves its home to `~/.dsh`. Earlier native
+and signed-app probes explicitly set `DSH_HOME`; their passing results did not
+cover a normal default-home launch. The 0.7.33 publication record below therefore
+does not prove that installation scenario worked.
+
+Removing `DSH_HOME` reproduced all four exceptions. The independent Host probe
+with `--default-home` also failed because scheduling commands never activated.
+After switching the affected components and related state consumers to upstream
+`resolveDshHome()`, that same Host startup/restart probe passed. Browser, memory,
+communication, delegation, usage, provider caches and diagnostics now share the
+native root instead of selecting unrelated fallback directories or omitting
+durable records. Existing explicit memory/audit overrides remain supported.
+Previously misplaced state is not moved automatically.
+
+The signed macOS 0.2.0-rc.2 application passed six lifecycle phases with
+`--default-home`: initialize, install, upgrade, reject an incompatible update,
+remove and reinstall. Sessions, credentials, configuration, browser permissions,
+memory-related behavior, messaging, scheduling and other checked state remained
+available as recorded in `artifacts/local/desktop-default-home-lifecycle.log`
+and `artifacts/local/desktop-install.json`. The tested archive SHA-256 was
+`bf1559ba2679cf8e912fe25606b36471a81d00430b775a4ab099cf0458c7899f`;
+later documentation edits change packed bytes and require separate qualification.
+
+`npm run check` passed 1,073 unit/component cases at 80.17% full-source line
+coverage, both TypeScript checks, native integration, package checks and 63 eval
+cases. Eight focused home-resolution/publication-gate tests passed. Logs are
+`artifacts/local/desktop-home-full-check.log` and `desktop-home-focused.log`.
+The maintained registry-install verifier now omits `DSH_HOME`, creates a fresh
+profile and checks all four affected components. Publication requires its
+`defaultHome` and `componentsActive` receipts for the exact archive. Native
+installation of the local candidate passed both checks, as recorded in
+`artifacts/local/desktop-local-install.json` (`publicInstall: false`). Public
+0.7.34 availability still requires the corresponding release run to succeed.
+
+These checks use scripted models. They do not establish real-model task quality,
+native Computer Use Accessibility qualification or other runtime/platform support.
+
 ## Public Desktop 0.7.33 — 2026-10-08
 
 The [v0.7.33 release run](https://github.com/qiz029/dscode/actions/runs/37836595281)

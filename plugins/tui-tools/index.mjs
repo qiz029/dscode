@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { runShell } from './shell.mjs';
 import { VERSION_PATTERN, scheduleUpdate } from './update.mjs';
 import { readLanguage, t } from '../i18n/messages.mjs';
@@ -101,7 +102,7 @@ export function applyDesktop(ctx) {
 }
 
 function install(ctx, desktop) {
-  const diagnosticsHome = process.env.DSH_HOME ?? process.env.DSCODE_HOME;
+  const diagnosticsHome = resolveDshHome();
   // A minimal composition (and the unit fixtures) may mount no logger; diagnostics are best-effort.
   if (diagnosticsHome) ctx.logger?.exporter?.({ levels: { default: 2 }, export: message => recordRuntimeLog(diagnosticsHome, message) });
   const composition = agent => {

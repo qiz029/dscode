@@ -1,5 +1,5 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -108,7 +108,7 @@ export function apply(ctx, config = {}) {
     return { ...assembled, tools: assembled.tools.filter(tool => !hidden.has(tool.name)), sections: assembled.sections.filter(section => !hidden.has(section.name.replace(/^tool:/, ''))) };
   });
   const runningChildren = id => ctx.agents.list().filter(a => a.session.header.origin === 'subagent' && a.session.header.parentSession === id && a.status === 'running').length;
-  const home = process.env.DSH_HOME ?? process.env.DSCODE_HOME ?? join(homedir(), '.local/share/dscode-hub');
+  const home = resolveDshHome();
   const board = new DelegateBoard({ root: join(home, 'delegate-boards'), childName: CHILD_NAME });
   const boardView = sessionId => board.view(sessionId, childId => ctx.agents.get(childId)?.status);
   ctx.effect(() => setBoardSource(sessionId => {

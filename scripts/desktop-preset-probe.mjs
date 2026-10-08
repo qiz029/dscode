@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import assert from 'node:assert/strict';
 import { LlmAdapter, createUserMessage } from '@deepseek-ai/dsh-llm';
 import { installModelSelection } from '@deepseek-ai/dsh-agent';
@@ -159,9 +160,9 @@ async function run(ctx) {
     const hooks = readFileSync(join(agent.session.header.cwd, 'hook-log'), 'utf8').trim().split('\n');
     assert.deepEqual(hooks, ['global-start', ...['start', 'prompt', 'pre', 'post', 'stop'].map(event => `${label}-${event}`)]);
   }
-  assert.equal(readdirSync(join(process.env.DSH_HOME, 'desktop-workspaces')).length, 2);
+  assert.equal(readdirSync(join(resolveDshHome(), 'desktop-workspaces')).length, 2);
   await workspaces[0].dispose();
-  assert.equal(readdirSync(join(process.env.DSH_HOME, 'desktop-workspaces')).length, 1);
+  assert.equal(readdirSync(join(resolveDshHome(), 'desktop-workspaces')).length, 1);
   const beta = workspaces[1].agent;
   assert((await ctx.skills.snapshot({ scope: beta, cwd: beta.session.header.cwd })).skills.some(skill => skill.name === 'beta-skill'));
   beta.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Check the surviving workspace.' }] }));
@@ -173,8 +174,8 @@ async function run(ctx) {
   assert.equal(betaHooks.filter(line => line === 'beta-stop').length, 2);
   assert(!betaHooks.some(line => line.startsWith('alpha-')));
   await workspaces[1].dispose();
-  assert.equal(readdirSync(join(process.env.DSH_HOME, 'desktop-workspaces')).length, 0);
-  assert.equal(readFileSync(join(process.env.DSH_HOME, 'AGENTS.md'), 'utf8'), 'GLOBAL_FIXTURE_GUIDANCE\n');
+  assert.equal(readdirSync(join(resolveDshHome(), 'desktop-workspaces')).length, 0);
+  assert.equal(readFileSync(join(resolveDshHome(), 'AGENTS.md'), 'utf8'), 'GLOBAL_FIXTURE_GUIDANCE\n');
   assert.deepEqual(results.filter(row => row.result.isError), [], 'All workspace tools must succeed');
   const custom = await verifyDesktopCustom(ctx);
   const browser = process.env.DSCODE_DESKTOP_BROWSER === '1' ? await verifyDesktopBrowser(ctx) : {};

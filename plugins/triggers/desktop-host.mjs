@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { clientRequestSchema } from '@deepseek-ai/dsh-client-connection';
 import { DesktopTriggerControl, DesktopTriggerManagement } from './desktop-management.mjs';
 import { registerTriggerTools } from './tools.mjs';
@@ -33,8 +34,7 @@ export async function triggerDesktopRequest(ctx, { control, management }, payloa
 }
 
 export function apply(ctx) {
-  const home = process.env.DSH_HOME;
-  if (!home) throw Error('Desktop scheduling requires DSH_HOME');
+  const home = resolveDshHome();
   const control = new DesktopTriggerControl(ctx, { home });
   const management = new DesktopTriggerManagement({ home, control });
   const service = { control, management };

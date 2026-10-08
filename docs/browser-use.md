@@ -52,8 +52,9 @@ running. A new start gets fresh page IDs; interrupted actions are never replayed
 | `/browser use extension` | Experimental: share selected existing Chrome tabs through the DSCODE extension, without enabling a browser-wide remote-debugging port. |
 
 Stop all session browsers before changing defaults. These settings persist in
-`browser/config.json` under `DSH_HOME` (or `DSCODE_HOME`, falling back to
-`~/.dscode`). They apply to future starts. The agent cannot change browser mode
+`browser/config.json` under the native Harness home: a nonblank `DSH_HOME`,
+otherwise `~/.dsh`. The terminal launcher maps `DSCODE_HOME` into `DSH_HOME`.
+They apply to future starts. The agent cannot change browser mode
 through a tool. Dedicated profiles are separate from personal Chrome profiles;
 log in directly in the visible window when needed. The agent should keep that
 tab and hand control to you for login or 2FA, then inspect the same page again.
@@ -624,7 +625,7 @@ and account settings, browser preview, durable session communication, cross-sess
 memory and opt-in task scheduling together. Ordinary builds remain private;
 the separate [release process](hub-distribution.md#desktop-release-candidate-and-publication)
 qualifies a public candidate for 0.2.0-rc.2. The Desktop preview is published on npm as
-`@toddzheng024/dscode-desktop@0.7.33`. The package does
+`@toddzheng024/dscode-desktop@0.7.34`. The package does
 not yet include all DSCODE Host services. Its experimental
 [native Computer Use adapter](computer-use.md) has passed helper and lifecycle
 checks; window observation, screenshots and input await qualification with
