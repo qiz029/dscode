@@ -35,7 +35,7 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 | `dscode send <会话 id> --steer "review parser.ts 的改动并回复"` | 把活交给同一台机器上的另一个会话；它能读你的 transcript、回复、把结论交回来。 |
 | `/permission auto-review` · `/review-usage` | 由独立审核模型按你的指令决定放行，并留下它放行了什么、花了多少的记录。 |
 
-[90 秒演示脚本](docs/demo.md) 里有分镜、确切命令与录制方法。
+[演示指南](docs/demo.md) 分别总结 DSCODE 和 Plugin Hub 的功能，提供五分钟 Desktop 演示草稿，并保留 90 秒终端演示的分镜与录制命令。
 
 ## 🧭 核心能力
 
@@ -260,7 +260,7 @@ Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第�
 | [Skills 与工作区指令](docs/skills.md) | 发现范围、祖先模式与指令文件 |
 | [TUI 命令](docs/tui-commands.md) | 命令参考与 hooks |
 | [Session 指标](docs/session-metrics.md) | 底栏 TPS、context、费用与缓存的统计口径 |
-| [演示脚本](docs/demo.md) | 90 秒演示：分镜、确切命令与录制方法 |
+| [演示指南](docs/demo.md) | Desktop 功能摘要与演示草稿；90 秒终端分镜和录制命令 |
 | [npm + Hub 分发](docs/hub-distribution.md) | bundle、Hub release 与 launcher 流程 |
 | [tar 分发](docs/distribution.md) | 独立 tar 安装器 |
 | [验证说明](docs/verification.md) | 维护中的检查覆盖范围 |

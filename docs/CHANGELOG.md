@@ -8,6 +8,7 @@ Per-release notes live in [`docs/releases/`](releases/); the entries below summa
 
 ## [Unreleased]
 
+- The demo guide separates DSCODE's workflow from the Hub's discovery contribution and adds a Desktop walkthrough draft with setup, reset and qualification boundaries. The existing terminal recording instructions remain available. Release-note links also work when read on GitHub Releases or as downloaded Markdown.
 - Desktop Hub publication retries the npm propagation window where the exact version is visible but the Hub still reports `package_not_found` or an older index. Retries are bounded; policy/credential failures and integrity mismatches still stop publication.
 
 ## [0.7.33] - 2026-10-08
