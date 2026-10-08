@@ -2,7 +2,7 @@ import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
@@ -113,14 +113,15 @@ export async function verifyDesktopCustom(ctx, reload = false) {
     const catalog = readFileSync(join(process.env.HOME, '.dscode/providers.yaml'), 'utf8');
     const sharedPath = join(process.env.HOME, '.dscode/credentials.yaml');
     assert(!catalog.includes(key), 'Provider catalog must not contain credentials');
-    assert(readFileSync(sharedPath, 'utf8').includes(key), 'Shared store must persist provider keys');
-    assert.equal(statSync(sharedPath).mode & 0o777, 0o600);
+    const nativePath = join(resolveDshHome(), '.credentials.yaml');
+    assert(readFileSync(nativePath, 'utf8').includes(key), 'Desktop must persist provider keys in the native store');
+    assert.equal(statSync(nativePath).mode & 0o777, 0o600);
     // Unrelated native credentials continue using the profile-owned store.
     const nativeKey = `native-${randomUUID()}`;
     await ctx.credentials.set('DESKTOP_FIXTURE_NATIVE_KEY', nativeKey);
     assert.equal((await ctx.credentials.resolve('DESKTOP_FIXTURE_NATIVE_KEY'))?.value === nativeKey, true);
     assert(readFileSync(join(resolveDshHome(), '.credentials.yaml'), 'utf8').includes(nativeKey));
-    assert(!readFileSync(sharedPath, 'utf8').includes(nativeKey));
+    assert(!existsSync(sharedPath) || !readFileSync(sharedPath, 'utf8').includes(nativeKey));
     return { customImageProtocols: protocols, customCredentialStorage: true, nativeCredentialFallback: true, customHostRestart: reload, customSettingsRpc: true, customSettingsAuth: true };
   } finally {
     server.closeAllConnections();

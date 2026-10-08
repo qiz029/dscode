@@ -58,7 +58,7 @@ try {
   ]));
   const output = await run(join(profile, 'node_modules/@deepseek-ai/dsh/lib/bin.js'), ['--profile', 'desktop-release-test', '--no-open'], 90000);
   assert(output.includes('DESKTOP_REGISTRY_PASSED'), 'Installed Host never completed qualification');
-  const proof = { publicInstall, nativeInstall: true, installedHost: true, hubRpc: true, presetResolved: true, defaultHome: true, componentsActive: true,
+  const proof = { publicInstall, nativeInstall: true, installedHost: true, hubUnbundled: true, presetResolved: true, defaultHome: true, componentsActive: true,
     name: candidate.name, version: candidate.version, runtime: candidate.runtime, integrity: candidate.integrity, packageSha256: candidate.sha256 };
   mkdirSync(join(root, 'artifacts/local'), { recursive: true });
   writeFileSync(join(root, `artifacts/local/desktop-${publicInstall ? 'public' : 'local'}-install.json`), JSON.stringify(proof, null, 2) + '\n');

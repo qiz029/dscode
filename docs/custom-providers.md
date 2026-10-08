@@ -36,7 +36,7 @@ editor and discovering models again does not replace it with a server-reported
 output limit. Models whose output budget has never been edited can still adopt
 the server's reported value.
 
-In Desktop's **Settings → DSCODE models**, **Discover models** immediately merges the returned models into the draft. Existing models keep their order, thinking mode and image-input choice; new models are appended. Reported limits refresh unless you have edited that value, including an output budget you deliberately left blank. Models absent from the response remain in the draft. Choose **Save provider** to persist the changes.
+In Desktop's **Settings → DSCODE → Models**, **Discover models** immediately merges the returned models into the draft. Existing models keep their order, thinking mode and image-input choice; new models are appended. Reported limits refresh unless you have edited that value, including an output budget you deliberately left blank. Models absent from the response remain in the draft. Choose **Save provider** to persist the changes.
 
 Thinking defaults to the server's behavior. Identified oMLX models also offer Off/On in the editor and Off/On in `/effort` (the stored effort IDs are `off` and `high`). Other custom APIs do not receive guessed reasoning parameters. Native Responses reasoning items and Anthropic thinking signatures are retained for replay to the same service, model and protocol.
 
@@ -44,7 +44,7 @@ Thinking defaults to the server's behavior. Identified oMLX models also offer Of
 
 In the model editor, set **Input → Text and images** only when that model and endpoint support image input. Existing configurations and newly discovered models default to **Text only**; DSCODE does not infer vision support from a model name. Discovery preserves your explicit choice. Changing the base URL, API format or model ID resets the editor's image choice to **Text only**, so enable it again for the new deployment.
 
-In the [experimental Desktop package](browser-use.md#install-the-experimental-combined-desktop-package), open **Settings → DSCODE models**, select the saved provider, enable the model's **Accepts images** checkbox and choose **Save provider**. Select that saved model in the session's model picker. The same explicit capability setting and request-image limits apply in both interfaces. The settings test checks text, streaming and tools; it does not test image understanding.
+In the [experimental Desktop package](browser-use.md#install-the-experimental-combined-desktop-package), open **Settings → DSCODE → Models**, select the saved provider, enable the model's **Accepts images** checkbox and choose **Save provider**. Select that saved model in the session's model picker. The same explicit capability setting and request-image limits apply in both interfaces. The settings test checks text, streaming and tools; it does not test image understanding.
 
 All three protocols can send user images, browser annotation screenshots and images returned by tools. DSCODE reads their durable attachments and sends image bytes to the configured API: Chat Completions uses `image_url` data URLs, Responses uses `input_image`, and Anthropic Messages uses base64 `image` blocks. Tool screenshots follow their tool result as user image content. Enabling this option does not add vision capability to a text-only server.
 
@@ -64,7 +64,7 @@ Automatic review follows its configured model route. When that route is Custom, 
 
 ## Persistence
 
-Service and model configuration lives in `~/.dscode/providers.yaml`; keys use the existing owner-only `~/.dscode/credentials.yaml` store. Provider records contain no key values. Each service receives a stable `custom-…` ID and a derived `DSCODE_CUSTOM_CUSTOM_…_API_KEY` credential reference. An environment variable with that exact reference takes precedence over the saved key, following the existing credential-store rules.
+Service and model configuration lives in `~/.dscode/providers.yaml`; terminal keys use the existing owner-only `~/.dscode/credentials.yaml` store. In the unreleased Desktop adapter, existing native credentials take precedence and new keys are saved to the native Harness store (`~/.dsh/.credentials.yaml` by default). Old DSCODE keys remain a fallback; explicit removal clears both copies to avoid reactivating a legacy key. Provider records contain no key values. Each service receives a stable `custom-…` ID and a derived `DSCODE_CUSTOM_CUSTOM_…_API_KEY` credential reference. An environment variable with that exact reference takes precedence over the saved key, following the existing credential-store rules.
 
 Configuration is shared across projects and installed versions, written atomically, and reloaded by other running Hosts. Stale editors cannot overwrite newer configuration. Renaming a service preserves its ID, so persisted sessions continue to resolve it. Removing a provider removes its route and writable stored credential; it does not reroute existing sessions or delete their history. An environment-supplied key remains in the environment. If it masks a stored key, clear the environment override before removing the provider to remove that stored key too.
 

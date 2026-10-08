@@ -3,7 +3,7 @@ globalThis.__ModuleLoader__.load({
   factory: require => {
     const { createElement: h, useState, useEffect, useRef } = require('react');
     const columns = [['pending', 'Pending'], ['running', 'Running'], ['verifying', 'Verifying'], ['complete', 'Complete']];
-    const control = { padding: '7px 10px', border: '1px solid #8886', borderRadius: 6, background: 'transparent', color: 'inherit', font: 'inherit' };
+    const control = { padding: '7px 10px', border: '.5px solid var(--dsw-alias-border-l3, #8886)', borderRadius: 'var(--dsw-radius-md, 6px)', background: 'transparent', color: 'inherit', font: 'inherit' };
     function Board({ execute }) {
       const [state, setState] = useState(null), [error, setError] = useState('');
       const active = useRef(false), alive = useRef(true);
@@ -15,7 +15,7 @@ globalThis.__ModuleLoader__.load({
       };
       useEffect(() => { alive.current = true; void refresh(); const timer = setInterval(refresh, 1000);
         return () => { alive.current = false; clearInterval(timer); }; }, []);
-      const card = (task, column) => h('li', { key: task.id, style: { listStyle: 'none', border: '1px solid #8885', borderRadius: 6, padding: 10, marginTop: 8, overflowWrap: 'anywhere' } },
+      const card = (task, column) => h('li', { key: task.id, style: { listStyle: 'none', border: '.5px solid var(--dsw-alias-settings-card-stroke, #8885)', borderRadius: 'var(--dsw-radius-md, 6px)', padding: 10, marginTop: 8, overflowWrap: 'anywhere' } },
         h('strong', null, `${task.id} · ${task.title}`),
         h('p', { style: { margin: '6px 0', fontSize: 12 } }, `/${task.child} · ${task.priority} priority`),
         task.waiting && h('p', null, 'Waiting for the coordinator’s answer'),
@@ -25,7 +25,7 @@ globalThis.__ModuleLoader__.load({
         (task.detail || task.note || task.verification || task.worktree) && h('details', null, h('summary', null, 'Task details'),
           ...[['Scope and checks', task.detail], ['Reopened because', task.note], ['Verification evidence', task.verification], ['Worktree', task.worktree]]
             .filter(([, value]) => value).map(([label, value]) => h('div', { key: label, style: { marginTop: 8 } }, h('strong', null, label), h('p', { style: { whiteSpace: 'pre-wrap', margin: '4px 0' } }, value)))));
-      return h('section', { 'aria-label': 'DSCODE delegation board', style: { padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' } },
+      return h('section', { className: 'dscode-ui', 'aria-label': 'DSCODE delegation board', style: { padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' } },
         h('h2', { style: { marginTop: 0 } }, 'Delegation board'),
         h('p', { style: { fontSize: 12 } }, 'Use /delegate <task> in the main session to coordinate work in isolated Git worktrees. The coordinator plans tasks and records verified results.'),
         h('button', { type: 'button', style: control, onClick: refresh }, 'Refresh board'),

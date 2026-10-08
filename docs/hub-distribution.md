@@ -135,8 +135,8 @@ node scripts/verify-desktop-registry.mjs .research/desktop-release-runtime --loc
 `prepare:desktop` provisions exact direct dependencies with install scripts
 disabled; it refuses to overwrite an unrelated project. `release:desktop`
 builds a public candidate only for Harness 0.2.0-rc.2, then unpacks those exact
-bytes for Host startup/restart, browser, annotation, isolation and authenticated
-Hub RPC checks. The source runtime is checked for unintended changes. The
+bytes for Host startup/restart, browser, annotation and isolation checks, plus
+checks that Hub files, UI, tools and endpoint are absent. The source runtime is checked for unintended changes. The
 local install rehearsal additionally resolves dependencies in a new native
 Harness profile and boots the installed package; it does not establish public
 npm availability or drive the Electron UI.
@@ -166,7 +166,7 @@ version retry up to 40 times, 15 seconds apart. Other rejections and credential
 errors stop immediately; the final integrity and compatibility checks still
 apply. The final phase downloads public bytes,
 checks their SHA-256, and installs the exact npm version into a new native
-Harness profile before booting it and checking the preset and Hub RPC. The
+Harness profile before booting it and checking the preset and absence of bundled Hub tools and endpoint. The
 result is saved as `artifacts/local/desktop-public-install.json`. No model
 account is used, and no real-model quality claim follows from these probes.
 
@@ -175,7 +175,7 @@ proves authentication only; the first publish establishes write permission.
 Desktop publication does not replace the terminal profile, create a DMG, or
 implement an automatic Desktop updater. GitHub Release attaches the Desktop
 archive, checksum and instructions alongside the terminal assets. Follow the
-[Plugin Hub guide](plugin-hub.md) for discovery and official management.
+[Plugin Hub guide](plugin-hub.md) for the separation from DSCODE and earlier-version behavior.
 
 ### Login-free publishing (local machine)
 

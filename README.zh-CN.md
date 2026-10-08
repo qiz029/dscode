@@ -35,7 +35,7 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 | `dscode send <会话 id> --steer "review parser.ts 的改动并回复"` | 把活交给同一台机器上的另一个会话；它能读你的 transcript、回复、把结论交回来。 |
 | `/permission auto-review` · `/review-usage` | 由独立审核模型按你的指令决定放行，并留下它放行了什么、花了多少的记录。 |
 
-[演示指南](docs/demo.md) 分别总结 DSCODE 和 Plugin Hub 的功能，提供五分钟 Desktop 演示草稿，并保留 90 秒终端演示的分镜与录制命令。
+[演示指南](docs/demo.md) 总结 DSCODE 的功能，提供五分钟 Desktop 演示草稿，并保留 90 秒终端演示的分镜与录制命令。
 
 ## 🧭 核心能力
 
@@ -116,9 +116,11 @@ dscode --version                  # 输出 DSCODE 版本
 
 npm 启动器会核对已安装 bundle 与 Harness 依赖的推荐版本组合；版本不一致时集中显示一次 warning 并继续运行，不会修改依赖，也不会自动降级。浏览器工具按需加载：请 agent 使用浏览器，或运行 `/browser start`。CSS 规则检查使用快照中的元素 ID，并要求全局及对应站点的 Developer 授权。专用持久 profile、连接已有 Chrome、通过实验性扩展共享选定标签页、标签页保留，以及实验性的 Desktop 侧栏预览、点选批注和站点权限控件见[浏览器操作](docs/browser-use.md)。侧栏可见且空闲时会同步其他地方的权限变更，清除受影响的预览并保留批注草稿。预览已通过隔离的本地测试，在共享 Web 客户端和官方 macOS Electron 应用中验证。桌面工具通过 skill 渐进加载，截图理解需要支持图片的模型；MCP bridge 支持 tools 和 resources；Computer Use 的辅助功能和录屏权限需在 macOS 中单独授予。其他 MCP server 可在 `config/mcp.local.yml` 中添加。
 
-实验性 Desktop 组合包可向官方应用添加 DSCODE 预设、自定义模型与账户设置、浏览器预览、持久化会话通信、跨会话记忆及按需启用的任务调度。**Settings → DSCODE schedules** 可管理任务，并在 Desktop 保持运行时投递。构建及本地安装步骤见[浏览器操作](docs/browser-use.md#install-the-experimental-combined-desktop-package)。启用调度后的原生安装、升级、移除和重新安装，以及账户和调度界面的实际交互，已在 macOS Desktop 0.2.0-rc.2 上验证；验证边界见[触发器](docs/triggers.md#experimental-desktop-scheduling)。该包还包含实验性的[原生 Computer Use 接入](docs/computer-use.md)；窗口观察和输入操作仍待获得 macOS 辅助功能权限后验证。持久化的[时间上下文](docs/session-communication.md#time-context-for-delayed-work)会向 DSCODE agent 提供消息到达时间、转发等待时长和上一轮结束时间，普通聊天正文保持简洁。带独立命令前缀的 [Desktop 诊断](docs/tui-commands.md#experimental-desktop-diagnostics)可检查所选会话、技能与 Host MCP 条目，匹配版本的使用指南随包提供。[Desktop 邮件收件箱](docs/email.md#experimental-desktop-inbox)可预览共享本地邮件、连接 IMAP 或 Gmail OAuth，并将所选邮件加入 DSCODE 会话。背景同步需手动启用；发信沿用现有审批与回执规则。[Session usage 侧栏](docs/session-metrics.md#experimental-desktop-usage)展示 DSCODE 的费用、上下文、缓存、请求速度及逐回合估算。[Delegation board 侧栏](docs/tui-commands.md#experimental-desktop-delegation-board)展示所选主会话的任务、依赖、worktree 和验证依据。Desktop 插件与终端包分别分发；终端弹窗及终端专属命令继续使用现有界面。
+实验性 Desktop 组合包可向官方应用添加 DSCODE 预设、自定义模型与账户设置、浏览器预览、持久化会话通信、跨会话记忆及按需启用的任务调度。**Settings → DSCODE → Schedules** 可管理任务，并在 Desktop 保持运行时投递。构建及本地安装步骤见[浏览器操作](docs/browser-use.md#install-the-experimental-combined-desktop-package)。启用调度后的原生安装、升级、移除和重新安装，以及账户和调度界面的实际交互，已在 macOS Desktop 0.2.0-rc.2 上验证；验证边界见[触发器](docs/triggers.md#experimental-desktop-scheduling)。该包还包含实验性的[原生 Computer Use 接入](docs/computer-use.md)；窗口观察和输入操作仍待获得 macOS 辅助功能权限后验证。持久化的[时间上下文](docs/session-communication.md#time-context-for-delayed-work)会向 DSCODE agent 提供消息到达时间、转发等待时长和上一轮结束时间，普通聊天正文保持简洁。带独立命令前缀的 [Desktop 诊断](docs/tui-commands.md#experimental-desktop-diagnostics)可检查所选会话、技能与 Host MCP 条目，匹配版本的使用指南随包提供。[Desktop 邮件收件箱](docs/email.md#experimental-desktop-inbox)可预览共享本地邮件、连接 IMAP 或 Gmail OAuth，并将所选邮件加入 DSCODE 会话。背景同步需手动启用；发信沿用现有审批与回执规则。[Session usage 侧栏](docs/session-metrics.md#experimental-desktop-usage)展示 DSCODE 的费用、上下文、缓存、请求速度及逐回合估算。[Delegation board 侧栏](docs/tui-commands.md#experimental-desktop-delegation-board)展示所选主会话的任务、依赖、worktree 和验证依据。Desktop 插件与终端包分别分发；终端弹窗及终端专属命令继续使用现有界面。
 
-Desktop 插件使用 `@toddzheng024/dscode-desktop` 包名，并包含 [Plugin Hub](docs/plugin-hub.md)：分类与搜索发现、插件详情、只读对话工具，以及经用户确认后通过官方管理器安装。已安装插件在官方 Plugins 页面启用和配置。官方 Add plugin 安装、Hub 安装衔接和旧 probe 包迁移已在 macOS Desktop 0.2.0-rc.2 上验证；0.7.34 Desktop 预览版已在 npm 提供，适用于 Harness runtime 0.2.0-rc.2。在官方 **Plugins → Add plugin** 中输入 `@toddzheng024/dscode-desktop@0.7.34`，安装后选择 **Enable now**。
+Desktop 插件使用 `@toddzheng024/dscode-desktop` 包名。当前代码已移除捆绑的 [Plugin Hub](docs/plugin-hub.md) 页面、发现工具和运行依赖；该变更**尚未发布**。已发布的 0.7.34 预览版仍包含此前的 Hub 集成，适用于 Harness runtime 0.2.0-rc.2。在官方 **Plugins → Add plugin** 中输入 `@toddzheng024/dscode-desktop@0.7.34`，安装后选择 **Enable now**。更新后需完全退出并重新打开 Desktop。DSCODE 仍可通过 Hub 目录被发现，无需在包内附带 Hub 界面。
+
+未发布的桌面改动还将使用说明、Models、Accounts、Schedules 汇总在 **Settings → DSCODE** 中，增加 **Plugins → DSCODE · Community** 入口，并将 DSCODE 浏览器工具限定在 DSCODE 会话。已有桌面模型和账户可直接在正常模型选择器中使用，额外提供方配置使用原生凭据存储。启用 **Show coding view** 和 **Agent presets**，完全重启后在新会话选择 DSCODE。
 
 <details>
 <summary><b>其他安装方式、升级与回退</b></summary>
@@ -251,7 +253,7 @@ Bundle 在构建阶段生成修改后的模块，不在使用者机器上改第�
 | [持久 Shell 与 Ultra](docs/dscode-ultra.md) | preset、推理强度、子 agent effort 与 worktree 隔离 |
 | [Computer Use](docs/computer-use.md) | 原生 macOS Desktop 接入、应用授权、图片证据与验证边界 |
 | [浏览器操作](docs/browser-use.md) | 浏览器接入、profile、站点权限、Developer mode、WebMCP，以及 DeepSeek 或自定义模型的任务评测 |
-| [Plugin Hub](docs/plugin-hub.md) | Desktop 社区搜索、插件详情、兼容性检查与官方安装衔接 |
+| [Plugin Hub](docs/plugin-hub.md) | DSCODE 与 Hub 的分离，以及此前发布版本的行为 |
 | [账号登录](docs/account-login.md) | 用浏览器账号代替 API key 给 DeepSeek 路由授权：流程、回环回调与限制 |
 | [OpenCode Go](docs/opencode-go.md) | 用 OpenCode Go 订阅运行会话：账号登录、状态栏用量、模型及其推理强度、暂不支持的部分 |
 | [自定义模型服务](docs/custom-providers.md) | 接入自托管与私有 API：协议、模型发现、上下文窗口、密钥和工具调用测试 |

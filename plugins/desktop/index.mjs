@@ -4,6 +4,7 @@ import { apply as providerAccounts } from '../providers/desktop-host.mjs';
 
 export const inject = ['agents', 'commands'];
 export function apply(ctx) {
+  ctx.provide('dscodeDesktop', true);
   customSettings(ctx);
   browserPreview(ctx);
   providerAccounts(ctx);

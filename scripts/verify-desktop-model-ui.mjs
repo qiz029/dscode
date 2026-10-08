@@ -112,7 +112,7 @@ export function apply(ctx) { void ctx.get('loader').await().then(() => console.l
   const output = join(root, 'artifacts/local', modelDelayMs ? 'desktop-model-timeout-ui' : refreshDiscovery ? 'desktop-model-discovery-ui' : 'desktop-model-ui'); mkdirSync(output, { recursive: true });
   const catalog = join(home, 'user/.dscode/providers.yaml');
   try { cpSync(catalog, join(output, 'providers.yaml')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  const credentialFile = join(home, 'user/.dscode/credentials.yaml');
+  const credentialFile = join(home, '.credentials.yaml');
   let keySaved = false, accountKeySaved = false;
   try {
     const saved = readFileSync(credentialFile, 'utf8');

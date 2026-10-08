@@ -7,7 +7,7 @@ A trigger is not a way to reach a session that is already open: that is [session
 ## Experimental Desktop scheduling
 
 The [combined Desktop package](browser-use.md#install-the-experimental-combined-desktop-package)
-adds **Settings → DSCODE schedules**. Open a DSCODE session in the target project,
+adds **Settings → DSCODE → Schedules**. Open a DSCODE session in the target project,
 then select that session in the settings page. The form creates or edits an
 interval, calendar, external-event or script task. New form entries default to
 read-only execution and a persistent task-owned session. You can pause a task,

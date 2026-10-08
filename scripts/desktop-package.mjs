@@ -6,12 +6,12 @@ export const desktopNodeRange = '^22.19.0 || >=24.0.0';
 
 export function desktopHubListing(runtime) {
   return { schemaVersion: 1, displayName: 'DSCODE Desktop',
-    summary: 'Coding collaboration, memory, browser workflows and community plugin discovery for Harness Desktop.',
+    summary: 'Coding collaboration, memory, browser workflows and task management for Harness Desktop.',
     description: `Adds DSCODE to the official Harness Desktop application. Requires the exact DSH runtime ${runtime}. Qualified on macOS Apple Silicon. Install the plugin, select the DSCODE agent preset and configure a model account. This package does not include a standalone application or the terminal UI.`,
     homepage: 'https://github.com/qiz029/dscode#readme', categories: ['developer-tools', 'agents-orchestration'],
-    keywords: ['coding', 'desktop', 'browser', 'collaboration', 'plugin-hub'],
+    keywords: ['coding', 'desktop', 'browser', 'collaboration'],
     compatibility: { dsh: runtime, node: desktopNodeRange, platforms: ['darwin'], surfaces: ['desktop'], hmr: 'restart' },
-    entryIds: ['dscode-desktop', 'dscode-hub', 'dscode-browser'], before: [], after: [], channel: 'beta' };
+    entryIds: ['dscode-desktop', 'dscode-browser'], before: [], after: [], channel: 'beta' };
 }
 
 export function desktopPackageMetadata(version, runtime, { release = false } = {}) {

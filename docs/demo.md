@@ -2,84 +2,69 @@
 
 ## Desktop feature summary
 
-The 0.7.34 Desktop preview installs into official Harness Desktop. Its qualified
-target is macOS Apple Silicon with Harness runtime **0.2.0-rc.2**. Present the
-DSCODE workflow and the Plugin Hub contribution separately:
+The published 0.7.34 Desktop preview installs into official Harness Desktop.
+Its qualified target is macOS Apple Silicon with runtime **0.2.0-rc.2**.
+The current checkout removes bundled Hub functionality; that change is not yet
+released. Demonstrate DSCODE on its own and state which build is being shown.
 
 | Area | What the user gains | Boundary |
 | --- | --- | --- |
 | DSCODE coding workflow | A DSCODE preset with custom model/account settings, session communication, memory, usage and delegation views | Terminal-only panels retain their terminal UI; model behavior depends on the configured provider. |
-| DSCODE browser workflow | Browser tools, per-site access, a screenshot preview and point annotations in the conversation | Chrome is required. An image-capable model is needed to interpret screenshots; captures expire and must be refreshed after navigation. |
+| DSCODE browser integration | Per-site and Developer permissions, screenshot preview and point annotations delivered to the conversation, manual login handoff | Official Harness already has Browser Use. DSCODE connects external Chrome; it does not enhance or share login state with the official embedded browser. |
 | DSCODE optional services | Email inbox integration and scheduled work | Account configuration and explicit opt-in are required. Desktop must stay open for scheduled delivery. |
-| Our Plugin Hub integration | Search and categories across our community catalog, package details, compatibility and reported scan information, plus read-only discovery tools for the agent | Catalog coverage defines the search scope. Reported scans do not establish that a plugin is safe. |
-| Hub installation handoff | Review an exact npm version, confirm its installation and open official management | Official Harness inspects and installs it. New plugins remain disabled; official controls own enabling, configuration and removal. |
 
-The Hub story is **find → understand → review → install → manage**. Its value is
-community discovery and the information needed to choose a plugin. Do not count
-DSCODE's browser, memory or coding features as Hub features, or claim that Hub
-replaces official lifecycle management. This demo makes no claim that every
-official Desktop version lacks search.
+Hub community discovery belongs in a separate product demo. The removal does
+not deliver a standalone Hub Desktop package. See [Plugin Hub](plugin-hub.md)
+for the behavior of earlier published versions.
 
 ## Five-minute Desktop walkthrough draft
 
-This draft is for existing DSH Desktop users. Choose the final emphasis and
-recording length with the presenter; allow separate time for downloads and
-account setup. The installation and UI paths have verification records, but
-this complete timed walkthrough has not been rehearsed with a live model.
+Allow separate time for downloads and account setup. This complete timed
+walkthrough has not been rehearsed with a live model.
 
 ### Prepare
 
-1. Use a disposable Desktop profile and a scratch workspace. Install
-   `@toddzheng024/dscode-desktop@0.7.34` through **Plugins → Add plugin**, then
-   choose **Enable now**. Select the **DSCODE** preset. Follow the
+1. Use a disposable Desktop profile and scratch workspace. For the published
+   demo, install `@toddzheng024/dscode-desktop@0.7.34` through **Plugins → Add
+   plugin**, then choose **Enable now**. Fully quit and reopen Desktop after
+   updating. This release still includes Hub; omit it from the DSCODE demo.
+   For an unbundled demonstration, follow the local-build steps in the
    [installation guide](browser-use.md#install-the-experimental-combined-desktop-package)
-   if migrating from the old probe package.
-2. Configure a model in private, confirm one short response and install Chrome.
-   For the annotation segment, choose a model whose configuration accepts images.
-   Do not record API keys, account login or personal workspace contents.
-3. Open **Settings → Plugin Hub**, search for `dsh-theme-plugin`, and check the
-   current details and compatibility. The recorded installation check used
-   **0.3.3**; the live catalog may offer a newer exact version. Rehearse that
-   version before using it in a recording. An incompatible or unavailable entry
-   is a reason to show discovery only, without claiming installation succeeded.
-4. Keep the [0.7.34 release page](https://github.com/qiz029/dscode/releases/tag/v0.7.34)
-   ready for the installation and distribution closing shot. The public npm
-   package and GitHub archive carry the same qualified bytes.
+   and label the build as unreleased.
+2. Select the **DSCODE** preset when creating the session. Harness 0.2.0-rc.2
+   gates the preset picker behind **Show coding view**; ensure that option and
+   the Agent presets UI are enabled before recording. A Standard session does
+   not acquire the complete DSCODE preset just because the package is installed.
+3. Configure a model in private, confirm one short response and install Chrome.
+   For annotations, choose a model that accepts images. Do not record API keys,
+   account login or personal workspace contents.
+4. Rehearse one small coding task and the browser annotation with that model.
+   Keep the matching release page or local-build information ready. A local
+   build must not be presented as the published 0.7.34 archive.
 
 ### Walkthrough
 
 | Approximate time | Action | Point to explain |
 | --- | --- | --- |
-| 0:00–0:30 | Show the enabled DSCODE plugin and a DSCODE session in official Desktop. | Existing DSH Desktop users can add DSCODE through a plugin. |
-| 0:30–1:30 | Open Plugin Hub, search, choose a category and open details. | Our Hub brings community discovery, descriptions and compatibility information into the application. |
-| 1:30–2:30 | Choose **Review installation**, show the exact package/version, then **Confirm installation**. Wait for its actual outcome. | The user reviews the package; official Harness performs installation. Download time is additional. |
-| 2:30–3:00 | Choose **Manage installed plugin**, show its disabled state and official controls. | Enabling, configuration and removal stay in official management. Enabling the example theme is optional. |
-| 3:00–4:30 | In the DSCODE session, ask: “Use the browser to open https://example.com and inspect the page.” Grant that origin if requested. In **Browser preview**, refresh the image, select a point, type “Summarize the text at this point” and choose **Send annotation**. | This is DSCODE's browser workflow. The screenshot, page reference and selected point enter the conversation; show the real response only after it arrives. |
-| 4:30–5:00 | Show the exact npm install specification and GitHub release assets/notes. | Users can install the released plugin today; releases include compatibility, changes and verification limits. |
-
-For a Hub-only cut, keep the first four rows and the release closing shot. No
-model account is needed to browse and install through the Hub UI. For a longer
-DSCODE cut, add a scratch-project coding task and demonstrate the relevant
-usage/delegation view after rehearsing it with the selected model.
+| 0:00–0:30 | Show the enabled DSCODE plugin and a DSCODE session. | Existing DSH Desktop users can add the coding workflow through a plugin. |
+| 0:30–2:00 | Run the rehearsed small coding task in the scratch workspace. | Show actual changes and verification; model quality is not established by the installation checks. |
+| 2:00–4:00 | Ask the agent to open https://example.com. Grant that origin if requested. In **Browser preview**, refresh, select a point, enter “Summarize the text at this point” and choose **Send annotation**. | Basic browsing overlaps official Browser Use. The demonstrated DSCODE additions are the permission controls and screenshot/point handoff into the conversation. |
+| 4:00–4:30 | Open the session usage view; show the delegation view only if the task actually delegated. | Views reflect the current DSCODE session and available records. |
+| 4:30–5:00 | Show the matching install specification and release notes, or label the local build. | Published availability and an unreleased change are distinct states. |
 
 ### Rehearsal and reset
 
-- Confirm the selected package is absent before the install shot. Remove a
-  previous demo installation through official **Plugins** in the disposable
-  profile, then reopen Hub. Do not remove plugins from a personal profile to
-  prepare the demonstration.
-- Show success, cancellation, refusal or restart-required exactly as reported.
-  After a Host restart, inspect official **Plugins** before attempting another
-  installation; Hub operation history does not survive the restart.
-- If the Hub/network is unavailable, use a clearly identified earlier recording
-  or continue with the DSCODE segment. Do not label cached footage as a live
-  successful install.
-- Refresh the browser screenshot and select a new point if the capture expires
-  or navigation occurs. Text-only delivery must be described as text-only.
-- Keep standalone DMG delivery, coordinated update/changelog UI, Profile
-  rollback and native Computer Use permission qualification out of this demo's
-  claims. See [Plugin Hub](plugin-hub.md), [Browser use](browser-use.md) and the
-  [release notes](releases/0.7.34.md) for the shipped behavior and limits.
+- Reopen Desktop after a package update. Confirm both plugin activation and a
+  working new DSCODE session before starting the recording.
+- Refresh the screenshot and select a new point after navigation or expiry.
+  Image understanding needs an image-capable model. Describe text-only delivery
+  as text-only.
+- Stop the session browser between rehearsals. Its Chrome profile and login
+  state are separate from the official embedded browser.
+- Keep standalone DMG delivery, Hub integration, coordinated update/changelog
+  UI, Profile rollback and native Computer Use permission qualification out of
+  this demo's claims. See [Browser use](browser-use.md) and the
+  [0.7.34 release notes](releases/0.7.34.md) for published behavior and limits.
 
 ## The 90-second terminal demo
 

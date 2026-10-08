@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
+import { scopeOf } from '@deepseek-ai/dsh-scope';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 
-export const inject = ['agentPresets', 'connection', 'webServer', 'agents', 'commands'];
+export const inject = ['agentPresets', 'connection', 'webServer', 'agents', 'commands', 'tools'];
 export function apply(ctx) {
   void run(ctx).catch(error => { console.error(error.stack); ctx.get('appExit')(1); });
 }
@@ -26,9 +27,8 @@ async function run(ctx) {
   const response = await fetch(`${origin}/api/dscode-hub`, { method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: cookie, Origin: origin },
     body: JSON.stringify({ type: 'client-request', rpcId: 'registry-check', method: 'dscode-hub', payload: { action: 'status' } }) });
-  assert.equal(response.status, 200);
-  const result = (await response.json()).result;
-  assert.equal(result.ok, true, result.error?.message);
+  assert.equal(response.status, 404, 'DSCODE must not expose the Hub endpoint');
+  for (const name of ['plugin_hub_search', 'plugin_hub_info']) assert.equal(ctx.tools.get(name, scopeOf(handle.agent.ctx)), undefined, 'DSCODE must not register Hub tools');
   await handle.dispose();
   console.log('DESKTOP_REGISTRY_PASSED'); ctx.get('appExit')(0);
 }

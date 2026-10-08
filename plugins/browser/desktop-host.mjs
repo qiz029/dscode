@@ -13,6 +13,11 @@ export function apply(ctx) {
         if (!payload || typeof payload !== 'object' || typeof payload.sessionId !== 'string') throw Error('Choose a live session.');
         const agent = ctx.agents.get(payload.sessionId);
         if (!agent) throw Error('The session is no longer active. Open it before using Browser preview.');
+        const available = !ctx.get('dscodeDesktop') || agent.session.header.agentPreset === 'dscode';
+        if (action === 'availability') return { ok: true, value: { available } };
+        if (!available) {
+          throw Error('Browser preview belongs to DSCODE. Create a new session with the DSCODE preset; this session keeps its original browser tools.');
+        }
         if (action === 'start' || action === 'stop' || action === 'resume') {
           if (action === 'resume') {
             const browser = browserForAgent(agent);

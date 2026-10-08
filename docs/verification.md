@@ -2,6 +2,47 @@
 
 Status: living verification record. The maintained gates below include installed terminal imports, real-browser checks and experimental upstream Desktop Host, shared Web UI and macOS Electron probes; dated sections retain the evidence and limits of their original runs.
 
+## Desktop boundaries and UI cleanup — 2026-10-08 (unreleased)
+
+The source checkout removes bundled Hub functionality, scopes browser tools,
+command and skill to DSCODE sessions, groups setup/Models/Accounts/Schedules
+under one settings entry, and prefers existing native Desktop credentials.
+It retains shared credential and subagent compatibility services. Public
+0.7.34 artifacts have not been replaced.
+
+Validation on the independent Harness 0.2.0-rc.2 runtime:
+
+- `npm run check` passed: lint, both TypeScript checks, 1,079 unit tests with
+  coverage, integration/package probes and 63 evaluation tests. The first run
+  found outdated RPC mocks and heading selectors, which were updated. Its
+  scheduler orphan-cleanup test also timed out once; the isolated nine-test
+  source suite and the full second run passed without changing scheduler code.
+- `npm run test:browser` passed with real Chrome, including the native TUI
+  browser skill, lazy tools, permission boundaries, handoff and durable images.
+- The combined native Desktop probe passed with `--default-home --browser`:
+  Standard had no DSCODE browser tool/skill/command, DSCODE did, real screenshots
+  and annotation transport worked, and repeated Standard/DSCODE session creation
+  through the official controller passed before and after a Host restart.
+  This does not establish the root cause of the user's earlier intermittent
+  inactive-context error or guarantee hot reload; setup requires a full restart.
+- The signed macOS Desktop lifecycle verifier passed with `--default-home`
+  and the published 0.7.34 tarball as baseline: install, upgrade, rejection of
+  an incompatible update, removal and reinstall. Session files, credentials,
+  browser permissions, scheduled tasks, mail state and child worktrees were
+  preserved. This lifecycle run did not drive Chrome; the combined browser
+  probe above supplies the browser evidence.
+- Rendered UI was inspected through the official shared Web client connected
+  to an isolated Host launched by the signed macOS Desktop app. Light/dark
+  setup, account cards, model form, schedule empty state and the Plugins item
+  were inspected. Screenshots are local evidence under
+  `artifacts/local/desktop-ui-refresh/`. This is not a new end-to-end Electron
+  login or live-provider demo. Sidebar controls have theme-token updates, but
+  the mail/usage/delegation panels were not individually visually rehearsed.
+
+The release gate now requires browser preset isolation and repeated session
+creation before and after restart. Package publication, external account login,
+macOS Computer Use permissions and a live-model demo remain separate checks.
+
 ## Desktop default-home activation regression — 2026-10-08
 
 A user installing public 0.7.33 through the official macOS application reported

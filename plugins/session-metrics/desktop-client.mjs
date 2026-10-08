@@ -5,7 +5,7 @@ globalThis.__ModuleLoader__.load({
     const money = (cost, partial = false) => cost === null || partial && cost === 0 ? 'Unknown' : `$${cost.toFixed(4)}${partial ? '+' : ''}`;
     const percent = value => value === null ? 'Unknown' : `${value.toFixed(1)}%`;
     const speed = value => value === null ? 'Unknown' : `${value.toFixed(1)} tokens/s`;
-    const control = { padding: '7px 10px', border: '1px solid #8886', borderRadius: 6, background: 'transparent', color: 'inherit', font: 'inherit' };
+    const control = { padding: '7px 10px', border: '.5px solid var(--dsw-alias-border-l3, #8886)', borderRadius: 'var(--dsw-radius-md, 6px)', background: 'transparent', color: 'inherit', font: 'inherit' };
     function Usage({ execute }) {
       const [state, setState] = useState(null), [error, setError] = useState('');
       const active = useRef(false), alive = useRef(true);
@@ -17,9 +17,9 @@ globalThis.__ModuleLoader__.load({
       };
       useEffect(() => { alive.current = true; void refresh(); const timer = setInterval(refresh, 1000);
         return () => { alive.current = false; clearInterval(timer); }; }, []);
-      const fact = (label, value) => h('div', { key: label, style: { padding: 10, border: '1px solid #8884', borderRadius: 6 } },
+      const fact = (label, value) => h('div', { key: label, style: { padding: 10, border: '.5px solid var(--dsw-alias-border-l2, #8884)', borderRadius: 'var(--dsw-radius-md, 6px)' } },
         h('dt', { style: { fontSize: 12, marginBottom: 5 } }, label), h('dd', { style: { margin: 0, fontVariantNumeric: 'tabular-nums' } }, value));
-      return h('section', { 'aria-label': 'DSCODE session usage', style: { padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' } },
+      return h('section', { className: 'dscode-ui', 'aria-label': 'DSCODE session usage', style: { padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' } },
         h('h2', { style: { marginTop: 0 } }, 'Session usage'),
         h('p', { style: { fontSize: 12 } }, 'Recorded model usage for this DSCODE session, including attributed child and background calls. Costs are estimates, not an invoice.'),
         h('button', { type: 'button', style: control, onClick: refresh }, 'Refresh usage'),

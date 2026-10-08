@@ -4,9 +4,10 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import React from 'react';
 import { composeDesktopClient } from '../scripts/compose-desktop-client.mjs';
+import { desktopClientPlugins } from '../scripts/build-desktop-preset.mjs';
 
 test('the combined Desktop client mounts settings and preview through one native registration', async () => {
-  const sources = ['custom', 'browser', 'providers', 'triggers', 'email', 'session-metrics', 'dscode', 'hub'].map(plugin => readFileSync(new URL(`../plugins/${plugin}/desktop-client.mjs`, import.meta.url), 'utf8'));
+  const sources = desktopClientPlugins.map(plugin => readFileSync(new URL(`../plugins/${plugin}/desktop-client.mjs`, import.meta.url), 'utf8'));
   const registrations = [], slots = [], tabs = [], requests = [];
   runInNewContext(composeDesktopClient('desktop-fixture', sources), { globalThis: { __ModuleLoader__: { load: value => registrations.push(value) } } });
   assert.equal(registrations.length, 1);
@@ -19,14 +20,19 @@ test('the combined Desktop client mounts settings and preview through one native
     connection: { rpc: { call: async (path, method, payload) => { requests.push({ path, method, payload }); return { ok: true, value: {} }; } } },
   });
   assert.equal(slots.length, 8);
+  assert.equal(slots.filter(slot => slot.name === 'settings.section').length, 1);
+  assert.equal(slots.some(slot => slot.id === 'dscode-hub'), false, 'DSCODE must not register the Hub settings page');
   assert.equal(tabs.length, 4);
   const settings = slots.find(slot => slot.name === 'settings.section');
   const preview = slots.find(slot => slot.name === 'sidebar.right.pane.tab');
-  assert.equal(settings.id, 'dscode-models');
+  assert.equal(settings.id, 'dscode');
+  assert(slots.some(slot => slot.name === 'plugins.bundle.activation'));
+  assert(slots.some(slot => slot.name === 'plugins.item' && slot.label().includes('Community')));
   assert.equal(preview.key, tabs[0].id);
-  await settings.inject().execute('list');
-  await slots.find(slot => slot.id === 'dscode-accounts').inject().execute('status');
-  await slots.find(slot => slot.id === 'dscode-schedules').inject().execute('status');
+  const pages = settings.inject().pages;
+  await pages.find(page => page.entry.id === 'dscode-models').entry.inject().execute('list');
+  await pages.find(page => page.entry.id === 'dscode-accounts').entry.inject().execute('status');
+  await pages.find(page => page.entry.id === 'dscode-schedules').entry.inject().execute('status');
   await preview.inject('session').execute('tabs');
   await slots.find(slot => slot.key === '@toddzheng024/dscode-email-desktop').inject('email-session').execute('list');
   await slots.find(slot => slot.key === '@toddzheng024/dscode-metrics-desktop').inject('metrics-session').execute();

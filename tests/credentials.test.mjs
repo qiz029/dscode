@@ -7,6 +7,24 @@ import { Context } from '@deepseek-ai/cordis';
 import { createLaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment';
 import Credentials from '../plugins/credentials/index.mjs';
 
+test('Desktop prefers existing native accounts and writes updates to the native store', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dscode-desktop-credentials-'));
+  const ctx = new Context();
+  const shared = join(home, 'shared.yaml'), native = join(home, '.credentials.yaml');
+  try {
+    await writeFile(native, 'OPENROUTER_API_KEY: native-existing\n', { mode: 0o600 });
+    await writeFile(shared, 'OPENROUTER_API_KEY: terminal-existing\nDSCODE_CUSTOM_CUSTOM_OLD_API_KEY: legacy-custom\n', { mode: 0o600 });
+    ctx.provide('launchEnvironment', createLaunchEnvironmentSnapshot([{ source: 'process', values: {} }]));
+    await ctx.plugin(Credentials, { desktop: true, path: shared, dshHome: home, watch: false });
+    assert.equal((await ctx.credentials.resolve('OPENROUTER_API_KEY')).value, 'native-existing');
+    assert.equal((await ctx.credentials.resolve('DSCODE_CUSTOM_CUSTOM_OLD_API_KEY')).value, 'legacy-custom');
+    await ctx.credentials.set('OPENROUTER_API_KEY', 'native-updated');
+    assert.equal((await ctx.credentials.resolve('OPENROUTER_API_KEY')).value, 'native-updated');
+    assert.match(await readFile(native, 'utf8'), /native-updated/);
+    assert.match(await readFile(shared, 'utf8'), /terminal-existing/);
+  } finally { await ctx.fiber.dispose(); await rm(home, { recursive: true, force: true }); }
+});
+
 test('native credential persistence, legacy fallback, environment precedence and owner-only permissions', async () => {
   const home = await mkdtemp(join(tmpdir(), 'dscode-credentials-'));
   const path = join(home, 'shared', 'credentials.yaml');
