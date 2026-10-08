@@ -12,18 +12,28 @@ if (!process.argv[2]) throw Error('Usage: node scripts/verify-desktop-preset.mjs
 const root = resolve(import.meta.dirname, '..'), runtime = resolve(process.argv[2]);
 const modules = join(runtime, 'node_modules');
 const browser = process.argv.includes('--browser');
+const candidateIndex = process.argv.indexOf('--candidate');
+if (candidateIndex >= 0 && !process.argv[candidateIndex + 1]) throw Error('--candidate requires a package tarball');
+const candidatePath = candidateIndex < 0 ? null : resolve(process.argv[candidateIndex + 1]);
 if (browser && !process.env.DSCODE_TEST_CHROME) throw Error('--browser requires DSCODE_TEST_CHROME pointing to a test Chrome executable');
 const home = mkdtempSync(join(tmpdir(), 'dscode-desktop-preset-'));
 try {
   seedDesktopProviderCatalogs(home);
   symlinkSync(modules, join(home, 'node_modules'));
-  const staged = buildDesktopPreset(join(home, 'staged'), runtime);
-  const packed = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', home], { cwd: staged, encoding: 'utf8' }));
+  let packagePath = candidatePath;
+  if (!packagePath) {
+    const staged = buildDesktopPreset(join(home, 'staged'), runtime);
+    const packed = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', home], { cwd: staged, encoding: 'utf8' }));
+    packagePath = join(home, packed[0].filename);
+    rmSync(staged, { recursive: true, force: true });
+  }
   const installed = join(home, 'installed');
   mkdirSync(installed);
-  execFileSync('tar', ['-xzf', join(home, packed[0].filename), '-C', installed]);
-  rmSync(staged, { recursive: true, force: true });
+  execFileSync('tar', ['-xzf', packagePath, '-C', installed]);
   const bundle = join(installed, 'package');
+  const packageManifest = JSON.parse(readFileSync(join(bundle, 'package.json'), 'utf8'));
+  assert.equal(packageManifest.name, desktopPresetPackage);
+  assert.equal(packageManifest.peerDependencies['@deepseek-ai/dsh'], JSON.parse(readFileSync(join(modules, '@deepseek-ai/dsh/package.json'), 'utf8')).version);
   const profile = join(home, 'profiles/test');
   mkdirSync(join(profile, 'node_modules/@toddzheng024'), { recursive: true });
   symlinkSync(bundle, join(profile, 'node_modules', desktopPresetPackage));
@@ -84,8 +94,9 @@ try {
     assert.equal(createHash('sha256').update(original).digest('hex'), source.entrySha256, `Source runtime was changed: ${source.package}`);
   }
   mkdirSync(join(root, 'artifacts/local'), { recursive: true });
-  const packageSha256 = createHash('sha256').update(readFileSync(join(home, packed[0].filename))).digest('hex');
-  const report = JSON.stringify({ ...receipt, phases, packageSha256, surface: 'independent native Host', renderedUi: false, npmPackRoundtrip: true, sourceRuntimeUnchanged: true, runtimeSources }, null, 2) + '\n';
+  const packageSha256 = createHash('sha256').update(readFileSync(packagePath)).digest('hex');
+  const report = JSON.stringify({ ...receipt, phases, packageSha256, packageName: packageManifest.name, packageVersion: packageManifest.version,
+    surface: 'independent native Host', renderedUi: false, npmPackRoundtrip: true, sourceRuntimeUnchanged: true, runtimeSources }, null, 2) + '\n';
   writeFileSync(join(root, `artifacts/local/desktop-preset-${runtimeSources.runtime}${browser ? '-browser' : ''}.json`), report);
   writeFileSync(join(root, 'artifacts/local/desktop-preset.json'), report);
   console.log('DESKTOP_PRESET_PASSED ' + JSON.stringify(receipt));

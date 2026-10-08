@@ -35,12 +35,40 @@ Retained local logs are `artifacts/local/desktop-hub-check-final.log`,
 `desktop-hub-native.log` and `desktop-hub-ui.log`; they are developer artifacts,
 not public release receipts.
 
-Still required before public Desktop distribution: real installation through
-the new Hub UI, formal-package installation through official Add plugin,
-migration from the private probe name, release automation and public package
-verification. Live model quality and native Computer Use permissions retain
-their previously documented qualification limits. No Desktop package has been
-published by these checks.
+The official **Plugins → Add plugin** interface installed and enabled the
+formal package from a local archive in a fresh disposable Desktop home. Its Hub
+page searched for `dsh-theme-plugin@0.3.3`, displayed compatibility and reported
+scan details, inspected the package, requested confirmation, installed it
+**disabled**, and closed Settings to show the official plugin details. The theme
+was not enabled. The receipt is `artifacts/local/desktop-plugin-install-ui.json`.
+
+A separate six-phase official CLI/Desktop lifecycle check migrated the earlier
+`@toddzheng024/dscode-desktop-preset-probe` archive to the formal package name.
+Removing the old name before installing the new one preserved sessions,
+credentials, configuration and the user patch. Installation, upgrade, refusal
+of an incompatible update, removal and reinstallation passed; see
+`artifacts/local/desktop-install-name-migration.json`. Both checks used the
+private 0.7.32 archive with SHA-256
+`db0babbb9316c7eec97c13ad1c5684313f75955b334161d1f1edf983ea89efc4`.
+
+The 0.7.33 public candidate subsequently passed initial/reload Host qualification
+with real Chrome, screenshots, annotations and permission persistence. An
+independent runtime was provisioned from an empty directory; the native package
+manager then installed the archive in a new profile, checked locked integrity
+and booted the installed Host with the DSCODE preset and Hub RPC. Retained
+records are `artifacts/desktop/release/verification.json` and
+`artifacts/local/desktop-local-install.json`. Release artifact tests reject
+private/unsupported candidates, changed bytes, stale proofs, missing installation
+results and missing release notes. The full release implementation gate passed
+1,067 unit/component cases at 79.99% coverage, both TypeScript checks, native
+integration, package checks and 63 eval cases; the final install-proof gate was
+also checked by its focused six-case suite.
+
+Still required before public Desktop distribution: the CI release rehearsal,
+public npm/Hub publication and public registry installation.
+Live model quality and native Computer Use permissions retain their previously
+documented qualification limits. No Desktop package has been published by
+these checks.
 
 Run `npm run check` for the maintained regression gate:
 

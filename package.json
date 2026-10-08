@@ -1,6 +1,6 @@
 {
   "name": "todd-dsh-tui-harness",
-  "version": "0.7.32",
+  "version": "0.7.33",
   "private": true,
   "type": "module",
   "bin": {
@@ -23,6 +23,9 @@
     "verify:hub": "node scripts/verify-hub.mjs",
     "publish:hub": "node scripts/publish-hub.mjs",
     "publish:token": "node scripts/npm-token.mjs",
+    "prepare:desktop": "node scripts/prepare-desktop-runtime.mjs",
+    "release:desktop": "node scripts/release-desktop.mjs",
+    "publish:desktop": "node scripts/publish-desktop.mjs",
     "test:unit": "node scripts/checks.mjs unit",
     "test:integration": "node scripts/checks.mjs integration",
     "test:package": "node scripts/checks.mjs package",

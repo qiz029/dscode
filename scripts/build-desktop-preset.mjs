@@ -13,10 +13,11 @@ import { browserDependencies } from './build-browser-desktop.mjs';
 import { bundleDesktopSystemAddon, desktopSystemAddon, desktopSystemAddonVersion } from './desktop-native-bundle.mjs';
 import { bundleDesktopComputerUse } from './desktop-computer-use-bundle.mjs';
 import { bundleDesktopDocs } from './desktop-docs.mjs';
-import { desktopPackageMetadata, desktopPresetPackage } from './desktop-package.mjs';
+import { desktopPackageMetadata, desktopPresetPackage, desktopHubListing } from './desktop-package.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 export { desktopPresetPackage };
+export const desktopDependencies = { ...browserDependencies, '@dsh-plugin-hub/schemas': '0.5.0', semver: '7.8.5', imapflow: '2.0.5', mailparser: '3.9.28', nodemailer: '10.0.10', 'cron-parser': '5.7.0', yaml: '2.9.1', zod: '4.6.5', [desktopSystemAddon]: desktopSystemAddonVersion };
 const modulesToStage = [
   ['dsh-tool-bash', 'bash', patchBash], ['dsh-tool-bash-persistent', 'persistent', patchPersistent],
   ['dsh-terminal-bash', 'terminal', patchTerminalBash], ['dsh-tool-subagent', 'subagent', patchSubagent],
@@ -139,9 +140,9 @@ export function buildDesktopPreset(destination, runtimeDirectory, options = {}) 
     files: ['plugins', 'bin', 'docs', 'extensions', 'vendor', 'locale', 'icon.svg', 'cordis.patch.yml', 'runtime-sources.json', 'THIRD_PARTY_NOTICES.md', 'README.md', 'LICENSE'],
     // Script guardians are separate Node processes and do not inherit the
     // Desktop Host's runtime resolver. Declare their direct imports explicitly.
-    dependencies: { ...browserDependencies, '@dsh-plugin-hub/schemas': '0.5.0', semver: '7.8.5', imapflow: '2.0.5', mailparser: '3.9.28', nodemailer: '10.0.10', 'cron-parser': '5.7.0', yaml: '2.9.1', zod: '4.6.5', [desktopSystemAddon]: desktopSystemAddonVersion },
+    dependencies: desktopDependencies,
     bundledDependencies: [desktopSystemAddon],
-    peerDependencies: { '@deepseek-ai/dsh': runtime }, dsh: { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web', inject: ['@deepseek-ai/dsh-client-ui-settings', '@deepseek-ai/dsh-api-remotes', '@deepseek-ai/dsh-client-ui-sidebar-right'] } },
+    peerDependencies: { '@deepseek-ai/dsh': runtime }, dsh: { bundle: { patch: './cordis.patch.yml' }, hub: desktopHubListing(runtime), client: { platform: 'web', inject: ['@deepseek-ai/dsh-client-ui-settings', '@deepseek-ai/dsh-api-remotes', '@deepseek-ai/dsh-client-ui-sidebar-right'] } },
   }, null, 2) + '\n');
   writeFileSync(join(destination, 'runtime-sources.json'), JSON.stringify({ runtime, sources, nativePackages, computerUse }, null, 2) + '\n');
   notices.push(`${computerUse.package}@${computerUse.version}: MIT. https://github.com/Anionex/dsh-computer-use. Vendored runtime and unmodified universal macOS helper; license included. Local change: screenshot handoff uses the Host read_image tool. Desktop configuration, skill and progressive exposure are DSCODE adapters.\n`);

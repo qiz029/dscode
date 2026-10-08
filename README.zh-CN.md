@@ -55,6 +55,8 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
+**0.7.33（发布候选）** — DSCODE for Harness Desktop 提供正式插件身份和集成的 Plugin Hub，可搜索社区插件、检查兼容性并通过官方管理器安装。Desktop 打包与发布增加了独立验证流程。本版还包含浏览器权限、预览及自定义模型服务的改进，详见[发布说明](docs/releases/0.7.33.md)。
+
 **0.7.32** — OpenCode Go 改为只用 OpenCode 账号登录：`/opencode login` 显示验证码、打开控制台，并在后台完成登录。登录会自动续期，请求发往控制台为你的组织指定的推理地址。0.7.31 用的控制台 API key 不再读取，请运行一次 `/opencode login`。状态栏显示订阅在 5 小时、每周、每月三档额度中的用量，某档用尽时显示何时恢复。授权页显示的是 OpenCode CLI，因为 DSCODE 借用了它的登录客户端。
 
 **0.7.31** — OpenCode Go 加入 `/provider`：`/provider opencode-go` 保存 OpenCode 控制台发放的 key，提供 Go 的 chat-completions 模型——DeepSeek、GLM、Kimi、MiMo、LongCat、Hy 和 Space Bunny——每个模型的推理强度都按线上网关实测结果提供，请求带上 Go 要求的会话 ID，工具调用之间会回传思考内容。Go 会话的联网搜索和 OpenCode 一样走 Exa，不需要额外的 key。Qwen、MiniMax 以及 Go 上的 Grok、GPT 模型走其他协议，暂未提供。
@@ -121,7 +123,7 @@ npm 启动器会核对已安装 bundle 与 Harness 依赖的推荐版本组合�
 
 Desktop 包为 DSCODE 的持久 shell、子任务 shell 和新建 shell 提供支持标准 unified diff 的 `apply_patch` 命令，不修改 Host 的 PATH 或原生 Standard shell provider。
 
-源码候选包现使用 `@toddzheng024/dscode-desktop` 包名，并包含 [Plugin Hub](docs/plugin-hub.md)：分类与搜索发现、插件详情、只读对话工具，以及经用户确认后通过官方管理器安装。已安装插件在官方 Plugins 页面启用和配置。公开分发和旧 probe 包迁移仍在验证中。
+源码候选包现使用 `@toddzheng024/dscode-desktop` 包名，并包含 [Plugin Hub](docs/plugin-hub.md)：分类与搜索发现、插件详情、只读对话工具，以及经用户确认后通过官方管理器安装。已安装插件在官方 Plugins 页面启用和配置。官方 Add plugin 安装、Hub 安装衔接和旧 probe 包迁移已在 macOS Desktop 0.2.0-rc.2 上验证；公开分发仍在验证中。
 
 **从源码运行**
 

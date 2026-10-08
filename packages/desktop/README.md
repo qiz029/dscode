@@ -26,8 +26,11 @@ Do not force an installation that reports incompatible peer dependencies.
 ## Install a candidate
 
 Download the candidate `.tgz` and compare its SHA-256 with the release receipt.
-Open Harness Desktop once to initialize it, then fully quit the application.
-Use its bundled CLI, replacing the package path with your download:
+In Harness Desktop, open **Plugins → Add plugin**, enter the absolute path to
+the downloaded `.tgz`, install it, then choose **Enable now**.
+
+For CLI installation, fully quit the application and use its bundled CLI,
+replacing the package path with your download:
 
 ```sh
 desktop_dsh='/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh'
@@ -37,9 +40,9 @@ desktop_dsh='/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/b
 Restart Desktop, select the **DSCODE** preset, select a workspace, and configure
 the model under **Settings → DSCODE models** or **DSCODE accounts**.
 
-Installation through the official **Plugins → Add plugin** interface is being
-qualified for the first public release. Public npm installation instructions
-will accompany that release; a candidate build alone does not publish a package.
+Installation through the official **Plugins → Add plugin** interface was checked
+on macOS Desktop 0.2.0-rc.2. Public npm installation instructions accompany a
+public release; a candidate build alone does not publish a package.
 
 ## Moving from the earlier private probe
 
@@ -50,9 +53,9 @@ DSCODE components. Quit Desktop, remove the old package, then install this one:
 "$desktop_dsh" plugin --profile desktop remove @toddzheng024/dscode-desktop-preset-probe --config.ignore-scripts=true
 ```
 
-Plugin removal keeps existing state files. Back up your Desktop state before
-migration. Migration from the old package name is a separate release check;
-ordinary same-name upgrade tests do not establish it.
+Migration from the old package name was checked separately on Desktop
+0.2.0-rc.2: removal followed by installation preserved sessions, credentials,
+configuration and the user patch. Keep a backup before migrating your own state.
 
 ## Included capabilities
 

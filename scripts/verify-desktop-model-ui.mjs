@@ -11,6 +11,8 @@ import { removeDesktopProbeHome, seedDesktopProviderCatalogs } from './desktop-p
 if (!process.argv[2]) throw Error('Usage: node scripts/verify-desktop-model-ui.mjs <independent-runtime-directory> [Harness.app]');
 const root = resolve(import.meta.dirname, '..'), runtime = resolve(process.argv[2]);
 const app = process.argv[3] && resolve(process.argv[3]);
+const installUi = process.argv.includes('--install-ui');
+if (installUi && !app) throw Error('--install-ui requires the official Desktop application');
 if (app) {
   if (process.platform !== 'darwin') throw Error('Native Desktop UI qualification requires macOS');
   execFileSync('codesign', ['--verify', '--deep', '--strict', app]);
@@ -63,19 +65,19 @@ try {
   const profileName = app ? 'desktop' : 'test';
   const profile = join(home, 'profiles', profileName);
   mkdirSync(join(profile, 'node_modules/@toddzheng024'), { recursive: true });
-  const bundle = buildDesktopPreset(join(profile, 'node_modules', desktopPresetPackage), runtime);
-  if (app) {
+  const bundle = installUi ? null : buildDesktopPreset(join(profile, 'node_modules', desktopPresetPackage), runtime);
+  if (app && bundle) {
     mkdirSync(join(home, 'node_modules'));
     for (const name of Object.keys(JSON.parse(readFileSync(join(bundle, 'package.json'), 'utf8')).dependencies)) {
       mkdirSync(dirname(join(home, 'node_modules', name)), { recursive: true });
       symlinkSync(join(modules, name), join(home, 'node_modules', name));
     }
-  } else {
+  } else if (!app) {
     symlinkSync(modules, join(home, 'node_modules'));
     symlinkSync(join(modules, '@deepseek-ai'), join(profile, 'node_modules/@deepseek-ai'));
   }
-  writeFileSync(join(profile, 'package.json'), JSON.stringify({ private: true, type: 'module', dependencies: { [desktopPresetPackage]: `file:${bundle}` },
-    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', desktopPresetPackage] } } }));
+  writeFileSync(join(profile, 'package.json'), JSON.stringify({ private: true, type: 'module', dependencies: bundle ? { [desktopPresetPackage]: `file:${bundle}` } : {},
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', ...(bundle ? [desktopPresetPackage] : [])] } } }));
   mkdirSync(join(profile, 'scripts'));
   writeFileSync(join(profile, 'scripts/ready.mjs'), `export const inject = ['connection', 'webServer'];
 export function apply(ctx) { void ctx.get('loader').await().then(() => console.log('DESKTOP_MODELS_UI_READY ' + JSON.stringify({ url: ctx.connection.authenticatedUrl('http://127.0.0.1:' + ctx.webServer.port), modelUrl: process.env.DSCODE_FIXTURE_MODEL_URL }))); }
@@ -104,7 +106,7 @@ export function apply(ctx) { void ctx.get('loader').await().then(() => console.l
       : ['--import', join(home, 'network.mjs'), join(modules, '@deepseek-ai/dsh/lib/bin.js'), '--profile', profileName, '--no-open'], { cwd: home, env, stdio: 'inherit' });
   const stop = () => child.kill('SIGTERM');
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
-  console.log('DESKTOP_MODELS_UI_FIXTURE ' + JSON.stringify({ pid: process.pid, home, refreshDiscovery }));
+  console.log('DESKTOP_MODELS_UI_FIXTURE ' + JSON.stringify({ pid: process.pid, home, refreshDiscovery, installUi }));
   const code = await new Promise((resolve, reject) => { child.once('exit', resolve); child.once('error', reject); });
   process.exitCode = code ?? 0;
   const output = join(root, 'artifacts/local', modelDelayMs ? 'desktop-model-timeout-ui' : refreshDiscovery ? 'desktop-model-discovery-ui' : 'desktop-model-ui'); mkdirSync(output, { recursive: true });
