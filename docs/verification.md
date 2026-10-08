@@ -26,11 +26,12 @@ disabled installation of the terminal-only bundle. The public API returned ten
 categories, and a separate live request verified distinct first/second result
 pages. The rendered check used a disposable Desktop home and no model account.
 
-The maintained `npm run check` passed before the pagination and installation
-race follow-ups (1,060 unit/component cases, 80.43% complete source inventory,
-both TypeScript checks, native integration, package checks and 63 eval cases).
-The follow-ups passed the focused 16-case suite and documentation checks.
-Retained local logs are `artifacts/local/desktop-hub-check.log`,
+The maintained `npm run check` passed on implementation commit `b434c55`,
+including the pagination and installation race follow-ups (1,062 unit/component
+cases, 80.42% complete source inventory, both TypeScript checks, native
+integration, package checks and 63 eval cases). The focused 16-case suite and
+documentation checks passed as well.
+Retained local logs are `artifacts/local/desktop-hub-check-final.log`,
 `desktop-hub-native.log` and `desktop-hub-ui.log`; they are developer artifacts,
 not public release receipts.
 
