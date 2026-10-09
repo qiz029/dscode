@@ -646,7 +646,7 @@ and account settings, browser preview, durable session communication, cross-sess
 memory and opt-in task scheduling together. Ordinary builds remain private;
 the separate [release process](hub-distribution.md#desktop-release-candidate-and-publication)
 qualifies a public candidate for 0.2.0-rc.2. The Desktop preview is published on npm as
-`@toddzheng024/dscode-desktop@0.7.34`. The package does
+`@toddzheng024/dscode-desktop@0.7.35`. The package does
 not yet include all DSCODE Host services. Its experimental
 [native Computer Use adapter](computer-use.md) has passed helper and lifecycle
 checks; window observation, screenshots and input await qualification with
@@ -654,9 +654,9 @@ macOS Accessibility permission.
 Choose this package or the browser-only bundle; enabling both duplicates their
 browser services.
 
-The Desktop plugin's package name is `@toddzheng024/dscode-desktop`. The current
-checkout removes bundled [Plugin Hub](plugin-hub.md) functionality; this is
-unreleased and the published 0.7.34 package still includes it. The earlier private
+The Desktop plugin's package name is `@toddzheng024/dscode-desktop`. Version 0.7.35
+removes bundled [Plugin Hub](plugin-hub.md) functionality; older 0.7.33 and 0.7.34
+packages still include it. The earlier private
 `@toddzheng024/dscode-desktop-preset-probe` must be removed before installing
 this package; both register the same DSCODE components. Back up your Desktop
 state first. A separate macOS Desktop 0.2.0-rc.2 migration check preserved
@@ -740,7 +740,7 @@ desktop_package='/absolute/path/printed-by-pack-command.tgz'
 
 Fully quit and reopen Desktop after installing or updating. In **Settings → General**, enable **Show coding view** and enable **Agent presets** in Plugins if disabled. Create a new session with **DSCODE**; existing sessions keep their original preset. Choose a model from the normal picker to reuse an existing Desktop account.
 
-In this unreleased checkout, **Settings → DSCODE** groups Get started, Models, Accounts and Schedules as peer entries and follows the host's light/dark theme. **Plugins → DSCODE · Community** opens the same setup page. Models and Accounts are optional additions. Published 0.7.34 still has separate settings pages.
+In 0.7.35 and later, **Settings → DSCODE** groups Get started, Models, Accounts and Schedules as peer entries and follows the host's light/dark theme. **Plugins → DSCODE · Community** opens the same setup page. Models and Accounts are optional additions. Published 0.7.34 still has separate settings pages.
 
 Browser tools, the browser skill and `/browser` are mounted only in DSCODE sessions. Standard sessions retain their existing tools, and the DSCODE preview explains the preset boundary instead of starting a browser there. TUI Browser Use remains enabled through its existing composition. The Desktop package still supplies shared credential and subagent compatibility services; this scope change does not remove those Host adapters.
 

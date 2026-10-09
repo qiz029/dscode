@@ -2,10 +2,10 @@
 
 ## Desktop feature summary
 
-The published 0.7.34 Desktop preview installs into official Harness Desktop.
+The 0.7.35 Desktop preview installs into official Harness Desktop.
 Its qualified target is macOS Apple Silicon with runtime **0.2.0-rc.2**.
-The current checkout removes bundled Hub functionality; that change is not yet
-released. Demonstrate DSCODE on its own and state which build is being shown.
+This version removes bundled Hub functionality. Demonstrate DSCODE on its own
+and state which version is being shown.
 
 | Area | What the user gains | Boundary |
 | --- | --- | --- |
@@ -25,12 +25,11 @@ walkthrough has not been rehearsed with a live model.
 ### Prepare
 
 1. Use a disposable Desktop profile and scratch workspace. For the published
-   demo, install `@toddzheng024/dscode-desktop@0.7.34` through **Plugins → Add
+   demo, install `@toddzheng024/dscode-desktop@0.7.35` through **Plugins → Add
    plugin**, then choose **Enable now**. Fully quit and reopen Desktop after
-   updating. This release still includes Hub; omit it from the DSCODE demo.
-   For an unbundled demonstration, follow the local-build steps in the
-   [installation guide](browser-use.md#install-the-experimental-combined-desktop-package)
-   and label the build as unreleased.
+   updating. Hub is separate from this package. For local development builds,
+   follow the [installation guide](browser-use.md#install-the-experimental-combined-desktop-package)
+   and identify the checkout being demonstrated.
 2. Select the **DSCODE** preset when creating the session. Harness 0.2.0-rc.2
    gates the preset picker behind **Show coding view**; ensure that option and
    the Agent presets UI are enabled before recording. A Standard session does
@@ -40,7 +39,7 @@ walkthrough has not been rehearsed with a live model.
    account login or personal workspace contents.
 4. Rehearse one small coding task and the browser annotation with that model.
    Keep the matching release page or local-build information ready. A local
-   build must not be presented as the published 0.7.34 archive.
+   build must not be presented as the published 0.7.35 archive.
 
 ### Walkthrough
 
@@ -64,7 +63,7 @@ walkthrough has not been rehearsed with a live model.
 - Keep standalone DMG delivery, Hub integration, coordinated update/changelog
   UI, Profile rollback and native Computer Use permission qualification out of
   this demo's claims. See [Browser use](browser-use.md) and the
-  [0.7.34 release notes](releases/0.7.34.md) for published behavior and limits.
+  [0.7.35 release notes](releases/0.7.35.md) for published behavior and limits.
 
 ## The 90-second terminal demo
 

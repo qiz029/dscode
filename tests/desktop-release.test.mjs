@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { hubListingSchema } from '@dsh-plugin-hub/schemas';
 import { desktopHubListing, desktopPackageMetadata, desktopReleaseRuntime } from '../scripts/desktop-package.mjs';
-import { readDesktopRelease } from '../scripts/desktop-release-artifact.mjs';
+import { readDesktopRelease, assertDesktopPublicInstall } from '../scripts/desktop-release-artifact.mjs';
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'desktop-release-test-'));
@@ -108,4 +108,17 @@ test('release version, npm integrity, filename and release notes are enforced', 
   f.write(join(f.root, 'package.json'), { version: '1.2.3' });
   writeFileSync(join(f.root, 'docs/releases/1.2.3.md'), '');
   assert.throws(() => readDesktopRelease(f.root), /release notes/);
+});
+
+test('default channel promotion requires a public install of the exact qualified archive', t => {
+  const { candidate } = fixture(t);
+  const proof = { ...candidate, packageSha256: candidate.sha256, publicInstall: true,
+    nativeInstall: true, installedHost: true, hubUnbundled: true, presetResolved: true, defaultHome: true, componentsActive: true };
+  assert.doesNotThrow(() => assertDesktopPublicInstall(candidate, proof));
+  for (const field of ['name', 'version', 'runtime', 'integrity', 'packageSha256']) {
+    assert.throws(() => assertDesktopPublicInstall(candidate, { ...proof, [field]: 'stale' }), /mismatch/);
+  }
+  for (const field of ['publicInstall', 'nativeInstall', 'installedHost', 'hubUnbundled', 'presetResolved', 'defaultHome', 'componentsActive']) {
+    assert.throws(() => assertDesktopPublicInstall(candidate, { ...proof, [field]: false }), new RegExp(field));
+  }
 });

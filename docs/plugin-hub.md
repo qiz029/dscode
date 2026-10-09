@@ -3,7 +3,7 @@
 DSCODE and [DSH Plugin Hub](https://dshpluginhub.ai) are separate products.
 Installing DSCODE should not also install a Hub browsing interface.
 
-## Current checkout: removal is unreleased
+## Version 0.7.35 and later
 
 The Desktop build no longer includes the Hub settings page, Host endpoint,
 `plugin_hub_search` or `plugin_hub_info` tools, Hub source files or Hub-specific
@@ -26,8 +26,7 @@ sessions. Their installation handoff delegates to the official plugin manager;
 enabling, configuration and removal stay in **Settings → Plugins**.
 
 Installing or reinstalling 0.7.34 will therefore not remove the bundled Hub.
-Wait for a later release containing the removal, or test a local build in a
-disposable profile using the [Desktop installation guide](browser-use.md#install-the-experimental-combined-desktop-package).
+Update to `@toddzheng024/dscode-desktop@0.7.35` using the [Desktop installation guide](browser-use.md#install-the-experimental-combined-desktop-package).
 Fully quit and reopen Desktop after updating; an already running Host may keep
 the old plugin modules loaded.
 

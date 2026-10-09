@@ -110,6 +110,7 @@ publish-desktop:
 	npm run publish:desktop -- npm
 	npm run publish:desktop -- hub
 	npm run publish:desktop -- verify
+	npm run publish:desktop -- promote
 
 # The tag always comes from the manifest version — the build job refuses a tag that does not
 # name it — and the curl installer, `dscode update` and the README fetch these assets: the

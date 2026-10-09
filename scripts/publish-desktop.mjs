@@ -1,6 +1,7 @@
 // Explicit, idempotent publication of the exact Desktop tarball qualified above.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -8,11 +9,11 @@ import { HubApiClient } from '../node_modules/@dsh-plugin-hub/cli/dist/api-clien
 import { getAccessToken } from '../node_modules/@dsh-plugin-hub/cli/dist/auth.js';
 import { resolvePublishToken, npmWithToken, NPM_USER } from './npm-token.mjs';
 import { withHubRetry } from './hub-retry.mjs';
-import { readDesktopRelease } from './desktop-release-artifact.mjs';
+import { readDesktopRelease, assertDesktopPublicInstall } from './desktop-release-artifact.mjs';
 import { waitForDesktopHub } from './desktop-hub-sync.mjs';
 
 const root = resolve(import.meta.dirname, '..'), phase = process.argv[2];
-if (!['npm', 'hub', 'verify', 'credentials'].includes(phase)) throw Error('Usage: npm run publish:desktop -- npm|hub|verify|credentials');
+if (!['npm', 'hub', 'verify', 'credentials', 'promote'].includes(phase)) throw Error('Usage: npm run publish:desktop -- npm|hub|verify|credentials|promote');
 const candidate = readDesktopRelease(root);
 const client = new HubApiClient(undefined, () => getAccessToken());
 async function npmVersion() {
@@ -68,6 +69,13 @@ if (phase === 'credentials') {
     lookup: () => withHubRetry(() => client.package(candidate.name), { label: 'Desktop Hub lookup' }),
   });
   await checkHub(record); console.log(`Hub lists ${candidate.name}@${candidate.version}.`);
+} else if (phase === 'promote') {
+  const proof = JSON.parse(readFileSync(resolve(root, 'artifacts/local/desktop-public-install.json'), 'utf8'));
+  assertDesktopPublicInstall(candidate, proof);
+  await waitForNpm(); await checkHub();
+  const result = npmWithToken(publisher(), ['dist-tag', 'add', `${candidate.name}@${candidate.version}`, 'latest']);
+  assert.equal(result.status, 0, 'Desktop default-channel promotion failed');
+  console.log(`Default Desktop channel now selects ${candidate.name}@${candidate.version}; this remains a preview release.`);
 } else {
   const metadata = await waitForNpm();
   const url = new URL(metadata.dist.tarball);

@@ -37,15 +37,16 @@ A user who already has dsh-hub installed can apply directly, but must use pnpm 1
 
 Install the official Harness Desktop application with embedded runtime
 0.2.0-rc.2. In **Plugins → Add plugin**, enter
-`@toddzheng024/dscode-desktop@0.7.34`, review and install, then choose
-**Enable now**. Select the DSCODE preset and configure your model account.
+`@toddzheng024/dscode-desktop@0.7.35`, review and install, then choose
+**Enable now**. Fully quit and reopen Desktop, enable **Show coding view** and
+**Agent presets**, then create a DSCODE session and choose an existing model.
 The Desktop preview is qualified on macOS Apple Silicon. See
 [Desktop installation](browser-use.md#install-the-experimental-combined-desktop-package)
 for archive checksums, migration and removal, and [Plugin Hub](plugin-hub.md)
-for discovering community plugins after installation.
+for the separation between DSCODE and Hub.
 
 Version 0.7.34 fixes the 0.7.33 activation error “4 entries did not activate”
-when Desktop starts without `DSH_HOME`. Update to the exact 0.7.34 package and
+when Desktop starts without `DSH_HOME`. Update to the current 0.7.35 package and
 enable it again; exporting a shell variable is unnecessary. Default Desktop
 state uses `~/.dsh`, as resolved by Harness. Publication now verifies installation
 and the affected components with that default environment.
@@ -154,6 +155,7 @@ npm run publish:desktop -- credentials
 npm run publish:desktop -- npm
 npm run publish:desktop -- hub
 npm run publish:desktop -- verify
+npm run publish:desktop -- promote
 ```
 
 Each phase checks the archive and receipt again. The npm phase publishes with
@@ -167,7 +169,10 @@ errors stop immediately; the final integrity and compatibility checks still
 apply. The final phase downloads public bytes,
 checks their SHA-256, and installs the exact npm version into a new native
 Harness profile before booting it and checking the preset and absence of bundled Hub tools and endpoint. The
-result is saved as `artifacts/local/desktop-public-install.json`. No model
+result is saved as `artifacts/local/desktop-public-install.json`. The `promote`
+phase requires this public receipt to match the candidate, then updates npm
+`latest` to the same version as `preview`. Both entry points serve the current
+qualified preview; the Desktop support boundary remains unchanged. No model
 account is used, and no real-model quality claim follows from these probes.
 
 The existing npm token must permit the new Desktop package. Successful `whoami`

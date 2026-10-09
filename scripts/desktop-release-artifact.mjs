@@ -47,3 +47,12 @@ export function readDesktopRelease(root, { requireInstall = true } = {}) {
   }
   return { ...candidate, path, proof, manifest };
 }
+
+/** A local archive rehearsal cannot authorize changing the default npm channel. */
+export function assertDesktopPublicInstall(candidate, proof) {
+  for (const field of ['name', 'version', 'runtime', 'integrity']) assert.equal(proof[field], candidate[field], `Public Desktop install ${field} mismatch`);
+  assert.equal(proof.packageSha256, candidate.sha256, 'Public Desktop install archive mismatch');
+  for (const field of ['publicInstall', 'nativeInstall', 'installedHost', 'hubUnbundled', 'presetResolved', 'defaultHome', 'componentsActive']) {
+    assert.equal(proof[field], true, `Missing public Desktop qualification: ${field}`);
+  }
+}
