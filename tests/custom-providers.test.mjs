@@ -8,6 +8,16 @@ import { CustomStore, validateProfile, endpoint, keyRef, isCustomKey, PROTOCOLS 
 import { CustomAdapter, authHeaders } from '../plugins/custom/adapter.mjs';
 import { CustomProviders } from '../plugins/custom/index.mjs';
 import { requestBody, REPLAY_KIND } from '../plugins/custom/wire.mjs';
+
+test('native Harness tool messages retain their call identity in every custom protocol', () => {
+  const messages = [{ role: 'tool', toolCallId: 'native-call', content: [{ type: 'text', text: 'native result' }] }];
+  const chat = requestBody(profile(), model, { messages });
+  assert.deepEqual(chat.messages, [{ role: 'tool', tool_call_id: 'native-call', content: 'native result' }]);
+  const responses = requestBody(profile('responses'), model, { messages });
+  assert.deepEqual(responses.input, [{ type: 'function_call_output', call_id: 'native-call', output: 'native result' }]);
+  const anthropic = requestBody(profile('anthropic'), model, { messages });
+  assert.deepEqual(anthropic.messages, [{ role: 'user', content: [{ type: 'tool_result', tool_use_id: 'native-call', content: 'native result' }] }]);
+});
 import { effectiveContextWindow } from '../plugins/compaction/threshold.mjs';
 import { providerArgument, providerOfLabel } from '../plugins/providers/catalog.mjs';
 import { RoutedSearchProvider } from '../plugins/openrouter/search.mjs';

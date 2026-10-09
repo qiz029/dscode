@@ -74,6 +74,11 @@ try {
   const nativeEnv = { DSH_HOME: nativeHome, DSCODE_HOME: nativeHome, DSH_AGENTS_HOME: join(nativeHome, 'agents') };
   assert((await exec(nativeProbe, [], nativeEnv)).includes('NATIVE_HUB_INSTALL_PASSED'));
   assert((await exec(join(root, 'scripts/verify-installed-tui.mjs'), [join(nativeHome, 'profiles/dscode'), pkg.name], nativeEnv)).includes('INSTALLED_TUI_IMPORTS_PASSED'));
+  assert((await exec(join(root, 'scripts/verify-acp.mjs'), [], {
+    ...nativeEnv,
+    DSCODE_ACP_VERIFY_LAUNCHER: join(launcherRoot, 'node_modules/@toddzheng024/dscode/cli.mjs'),
+    DSCODE_ACP_VERIFY_MODULES: join(nativeHome, 'profiles/dscode/node_modules'),
+  })).includes('ACP_PROBE_PASSED'));
   assert((await exec(join(launcherRoot, 'node_modules/@toddzheng024/dscode/cli.mjs'), ['--dump-config'], nativeEnv)).includes('dscode-bootstrap'));
   const nativeDoctor = JSON.parse(await exec(join(hub, 'bin.js'), ['profile', 'doctor', '--profile', 'dscode', '--json'], nativeEnv));
   assert.equal(nativeDoctor.healthy, true);
@@ -151,5 +156,5 @@ try {
   assert(composed.includes('dscode-bootstrap'));
   console.log(`PASS failed upgrade preserves old profile; ${pkg.version} -> ${upgradePackage.version} -> rollback preserves state and restores a runnable profile`);
   mkdirSync(join(root,'artifacts/local'),{recursive:true});
-  writeFileSync(join(root,'artifacts/local/hub-verification.json'),JSON.stringify({home,package:pkg.name,version:pkg.version,integrity:pack.integrity,launcherIntegrity:launcherPack.integrity,install:true,nativeInstall:true,launcherFirstStart:true,terminalImports:true,hubDoctor:true,agentProbe:read(join(home,'probe.json')),rollback:true,fixture:'Loopback npm registry for unpublished bundle; native locked installation, installed public terminal entry imports and launcher composition, plus external-executor probes for failed upgrade, successful upgrade and rollback. Public Hub discovery, interactive terminal rendering and npm publication not exercised.'},null,2));
+  writeFileSync(join(root,'artifacts/local/hub-verification.json'),JSON.stringify({home,package:pkg.name,version:pkg.version,integrity:pack.integrity,launcherIntegrity:launcherPack.integrity,install:true,nativeInstall:true,launcherFirstStart:true,terminalImports:true,acpProtocol:true,hubDoctor:true,agentProbe:read(join(home,'probe.json')),rollback:true,fixture:'Loopback npm registry for unpublished bundle; native locked installation, installed public terminal entry imports and launcher composition, plus external-executor probes for failed upgrade, successful upgrade and rollback. Public Hub discovery, interactive terminal rendering and npm publication not exercised.'},null,2));
 } finally {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

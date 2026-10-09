@@ -6,6 +6,12 @@ Per-release notes live in [`docs/releases/`](releases/); the entries below summa
 
 <!-- Add upcoming changes under Unreleased. -->
 
+## [Unreleased]
+
+### Added
+
+- `dscode acp` serves standard ACP stdio clients with the DSCODE agent preset and configured providers. It supports native DSH session controls and forwards approval requests to the client. See [ACP clients](acp.md) for setup and inherited protocol limitations.
+
 ## [0.7.35] - 2026-10-08
 
 - Promote the verified Desktop package to both `preview` and `latest` so default installations receive this fix instead of 0.7.33. Promotion requires a matching public-install receipt.

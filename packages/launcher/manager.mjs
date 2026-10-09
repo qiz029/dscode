@@ -21,6 +21,7 @@ const require = createRequire(import.meta.url);
 const dscodePath = fileURLToPath(new URL('./cli.mjs', import.meta.url));
 // The exec CLI ships beside the published launcher; a source checkout reads it from plugins/. Only `dscode exec` loads it.
 const loadExecCli = () => import(existsSync(new URL('./exec/cli.mjs', import.meta.url)) ? './exec/cli.mjs' : '../../plugins/exec/cli.mjs');
+const loadAcpCli = () => import(existsSync(new URL('./acp/cli.mjs', import.meta.url)) ? './acp/cli.mjs' : '../../plugins/acp/cli.mjs');
 // The trigger CLI ships beside the published launcher too (the trigger modules are
 // dependency-free apart from `yaml`); a source checkout reads them from plugins/.
 const loadTriggerModules = async () => {
@@ -50,6 +51,7 @@ export function brewManaged(directory = dirname(fileURLToPath(import.meta.url)),
 
 export function commandPlan(args, release, installed, launcherVersion) {
   const [command, ...rest] = args;
+  if (command === 'acp') return { acp: rest, install: !installed };
   if (command === 'exec') return { exec: rest, install: !installed };
   if (command === 'trigger') return { trigger: rest, install: !installed };
   if (command === 'resume') {
@@ -265,6 +267,12 @@ export async function run(args, release) {
     }
     triggerRequest = { modules, triggerArgs };
   }
+  let acpOptions, acpCli;
+  if (args[0] === 'acp') {
+    acpCli = await loadAcpCli();
+    acpOptions = acpCli.parseAcpArgs(args.slice(1));
+    if (acpOptions.help) { console.log(acpCli.USAGE); return; }
+  }
   let execOptions, execPrompt;
   if (args[0] === 'exec') {
     const cli = await loadExecCli();
@@ -312,10 +320,10 @@ Move it aside to install a managed profile, for example:
       catch (error) { throw hubFailure(error); }
     }
     if (plan.install) {
-      (execOptions ? console.error : console.log)(`Installing DSCODE ${release.version} from dshpluginhub.ai…`);
-      (execOptions ? console.error : console.log)('This downloads the pinned Harness runtime and plugins with npm; on a slow registry it can take several minutes.');
+      (execOptions || acpOptions ? console.error : console.log)(`Installing DSCODE ${release.version} from dshpluginhub.ai…`);
+      (execOptions || acpOptions ? console.error : console.log)('This downloads the pinned Harness runtime and plugins with npm; on a slow registry it can take several minutes.');
       try {
-        await exec(hub, ['profile','apply',release.slug,'--version',release.version,'--profile','dscode'], process.cwd(), releaseLock, undefined, execOptions ? 'stderr' : 'inherit');
+        await exec(hub, ['profile','apply',release.slug,'--version',release.version,'--profile','dscode'], process.cwd(), releaseLock, undefined, execOptions || acpOptions ? 'stderr' : 'inherit');
       } catch (error) { throw hubFailure(error); }
     }
     const metadata = JSON.parse(readFileSync(join(profile,'node_modules',release.bundle,'package.json'),'utf8'));
@@ -326,6 +334,20 @@ Move it aside to install a managed profile, for example:
     const overlays = ['mcp.local.yml','harness.local.yml'].flatMap(file => {
       const path=join(home,'config',file); return existsSync(path) ? ['--patch',path] : [];
     });
+    if (acpOptions) {
+      const runner = join(profile, 'node_modules', release.bundle, 'plugins/acp/index.mjs');
+      if (!existsSync(runner)) throw Error('This DSCODE installation has no ACP runner. Run dscode update first.');
+      const scratch = mkdtempSync(join(tmpdir(), 'dscode-acp-'));
+      try {
+        const overlay = join(scratch, 'acp.patch.yml');
+        writeFileSync(overlay, acpCli.acpOverlay(runner, acpOptions));
+        lease = await registerRun(home);
+        const { code, signal } = await spawnRun(dsh, ['--profile', 'dscode', ...overlays, ...acpOptions.patches.flatMap(path => ['--patch', resolve(path)]), '--patch', overlay],
+          { lease, started: releaseLock, nodeArgs: ['--disable-warning=ExperimentalWarning'] });
+        process.exitCode = code ?? (signal ? 130 : 0);
+      } finally { rmSync(scratch, { recursive: true, force: true }); }
+      return;
+    }
     if (execOptions) {
       // One headless turn through the installed bundle's exec runner; the turn's exit code is the launcher's.
       const runner = join(profile, 'node_modules', release.bundle, 'plugins/exec/index.mjs');

@@ -6,10 +6,12 @@ import { runDoctorCli } from '../scripts/doctor-cli.mjs';
 import { selfUpdate } from '../scripts/self-update.mjs';
 import { runExec } from '../scripts/exec.mjs';
 import { runTriggerCli } from '../scripts/trigger.mjs';
+import { runAcp } from '../scripts/acp.mjs';
 
 const args = process.argv.slice(2);
 // Once a session starts the DSH CLI owns `--version`, so DSCODE answers it here instead.
 if (args[0] === '--version' || args[0] === '-v') console.log(manifest.version);
+else if (args[0] === 'acp') runAcp(args.slice(1)).then(code => { process.exitCode = code; }, error => { console.error(error.message); process.exitCode = 1; });
 else {
   if (args[0] === 'resume') {
     args.shift();
