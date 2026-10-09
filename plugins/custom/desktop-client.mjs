@@ -3,7 +3,7 @@ globalThis.__ModuleLoader__.load({
   id: '@toddzheng024/dscode-desktop',
   factory: require => {
     const { createElement: h, useState, useEffect, useRef } = require('react');
-    const control = { padding: '8px 10px', border: '1px solid #8886', borderRadius: 6, background: 'transparent', color: 'inherit', font: 'inherit', boxSizing: 'border-box' };
+    const control = { boxSizing: 'border-box', minWidth: 0, maxWidth: '100%' };
     const row = { display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' };
     const resetModel = model => {
       const next = { ...model, thinking: 'default', inputModalities: ['text'] };
@@ -49,10 +49,10 @@ globalThis.__ModuleLoader__.load({
         h('input', { 'aria-label': label, style: { ...control, width: '100%' }, value: value ?? '', onChange: event => onChange(event.target.value), ...options }));
       const choice = (label, value, choices, onChange) => h('label', { style: { display: 'grid', gap: 5, flex: 1 } }, label,
         h('select', { 'aria-label': label, value, onChange: event => onChange(event.target.value), style: control }, ...choices.map(([id, text]) => h('option', { key: id, value: id }, text))));
-      return h('section', { 'aria-label': 'DSCODE model settings', style: { padding: 20, display: 'grid', gap: 16, maxWidth: 850, color: 'inherit' } },
-        h('h2', { style: { margin: 0 } }, 'DSCODE models'),
+      return h('section', { className: 'dscode-ui', 'aria-label': 'DSCODE model settings', style: { padding: 0, display: 'grid', gap: 16, maxWidth: 850, color: 'inherit' } },
+        h('h2', { style: { margin: 0 } }, 'Models'),
         h('p', { style: { margin: 0 } }, 'Connect a private or self-hosted model service. Saved models appear in the model picker.'),
-        error && h('div', { role: 'alert', style: { color: '#d85b5b', whiteSpace: 'pre-wrap' } }, error),
+        error && h('div', { role: 'alert', style: { color: 'var(--dsw-alias-state-error-primary)', whiteSpace: 'pre-wrap' } }, error),
         notice && h('div', { role: 'status' }, notice),
         busy && request.current && h('button', { type: 'button', style: control, disabled: request.current.signal.aborted,
           onClick: () => { request.current?.abort(); setNotice('Cancelling request…'); },
@@ -85,8 +85,8 @@ globalThis.__ModuleLoader__.load({
               change({ backend: found.backend, models });
               setNotice(`Found ${found.models.length} models. Confirm the context size and image support before saving.`);
             }, false, true), button('Add model', async () => change({ models: [...draft.models, { id: '', thinking: 'default', inputModalities: ['text'] }] }))),
-            ...draft.models.map((model, index) => h('fieldset', { key: index, style: { border: '1px solid #8886', borderRadius: 8, padding: 14, display: 'grid', gap: 12 } },
-              h('legend', null, `Model ${index + 1}`),
+            ...draft.models.map((model, index) => h('fieldset', { className: 'dscode-card', key: index, style: { border: '.5px solid var(--dsw-alias-settings-card-stroke)', borderRadius: 'var(--dsw-radius-xl)', padding: 14, display: 'grid', gap: 12 } },
+              h('h3', null, `Model ${index + 1}`),
               h('div', { style: row }, input(`Model ${index + 1} ID`, model.id, id => change({ models: draft.models.map((entry, i) => i === index ? { ...resetModel(entry), id } : entry) })),
                 input(`Model ${index + 1} context`, model.contextWindow, value => modelChange(index, { contextWindow: value ? Number(value) : undefined, contextSource: 'user' }), { type: 'number', min: 1, step: 1 }),
                 input(`Model ${index + 1} output limit`, model.maxTokens, value => modelChange(index, { maxTokens: value ? Number(value) : undefined, outputSource: 'user' }), { type: 'number', min: 1, step: 1 })),
@@ -115,8 +115,7 @@ globalThis.__ModuleLoader__.load({
     }
     return {
       inject: ['slots', 'connection'],
-      apply(ctx) {
-        ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'dscode-models', order: 11, label: () => 'DSCODE models',
+      settingsPage(ctx) { return { entry: { name: 'settings.section', id: 'dscode-models', order: 11, label: () => 'Models',
           inject: () => ({ execute: async (action, args = {}, signal) => {
             signal?.throwIfAborted();
             const requestId = signal ? crypto.randomUUID() : undefined;
@@ -143,7 +142,11 @@ globalThis.__ModuleLoader__.load({
             if (!response.ok) throw Error(response.error.message);
             return response.value;
           } }),
-        }, Settings));
+        }, Component: Settings }; },
+      apply(ctx, options = {}) {
+        if (options.settings === false) return;
+        const page = this.settingsPage(ctx);
+        ctx.slots.inject('settings.section', () => ctx.slots.register(page.entry, page.Component));
       },
     };
   },

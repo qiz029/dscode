@@ -2,7 +2,7 @@ globalThis.__ModuleLoader__.load({
   id: '@toddzheng024/dscode-desktop',
   factory: require => {
     const { createElement: h, useState, useEffect, useRef } = require('react');
-    const control = { padding: '8px 10px', border: '1px solid #8886', borderRadius: 6, background: 'transparent', color: 'inherit', font: 'inherit', boxSizing: 'border-box', minWidth: 0, maxWidth: '100%' };
+    const control = { boxSizing: 'border-box', minWidth: 0, maxWidth: '100%' };
     const row = { display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' };
     const initial = () => ({ id: '', prompt: '', objective: '', kind: 'interval', seconds: '3600', cron: '0 9 * * 1-5', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       command: '[]', scriptMode: 'poll', persistent: true, permission: 'read-only', enabled: true });
@@ -91,8 +91,8 @@ globalThis.__ModuleLoader__.load({
         // the user runs another task or changes workspace before retrying.
         await refresh(); eventKeys.current.delete(identity);
       });
-      return h('section', { 'aria-label': 'DSCODE scheduling settings', style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16, padding: 20, maxWidth: 960, minWidth: 0, boxSizing: 'border-box', overflowWrap: 'anywhere' } },
-        h('h2', { style: { margin: 0 } }, 'DSCODE schedules'),
+      return h('section', { className: 'dscode-ui', 'aria-label': 'DSCODE scheduling settings', style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16, padding: 0, maxWidth: 960, minWidth: 0, boxSizing: 'border-box', overflowWrap: 'anywhere' } },
+        h('h2', { style: { margin: 0 } }, 'Schedules'),
         h('p', null, 'Enabling delivery runs due tasks for every registered project and remembers this choice when Desktop opens again. Keep the application open. Stopping delivery interrupts active tasks and script sources; pending jobs stay queued.'),
         error && h('div', { role: 'alert', tabIndex: -1, ref: actionError }, error),
         refreshError && h('div', { role: 'alert' }, refreshError),
@@ -122,8 +122,8 @@ globalThis.__ModuleLoader__.load({
               button(`Read ${item.id} source log`, () => run(async () => { const result = await execute('source', { sessionId: selected.current, args: { action: 'logs', trigger_id: item.id } }); if (alive.current) setLog(result.log || 'No source output recorded.'); }))))),
           log && h('pre', { 'aria-label': 'Source log', style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, log),
           !workspace.definitions.length && h('p', null, 'No tasks in this workspace.'),
-          h('fieldset', { disabled: busy || !workspace.writable, style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', minWidth: 0, gap: 12, border: '1px solid #8886', borderRadius: 8, padding: 16 } },
-            h('legend', null, editing ? `Edit ${editing.id}` : 'Create task'), field('Task ID', 'id'),
+          h('fieldset', { className: 'dscode-card', disabled: busy || !workspace.writable, style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', minWidth: 0, gap: 12, border: '.5px solid var(--dsw-alias-settings-card-stroke)', borderRadius: 'var(--dsw-radius-xl)', padding: 16 } },
+            h('h3', null, editing ? `Edit ${editing.id}` : 'Create task'), field('Task ID', 'id'),
             h('label', null, 'Task instructions', h('textarea', { 'aria-label': 'Task instructions', style: { ...control, display: 'block', width: '100%', minHeight: 90 }, value: draft.prompt,
               onChange: event => setDraft(previous => ({ ...previous, prompt: event.target.value })) })),
             field('Goal (defaults to task instructions)', 'objective'),
@@ -142,14 +142,20 @@ globalThis.__ModuleLoader__.load({
             job.state === 'pending' && button(`Cancel ${job.triggerId} job`, () => mutate('jobs', { action: 'cancel', job_id: job.id }), !workspace.writable))),
           !workspace.jobs.length && h('p', null, 'No jobs in this workspace.')));
     }
-    return { inject: ['slots', 'connection'], apply(ctx) {
-      ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'dscode-schedules', order: 13, label: () => 'DSCODE schedules',
+    return {
+      inject: ['slots', 'connection'],
+      settingsPage(ctx) { return { entry: { name: 'settings.section', id: 'dscode-schedules', order: 13, label: () => 'Schedules',
         inject: () => ({ execute: async (action, args = {}) => {
           const response = await ctx.connection.rpc.call('/api', 'dscode-triggers', { action, ...args });
           if (!response.ok) throw Error(response.error.message);
           return response.value;
         } }),
-      }, Schedules));
-    } };
+      }, Component: Schedules }; },
+      apply(ctx, options = {}) {
+        if (options.settings === false) return;
+        const page = this.settingsPage(ctx);
+        ctx.slots.inject('settings.section', () => ctx.slots.register(page.entry, page.Component));
+      },
+    };
   },
 });

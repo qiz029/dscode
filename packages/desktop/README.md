@@ -37,8 +37,9 @@ desktop_dsh='/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/b
 "$desktop_dsh" plugin --profile desktop add /absolute/path/to/dscode-desktop.tgz --ignore-scripts
 ```
 
-Restart Desktop, select the **DSCODE** preset, select a workspace, and configure
-the model under **Settings → DSCODE models** or **DSCODE accounts**.
+Fully quit and reopen Desktop. In **Settings → General**, enable **Show coding view**; enable **Agent presets** in Plugins if disabled. Create a new session and select **DSCODE** and a workspace. Use an existing model from the normal model picker.
+
+**Settings → DSCODE** contains setup, Models, Accounts and Schedules at the same level. Models and Accounts add optional providers; they are not required for existing Desktop accounts. **Plugins → DSCODE · Community** opens the same page. The package activation notice explains the required restart.
 
 Installation through the official **Plugins → Add plugin** interface was checked
 on macOS Desktop 0.2.0-rc.2. Public npm installation instructions accompany a
@@ -81,9 +82,9 @@ configuration and the user patch. Keep a backup before migrating your own state.
 - Durable session messaging, source-backed memory and opt-in scheduling.
 - Email inbox, IMAP/Gmail setup and explicit message-to-session delivery.
 - Independent code review, optional automatic permission review and diagnostics.
-- Plugin Hub search, categories and details, read-only conversation discovery,
-  and reviewed installation through the official plugin manager. Enable and
-  configure installed plugins in **Settings → Plugins**; see `docs/plugin-hub.md`.
+
+Plugin Hub is not bundled: this package does not add its settings page, catalog
+connection or discovery tools. See `docs/plugin-hub.md` for version boundaries.
 
 Use the bundled guides under `docs/` for individual settings and boundaries.
 The terminal's state directory may differ from Desktop's; sharing credentials

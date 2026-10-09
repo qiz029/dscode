@@ -132,9 +132,9 @@ test('Desktop test results name the tested model in a multi-model provider', asy
     return { revision: 'first', providers: [saved] };
   });
   await f.click('Test model 1');
-  assert.equal(f.root.findByType('h3').children[0], 'Test results: vision');
+  assert.equal(f.root.findAllByType('h3').find(node => String(node.children[0]).startsWith('Test results:')).children[0], 'Test results: vision');
   await f.click('Test model 2');
-  assert.equal(f.root.findByType('h3').children[0], 'Test results: second');
+  assert.equal(f.root.findAllByType('h3').find(node => String(node.children[0]).startsWith('Test results:')).children[0], 'Test results: second');
   assert.deepEqual(requests, ['vision', 'second']);
 });
 

@@ -149,6 +149,7 @@ jobs:
           npm run publish:desktop -- npm
           npm run publish:desktop -- hub
           npm run publish:desktop -- verify
+          npm run publish:desktop -- promote
       - uses: actions/upload-artifact@v4
         if: github.ref_type == 'tag' || inputs.publish
         with:

@@ -5,6 +5,27 @@ DevTools MCP. Chrome starts only when you use `/browser start` or the agent call
 `browser_start`. No MCP configuration or separate npm installation is needed.
 Google Chrome is required for browser tasks; ordinary coding does not need it.
 
+## Relationship to official Harness Browser Use
+
+Official Harness already provides a [Browser Use framework and experimental
+providers](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/browser-use/README.md),
+including Chrome DevTools MCP, Playwright MCP and Stagehand. Basic page browsing,
+clicking, typing, screenshots and developer inspection are not unique DSCODE
+features. Backend and Session lifecycle plumbing overlap with upstream work.
+
+DSCODE adds its own per-origin access and separate Developer grants, screenshot
+point annotations delivered to the conversation, and explicit login handoff and
+resume controls. The sections below describe their behavior and limits. These
+are DSCODE integration features; this guide does not claim that every upstream
+provider lacks equivalent capabilities.
+
+The official [Browser sidebar](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-sidebar-browser/README.md)
+embeds a web view and does not itself register model tools. DSCODE's Browser
+preview captures an external Chrome connection. It does not drive that embedded
+web view, share its login state automatically, or present a live browser stream.
+Persistent profiles, Chrome attachment and experimental extension/WebMCP support
+are additional DSCODE connection choices, not evidence of better task quality.
+
 ## Start a task
 
 From this checkout, run `npm start`, then ask:
@@ -625,7 +646,7 @@ and account settings, browser preview, durable session communication, cross-sess
 memory and opt-in task scheduling together. Ordinary builds remain private;
 the separate [release process](hub-distribution.md#desktop-release-candidate-and-publication)
 qualifies a public candidate for 0.2.0-rc.2. The Desktop preview is published on npm as
-`@toddzheng024/dscode-desktop@0.7.34`. The package does
+`@toddzheng024/dscode-desktop@0.7.35`. The package does
 not yet include all DSCODE Host services. Its experimental
 [native Computer Use adapter](computer-use.md) has passed helper and lifecycle
 checks; window observation, screenshots and input await qualification with
@@ -633,9 +654,9 @@ macOS Accessibility permission.
 Choose this package or the browser-only bundle; enabling both duplicates their
 browser services.
 
-The Desktop plugin's package name is `@toddzheng024/dscode-desktop`. It also
-includes [Plugin Hub](plugin-hub.md) for community discovery and installation
-through the official manager. The earlier private
+The Desktop plugin's package name is `@toddzheng024/dscode-desktop`. Version 0.7.35
+removes bundled [Plugin Hub](plugin-hub.md) functionality; older 0.7.33 and 0.7.34
+packages still include it. The earlier private
 `@toddzheng024/dscode-desktop-preset-probe` must be removed before installing
 this package; both register the same DSCODE components. Back up your Desktop
 state first. A separate macOS Desktop 0.2.0-rc.2 migration check preserved
@@ -717,20 +738,15 @@ desktop_package='/absolute/path/printed-by-pack-command.tgz'
 "$desktop_dsh" plugin --profile desktop add "$desktop_package" --ignore-scripts
 ```
 
-Reopen Desktop, choose **DSCODE** for a new session, and configure a model under
-**Settings → DSCODE models**, or connect a supported account under
-**Settings → DSCODE accounts**. Browser preview is available in the right sidebar.
-**Settings → DSCODE schedules** manages tasks for an open DSCODE session and
-explicitly enables or stops delivery. Its launch preference is saved; Desktop
-must remain open to deliver tasks. See [Desktop scheduling](triggers.md#experimental-desktop-scheduling)
-for restart, removal and permission behavior, and current qualification limits.
+Fully quit and reopen Desktop after installing or updating. In **Settings → General**, enable **Show coding view** and enable **Agent presets** in Plugins if disabled. Create a new session with **DSCODE**; existing sessions keep their original preset. Choose a model from the normal picker to reuse an existing Desktop account.
 
-The account page saves or removes the shared OpenRouter API key. Changes also
-affect terminal sessions and native routes reading that same credential file;
-environment-owned keys remain read-only. The saved key is never returned to the
-form. Choose **DSCODE OpenRouter** in the model picker for DSCODE reasoning
-controls, including Ultra on supported models. The native OpenRouter route
-remains available separately.
+In 0.7.35 and later, **Settings → DSCODE** groups Get started, Models, Accounts and Schedules as peer entries and follows the host's light/dark theme. **Plugins → DSCODE · Community** opens the same setup page. Models and Accounts are optional additions. Published 0.7.34 still has separate settings pages.
+
+Browser tools, the browser skill and `/browser` are mounted only in DSCODE sessions. Standard sessions retain their existing tools, and the DSCODE preview explains the preset boundary instead of starting a browser there. TUI Browser Use remains enabled through its existing composition. The Desktop package still supplies shared credential and subagent compatibility services; this scope change does not remove those Host adapters.
+
+**Settings → DSCODE → Schedules** manages tasks for an open DSCODE session and explicitly enables or stops delivery. Its launch preference is saved; Desktop must remain open to deliver tasks. See [Desktop scheduling](triggers.md#experimental-desktop-scheduling) for restart, removal and permission behavior, and current qualification limits.
+
+Desktop credentials now prefer the existing native store and save new keys there. Existing terminal keys remain a fallback when no native key is present; saving a Desktop key does not replace the terminal key. Explicit key removal clears both copies to prevent a legacy key from becoming active again. Environment-owned keys remain read-only, and the saved key is never returned to the form. Choose **DSCODE OpenRouter** for DSCODE reasoning controls, including Ultra on supported models. The native OpenRouter route remains available separately.
 
 For Grok, run `grok login` in a terminal and refresh the account status. DSCODE
 reads `~/.grok/auth.json` without changing or refreshing its tokens. For OpenCode

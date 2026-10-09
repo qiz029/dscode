@@ -4,7 +4,7 @@ globalThis.__ModuleLoader__.load({
   factory: require => {
     const { createElement: h, useState, useEffect, useRef } = require('react');
     const id = '@toddzheng024/dscode-browser-desktop';
-    const button = { padding: '7px 11px', border: '1px solid #8886', borderRadius: 6, background: 'transparent', color: 'inherit', cursor: 'pointer' };
+    const button = { padding: '7px 11px', border: '.5px solid var(--dsw-alias-border-l3, #8886)', borderRadius: 'var(--dsw-radius-md, 6px)', background: 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit' };
     function previewButton(props, label) {
       return h('button', { ...props, style: { ...button, ...props.style, ...(props.disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}) } }, label);
     }
@@ -197,9 +197,9 @@ globalThis.__ModuleLoader__.load({
         setNotice('Browser control resumed. Your draft is kept. Capture a new preview before sending.');
         await list(current, { preserveDraft: true });
       });
-      return h('section', { 'aria-label': 'DSCODE browser preview', style: { padding: 12, boxSizing: 'border-box', overflow: 'auto', height: '100%', display: 'flex', flexDirection: 'column', gap: 8, color: 'inherit' } },
+      return h('section', { className: 'dscode-ui', 'aria-label': 'DSCODE browser preview', style: { padding: 12, boxSizing: 'border-box', overflow: 'auto', height: '100%', display: 'flex', flexDirection: 'column', gap: 8, color: 'inherit' } },
         h('strong', null, 'Browser preview'),
-        handoff && h('div', { 'aria-label': 'Browser handoff', role: 'status', style: { border: '1px solid #8886', borderRadius: 8, padding: 10, overflowWrap: 'anywhere' } },
+        handoff && h('div', { 'aria-label': 'Browser handoff', role: 'status', style: { border: '.5px solid var(--dsw-alias-border-l3, #8886)', borderRadius: 8, padding: 10, overflowWrap: 'anywhere' } },
           h('strong', null, 'Waiting for you'),
           h('p', null, handoff.reason),
           handoff.invalidated && h('p', null, 'Chrome restarted. The original tab is unavailable; choose a live tab after resuming.'),
@@ -213,7 +213,7 @@ globalThis.__ModuleLoader__.load({
           previewButton({ style: button, disabled: busy || controlBusy || !pageId || !!handoff, onClick: () => run(refresh) }, 'Refresh preview'),
           frame && previewButton({ style: button, onClick: () => setExpanded(!expanded) }, expanded ? 'Fit image' : 'Expand image')),
         h('select', { 'aria-label': 'Browser tab', value: pageId, disabled: busy || controlBusy, onChange: e => { setPageId(e.target.value); setFrame(null); setPoint(null); setText(''); setLive(false); }, style: { ...button, width: '100%' } }, h('option', { value: '' }, 'Choose a tab'), ...pages.map(page => h('option', { key: page.id, value: String(page.id) }, `${page.id} · ${page.url}`))),
-        origin && h('details', { 'aria-label': 'Browser site permissions', style: { border: '1px solid #8886', borderRadius: 8, padding: '8px 10px', margin: 0, minWidth: 0 } },
+        origin && h('details', { 'aria-label': 'Browser site permissions', style: { border: '.5px solid var(--dsw-alias-border-l3, #8886)', borderRadius: 8, padding: '8px 10px', margin: 0, minWidth: 0 } },
           h('summary', { 'aria-label': `Site permissions · ${access}`, style: { cursor: 'pointer' } }, 'Site permissions · ', h('span', { 'aria-label': 'Site access status' }, access)),
           h('div', { style: { fontSize: 12, overflowWrap: 'anywhere', margin: '8px 0' } }, origin),
           h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 } },
@@ -232,7 +232,7 @@ globalThis.__ModuleLoader__.load({
         frame && h('div', null,
           h('div', { style: { fontSize: 12, overflowWrap: 'anywhere', marginBottom: 8 } }, `${frame.url} · ${new Date(frame.capturedAt).toLocaleTimeString()}`),
           h('div', { style: { position: 'relative', lineHeight: 0, display: 'inline-block', maxWidth: '100%', ...(expanded ? { width: '100%' } : {}) } },
-            h('img', { src: `data:${frame.image.mimeType};base64,${frame.image.data}`, alt: expired ? 'Expired browser preview; refresh before annotating' : 'Captured browser page; click a point to annotate', role: 'button', tabIndex: 0, 'aria-disabled': busy || controlBusy || expired, 'aria-description': 'Enter or Space selects the center. Arrow keys move one pixel; Shift moves ten. Escape clears the point.', onClick: selectPoint, onKeyDown: selectPointKey, style: { maxWidth: '100%', maxHeight: expanded ? 'none' : '30vh', width: expanded ? '100%' : 'auto', height: 'auto', display: 'block', cursor: expired ? 'default' : 'crosshair', borderRadius: 6 } }),
+            h('img', { src: `data:${frame.image.mimeType};base64,${frame.image.data}`, alt: expired ? 'Expired browser preview; refresh before annotating' : 'Captured browser page; click a point to annotate', role: 'button', tabIndex: 0, 'aria-disabled': busy || controlBusy || expired, 'aria-description': 'Enter or Space selects the center. Arrow keys move one pixel; Shift moves ten. Escape clears the point.', onClick: selectPoint, onKeyDown: selectPointKey, style: { maxWidth: '100%', maxHeight: expanded ? 'none' : '30vh', width: expanded ? '100%' : 'auto', height: 'auto', display: 'block', cursor: expired ? 'default' : 'crosshair', borderRadius: 'var(--dsw-radius-md, 6px)' } }),
             point && h('span', { 'aria-label': 'Selected annotation point', style: { position: 'absolute', left: `${point.x * 100}%`, top: `${point.y * 100}%`, width: 20, height: 20, border: '3px solid #f97316', borderRadius: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', boxShadow: '0 0 0 2px white' } }))),
         h('p', { style: { fontSize: 12, margin: 0, opacity: 0.75 } }, 'Preview shows the controlled Chrome tab. Click a point, or focus the image and press Enter or Space to select the center. Arrow keys move one pixel; Shift moves ten. Escape clears the point. Refresh after navigation or after one minute.'),
         frame && point && h('p', { 'aria-label': 'Annotation coordinates', 'aria-live': 'polite', style: { fontSize: 12, margin: 0 } }, `Selected pixel: (${Math.round(point.x * (frame.width - 1))}, ${Math.round(point.y * (frame.height - 1))}) in ${frame.width}×${frame.height}.`),
@@ -259,18 +259,31 @@ globalThis.__ModuleLoader__.load({
       const draftRevision = useRef(0);
       return visible ? h(SessionPreview, { execute, draft: { pageId, setPageId, text, setText, draftRevision } }) : null;
     }
-    function Preview({ sessionId, execute, useTabInfo }) {
+    function PresetPreview({ execute, visible }) {
+      const [state, setState] = useState(null);
+      useEffect(() => {
+        let active = true;
+        execute('availability').then(value => { if (active) setState(value); }, error => { if (active) setState({ error: error.message }); });
+        return () => { active = false; };
+      }, [execute]);
+      if (!state) return h('p', { role: 'status' }, 'Checking DSCODE session…');
+      if (state.error) return h('p', { role: 'alert' }, state.error);
+      if (!state.available) return h('section', { className: 'dscode-ui', style: { padding: 16 } }, h('h3', null, 'DSCODE Browser preview'),
+        h('p', null, 'This session uses another preset. Create a new session and select DSCODE to use this preview. Its original browser tools remain available.'));
+      return h(SessionPane, { execute, visible });
+    }
+    function Preview({ sessionId, execute, useTabInfo, presetOnly }) {
       const { tab } = useTabInfo();
       // Session changes discard the draft. Hidden panes discard their request
       // lock and preview, while late responses stay bound to the original session.
-      return h(SessionPane, { key: sessionId, execute, visible: tab.visible });
+      return h(presetOnly ? PresetPreview : SessionPane, { key: sessionId, execute, visible: tab.visible });
     }
     return {
       inject: ['slots', 'sidebarRightTabs', 'connection'],
-      apply(ctx) {
+      apply(ctx, options = {}) {
         ctx.effect(() => ctx.sidebarRightTabs.register({ id, kind: 'dscode-browser', multiple: false, keepMounted: true, title: () => 'Browser preview', guide: [{ id: 'open', order: 31, title: () => 'Browser preview', description: () => 'Inspect the controlled Chrome tab and send a visual annotation.' }] }), 'dscode-browser-preview.type');
         ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: id,
-          inject: sessionId => ({ sessionId, execute: async (action, args = {}) => {
+          inject: sessionId => ({ sessionId, presetOnly: options.presetOnly === true, execute: async (action, args = {}) => {
             const response = await ctx.connection.rpc.call('/api', 'dscode-browser', { sessionId, action, ...args });
             if (!response.ok) throw Error(response.error.message);
             return response.value;

@@ -2,7 +2,7 @@ globalThis.__ModuleLoader__.load({
   id: '@toddzheng024/dscode-desktop',
   factory: require => {
     const { createElement: h, useState, useEffect, useRef } = require('react');
-    const control = { padding: '7px 10px', border: '1px solid #8886', borderRadius: 6, background: 'transparent', color: 'inherit', font: 'inherit' };
+    const control = { padding: '7px 10px', border: '.5px solid var(--dsw-alias-border-l3, #8886)', borderRadius: 'var(--dsw-radius-md, 6px)', background: 'transparent', color: 'inherit', font: 'inherit' };
     function Inbox({ execute }) {
       const [state, setState] = useState(null), [mail, setMail] = useState(null), [offset, setOffset] = useState(0);
       const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [sent, setSent] = useState(false);
@@ -49,7 +49,7 @@ globalThis.__ModuleLoader__.load({
         const value = await execute('read', { key });
         if (alive.current) { setMail(value); requestId.current = crypto.randomUUID(); }
       });
-      return h('section', { 'aria-label': 'DSCODE email inbox', style: { padding: 16, overflow: 'auto', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12 } },
+      return h('section', { className: 'dscode-ui', 'aria-label': 'DSCODE email inbox', style: { padding: 16, overflow: 'auto', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12 } },
         h('strong', null, 'Email inbox'),
         h('p', { style: { margin: 0, fontSize: 12 } }, 'Shared local inbox. Reading mail does not start the agent. Add only the message you want this session to use as external context.'),
         error && h('div', { role: 'alert' }, error),
@@ -70,12 +70,12 @@ globalThis.__ModuleLoader__.load({
               try { await execute('connect-imap', { config: { ...form, port: Number(form.port) } }); }
               finally { if (alive.current) setForm(old => ({ ...old, password: '' })); }
               if (alive.current) await refresh(offset);
-            }); } }, h('fieldset', { disabled: busy || !!state?.pending, style: { display: 'grid', gap: 8, border: '1px solid #8886', borderRadius: 6 } },
+            }); } }, h('fieldset', { disabled: busy || !!state?.pending, style: { display: 'grid', gap: 8, border: '.5px solid var(--dsw-alias-border-l3, #8886)', borderRadius: 'var(--dsw-radius-md, 6px)' } },
               h('legend', null, 'IMAP with an application password'),
               field('account', 'Mailbox login'), field('host', 'IMAP host'), field('port', 'TLS port'), field('mailbox', 'Mailbox folder'), field('password', 'Application password', 'password'),
               h('p', { style: { margin: 0, fontSize: 12 } }, 'Uses verified TLS and reads the selected folder without changing flags. The password is saved locally after a successful connection and never enters the conversation. Reconnect the same account and folder to update it.'),
               h('button', { style: control, type: 'submit', disabled: !form.account.trim() || !form.password }, 'Connect IMAP'))),
-            h('fieldset', { disabled: busy || !!state?.pending, style: { display: 'grid', gap: 8, border: '1px solid #8886', borderRadius: 6 } },
+            h('fieldset', { disabled: busy || !!state?.pending, style: { display: 'grid', gap: 8, border: '.5px solid var(--dsw-alias-border-l3, #8886)', borderRadius: 'var(--dsw-radius-md, 6px)' } },
               h('legend', null, 'Optional Gmail OAuth'),
               h('label', null, 'Google Desktop client JSON path', h('input', { 'aria-label': 'Google Desktop client JSON path', value: path,
                 onChange: event => setPath(event.target.value), style: { ...control, width: '100%', boxSizing: 'border-box' } })),
@@ -83,7 +83,7 @@ globalThis.__ModuleLoader__.load({
               h('p', { style: { margin: 0, fontSize: 12 } }, 'Authorization opens Google in your browser and requests mail read access plus label and filter management. It creates or reuses the ToAgent label and subject filter. Use your Google account settings to revoke access.'),
               button('Authorize Gmail', () => action('connect-gmail'), !state?.gmail.configured)))),
         h('div', { 'aria-label': 'Received emails', style: { display: 'grid', gap: 6, maxHeight: '26vh', overflow: 'auto' } },
-          ...(state?.emails ?? []).map(row => h('button', { key: row.key, type: 'button', style: { ...control, textAlign: 'left', overflowWrap: 'anywhere', borderColor: mail?.key === row.key ? '#5794ff' : '#8886' },
+          ...(state?.emails ?? []).map(row => h('button', { key: row.key, type: 'button', style: { ...control, textAlign: 'left', overflowWrap: 'anywhere', borderColor: mail?.key === row.key ? 'var(--dsw-alias-state-business-primary)' : 'var(--dsw-alias-border-l3)' },
             disabled: busy, onClick: () => select(row.key) }, h('strong', null, row.subject), h('div', { style: { fontSize: 12 } }, `${row.from} · ${new Date(row.updatedAt).toLocaleString()}`))),
           state?.emails.length === 0 && h('p', null, 'No emails received.')),
         state && h('div', { style: { display: 'flex', gap: 8 } },

@@ -19,9 +19,11 @@ const LOGINS = new Set(PROVIDERS.filter(provider => provider.login).map(provider
 export default class DscodeCredentials extends LocalCredentialProvider {
   shared;
   sharedConfig;
+  desktop;
   constructor(ctx, config = {}) {
     // Retain the old profile store, including other providers and OAuth records.
     super(ctx, { ...config, path: undefined });
+    this.desktop = config.desktop === true;
     this.sharedConfig = { ...config, path: config.path ?? join(homedir(), '.dscode', 'credentials.yaml') };
   }
   async *[Service.init]() {
@@ -34,6 +36,10 @@ export default class DscodeCredentials extends LocalCredentialProvider {
     yield* super[Service.init]();
   }
   async resolve(ref) {
+    if (this.desktop) {
+      const native = await super.resolve(ref);
+      if (native) return native;
+    }
     // dscode: the Grok subscription rail is the official CLI login, read-only. DSCODE never
     // writes that file: the CLI owns refresh-token rotation, and two writers log the other out.
     if (ref === GROK_TOKEN_REF) {
@@ -47,6 +53,10 @@ export default class DscodeCredentials extends LocalCredentialProvider {
     return super.resolve(ref);
   }
   async describe(ref) {
+    if (this.desktop) {
+      const native = await super.describe(ref);
+      if (native.configured) return LOGINS.has(ref) ? { ...native, source: 'account', writable: false } : native;
+    }
     if (ref === GROK_TOKEN_REF) {
       const state = grokAuthState();
       return state.kind === 'ready' ? { configured: true, source: 'file', writable: false } : { configured: false, writable: false };
@@ -63,6 +73,7 @@ export default class DscodeCredentials extends LocalCredentialProvider {
   set(ref, value) {
     // The CLI file is not a DSCODE store: saving here would go somewhere nothing reads.
     if (ref === GROK_TOKEN_REF) throw new Error('GROK_CLI_TOKEN comes from ~/.grok/auth.json; run grok login instead');
+    if (this.desktop) return super.set(ref, value);
     return (SHARED.has(ref) || isCustomKey(ref)) ? this.shared.set(ref, value) : super.set(ref, value);
   }
   async unset(ref) {

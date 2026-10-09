@@ -8,7 +8,17 @@ import { verifyDesktopCustom } from './desktop-custom-probe.mjs';
 import { verifyDesktopBrowser } from './desktop-browser-probe.mjs';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
 
-export const inject = ['agents', 'agentPresets', 'llm', 'tools', 'permissionPresets', 'commands', 'skills', 'attachments', 'credentials', 'connection', 'webServer'];
+async function verifySessionCreation(ctx) {
+  for (const agentPreset of ['standard', 'dscode', 'standard', 'dscode']) {
+    const created = await ctx.sessionController.create({ cwd: process.env.HOME, agentPreset });
+    assert(created.sessionId);
+    assert.equal(created.agentPreset, agentPreset);
+    const presets = await ctx.agentPresets.list();
+    assert(presets.every(preset => !preset.broken), 'A new session invalidated a preset');
+  }
+}
+
+export const inject = ['agents', 'agentPresets', 'llm', 'tools', 'permissionPresets', 'commands', 'skills', 'attachments', 'credentials', 'connection', 'webServer', 'sessionController'];
 export function apply(ctx) {
   void run(ctx).catch(error => { console.error(error.stack); ctx.get('appExit')(1); });
 }
@@ -19,16 +29,10 @@ async function run(ctx) {
   const origin = `http://127.0.0.1:${ctx.webServer.port}`;
   const login = await fetch(ctx.connection.authenticatedUrl(origin), { redirect: 'manual' });
   const cookie = login.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
-  const hubStatus = async headers => fetch(`${origin}/api/dscode-hub`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify({ type: 'client-request', rpcId: 'hub-fixture', method: 'dscode-hub', payload: { action: 'status' } }) });
-  assert([401, 403].includes((await hubStatus({})).status));
-  assert([401, 403].includes((await hubStatus({ Cookie: cookie, Origin: 'https://untrusted.example' })).status));
-  const hubResponse = await hubStatus({ Cookie: cookie, Origin: origin });
-  assert.equal(hubResponse.status, 200); assert.equal(hubResponse.headers.get('cache-control'), 'no-store');
-  const hubResult = (await hubResponse.json()).result;
-  assert.equal(hubResult.ok, true, hubResult.error?.message);
-  assert.equal(hubResult.value.environment.platform, process.platform);
-  const hub = { hubSettingsRpc: true, hubSettingsAuth: true, hubRuntime: hubResult.value.environment.runtime };
+  const hubResponse = await fetch(`${origin}/api/dscode-hub`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookie, Origin: origin },
+    body: JSON.stringify({ type: 'client-request', rpcId: 'hub-absence', method: 'dscode-hub', payload: { action: 'status' } }) });
+  assert.equal(hubResponse.status, 404, 'DSCODE must not expose the Hub endpoint');
   const preset = await ctx.agentPresets.resolve('dscode');
   assert.equal(preset.broken, undefined, preset.broken);
   assert.equal(ctx.permissionPresets.defaultPreset, 'workspace-write', 'Mounting the Desktop bundle must retain the native default');
@@ -36,7 +40,8 @@ async function run(ctx) {
   if (process.env.DSCODE_DESKTOP_PROBE_RELOAD === '1') {
     const receipt = await verifyDesktopCustom(ctx, true);
     const browser = process.env.DSCODE_DESKTOP_BROWSER === '1' ? await verifyDesktopBrowser(ctx, { reload: true }) : {};
-    console.log('DESKTOP_PRESET_PASSED ' + JSON.stringify({ ...receipt, ...browser, ...hub }));
+    await verifySessionCreation(ctx);
+    console.log('DESKTOP_PRESET_PASSED ' + JSON.stringify({ ...receipt, ...browser, sessionCreationAfterRestart: true }));
     ctx.get('appExit')(0);
     return;
   }
@@ -92,7 +97,7 @@ async function run(ctx) {
     },
   });
   assert.equal(ctx.permissionPresets.current(agent.session), 'workspace-write', 'A new Agent must not silently enter model review');
-  for (const name of ['plugin_hub_search', 'plugin_hub_info']) assert(ctx.tools.get(name, scopeOf(agent.ctx)), `Missing scoped ${name}`);
+  for (const name of ['plugin_hub_search', 'plugin_hub_info']) assert.equal(ctx.tools.get(name, scopeOf(agent.ctx)), undefined, 'DSCODE must not register Hub tools');
   const commandInputs = ['browser', 'computer', 'delegate', 'shell', 'review', 'opencode', 'memories', 'mailbox', 'trigger', 'triggers', 'dscode-doctor', 'dscode-mcp', 'dscode-skills'];
   const commandCatalog = ctx.commands.list(agent);
   assert.deepEqual(commandInputs.filter(name => !commandCatalog.find(command => command.name === name)?.input?.hint), [],
@@ -126,6 +131,10 @@ async function run(ctx) {
     meta: { cwd: process.cwd(), agentPreset: 'standard' },
     agentOptions: { provider: 'desktop-preset-fixture', model: 'scripted' },
     setup: async scope => { await ctx.agentPresets.mount(scope, 'standard'); } });
+  assert.equal(ctx.tools.get('browser_start', scopeOf(standard.agent.ctx)), undefined, 'DSCODE browser entry leaked to Standard');
+  assert.equal(ctx.commands.find(standard.agent, 'browser'), undefined, 'DSCODE browser command leaked to Standard');
+  assert(!(await ctx.skills.snapshot({ scope: standard.agent })).skills.some(skill => skill.name === 'browser-use'), 'DSCODE browser skill leaked to Standard');
+  assert(ctx.tools.get('browser_start', scopeOf(agent.ctx)), 'DSCODE browser entry missing');
   const standardShell = await ctx.tools.execute({ name: 'bash', arguments: { command: 'printf "%s\\n" "$PATH"', description: 'Inspect native Standard shell PATH' },
     agent: standard.agent, callId: 'standard-shell-path', signal: AbortSignal.timeout(10000) });
   assert.equal(standardShell.isError, false, JSON.stringify(standardShell));
@@ -179,6 +188,7 @@ async function run(ctx) {
   assert.deepEqual(results.filter(row => row.result.isError), [], 'All workspace tools must succeed');
   const custom = await verifyDesktopCustom(ctx);
   const browser = process.env.DSCODE_DESKTOP_BROWSER === '1' ? await verifyDesktopBrowser(ctx) : {};
-  console.log('DESKTOP_PRESET_PASSED ' + JSON.stringify({ commandInputs, persistentShell: true, freshShell: true, bundledPatchHelper: true, freshPatchCheck: true, hostPathUnchanged: true, nativeStandardShellUnchanged: true, spawn: true, fork: true, childEffort: true, childShellIsolation: true, workspaceInstructionIsolation: true, workspaceSkillIsolation: true, workspaceHookIsolation: true, sessionStartOnce: true, workspaceDisposal: true, hubToolsScoped: true, ...custom, ...browser, ...hub, liveModelInference: false }));
+  await verifySessionCreation(ctx);
+  console.log('DESKTOP_PRESET_PASSED ' + JSON.stringify({ browserPresetIsolation: true, sessionCreation: true, commandInputs, persistentShell: true, freshShell: true, bundledPatchHelper: true, freshPatchCheck: true, hostPathUnchanged: true, nativeStandardShellUnchanged: true, spawn: true, fork: true, childEffort: true, childShellIsolation: true, workspaceInstructionIsolation: true, workspaceSkillIsolation: true, workspaceHookIsolation: true, sessionStartOnce: true, workspaceDisposal: true, hubUnbundled: true, ...custom, ...browser, liveModelInference: false }));
   ctx.get('appExit')(0);
 }

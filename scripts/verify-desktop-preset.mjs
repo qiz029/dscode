@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
@@ -37,6 +37,11 @@ try {
   const packageManifest = JSON.parse(readFileSync(join(bundle, 'package.json'), 'utf8'));
   assert.equal(packageManifest.name, desktopPresetPackage);
   assert.equal(packageManifest.peerDependencies['@deepseek-ai/dsh'], JSON.parse(readFileSync(join(modules, '@deepseek-ai/dsh/package.json'), 'utf8')).version);
+  assert.equal(existsSync(join(bundle, 'plugins/hub')), false, 'Hub source must not ship in DSCODE');
+  assert.equal(packageManifest.exports['./hub'], undefined, 'Hub must not be a DSCODE entry point');
+  for (const dependency of ['@dsh-plugin-hub/schemas', 'semver']) assert.equal(packageManifest.dependencies[dependency], undefined);
+  assert(!readFileSync(join(bundle, 'cordis.patch.yml'), 'utf8').includes('dscode-hub'));
+  assert(!readFileSync(join(bundle, 'plugins/desktop/client.mjs'), 'utf8').includes('dscode-hub'));
   const profile = join(home, 'profiles/test');
   mkdirSync(join(profile, 'node_modules/@toddzheng024'), { recursive: true });
   symlinkSync(bundle, join(profile, 'node_modules', desktopPresetPackage));

@@ -87,7 +87,7 @@ for (const revoke of [false, true]) test(`capture RPC refreshes permissions${rev
   const permissions = { developerMode: false, sites: {}, sessionSites: ['https://example.com'] };
   f.browser.access.status = async () => { if (revoke) f.revoke(); return permissions; };
   t.after(registerBrowserReview(f.agent, f.browser));
-  applyDesktop({ agents: { get: id => id === 'fixture' ? f.agent : undefined }, logger: { error: assert.fail },
+  applyDesktop({ get: () => undefined, agents: { get: id => id === 'fixture' ? f.agent : undefined }, logger: { error: assert.fail },
     inject: async (_names, callback) => callback({ effect: fn => fn(), connection: { fetch: { register: options => { route = options; return () => {}; } } } }),
   });
   const response = await route.fetch(new Request('http://localhost/api/dscode-browser', { method: 'POST',
@@ -226,7 +226,7 @@ for (const kind of ['success', 'error']) test(`resume RPC uses the user command 
   const f = fixture(), commands = []; let route;
   f.browser.access.status = async () => ({ sites: {}, sessionSites: [] });
   t.after(registerBrowserReview(f.agent, f.browser));
-  applyDesktop({ agents: { get: () => f.agent }, logger: { error: assert.fail },
+  applyDesktop({ get: () => undefined, agents: { get: () => f.agent }, logger: { error: assert.fail },
     commands: { execute: async (agent, command, args, signal) => {
       assert.equal(agent, f.agent); assert.deepEqual(args, []); assert(signal instanceof AbortSignal);
       commands.push(command); return { result: { kind, text: kind === 'success' ? 'Browser control resumed.' : 'Handoff remains paused.' } };
@@ -253,7 +253,7 @@ test('idle observation reads current grants and Host state without Chrome or com
     access: { status: async () => { reads++; if (disconnectOnRead) connected = false; return permissions; } },
   });
   t.after(unregister);
-  applyDesktop({ agents: { get: () => agent }, commands: { execute: assert.fail }, logger: { error: assert.fail },
+  applyDesktop({ get: () => undefined, agents: { get: () => agent }, commands: { execute: assert.fail }, logger: { error: assert.fail },
     inject: async (_names, callback) => callback({ effect: fn => fn(), connection: { fetch: { register: options => { route = options; return () => {}; } } } }),
   });
   const observe = async () => (await (await route.fetch(new Request('http://localhost/api/dscode-browser', { method: 'POST',
@@ -289,7 +289,7 @@ test('tab RPC can observe transport closure after receiving historical pages and
   await browser.start();
   browser.handoff = { pageId: 1, reason: 'Manual step' };
   t.after(registerBrowserReview(agent, browser));
-  applyDesktop({ agents: { get: () => agent }, commands: { execute: assert.fail }, logger: { error: assert.fail },
+  applyDesktop({ get: () => undefined, agents: { get: () => agent }, commands: { execute: assert.fail }, logger: { error: assert.fail },
     inject: async (_names, callback) => callback({ effect: fn => fn(), connection: { fetch: { register: options => { route = options; return () => {}; } } } }),
   });
   const response = await route.fetch(new Request('http://localhost/api/dscode-browser', { method: 'POST',
@@ -301,4 +301,21 @@ test('tab RPC can observe transport closure after receiving historical pages and
   assert.equal(result.value.pages[0].id, 1);
   assert.equal(result.value.handoff.pageId, 1);
   assert.equal(calls, 2);
+});
+
+for (const preset of ['standard', 'dscode']) test(`combined Desktop preview respects ${preset} preset before running commands`, async () => {
+  let route, commands = 0;
+  const agent = { session: { header: { agentPreset: preset } } };
+  applyDesktop({ get: name => name === 'dscodeDesktop', agents: { get: () => agent }, logger: { error: assert.fail },
+    commands: { execute: async () => { commands++; return { result: { kind: 'success', text: 'started' } }; } },
+    inject: async (_names, callback) => callback({ effect: fn => fn(), connection: { fetch: { register: options => { route = options; return () => {}; } } } }),
+  });
+  const rpc = async action => (await (await route.fetch(new Request('http://localhost/api/dscode-browser', { method: 'POST',
+    body: JSON.stringify({ type: 'client-request', rpcId: 'preset-boundary', method: 'dscode-browser', payload: { sessionId: 'fixture', action } }),
+  }))).json()).result;
+  assert.deepEqual(await rpc('availability'), { ok: true, value: { available: preset === 'dscode' } });
+  const result = await rpc('start');
+  assert.equal(result.ok, preset === 'dscode');
+  assert.equal(commands, preset === 'dscode' ? 1 : 0);
+  if (preset === 'standard') assert.match(result.error.message, /original browser tools/);
 });

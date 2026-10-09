@@ -1,6 +1,6 @@
 // Migration fixture: stage the complete agent composition against a new Host.
 // This is not the complete DSCODE Host bundle or an installation command.
-import { cpSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse, stringify } from 'yaml';
@@ -17,7 +17,8 @@ import { desktopPackageMetadata, desktopPresetPackage, desktopHubListing } from 
 
 const root = resolve(import.meta.dirname, '..');
 export { desktopPresetPackage };
-export const desktopDependencies = { ...browserDependencies, '@dsh-plugin-hub/schemas': '0.5.0', semver: '7.8.5', imapflow: '2.0.5', mailparser: '3.9.28', nodemailer: '10.0.10', 'cron-parser': '5.7.0', yaml: '2.9.1', zod: '4.6.5', [desktopSystemAddon]: desktopSystemAddonVersion };
+export const desktopDependencies = { ...browserDependencies, imapflow: '2.0.5', mailparser: '3.9.28', nodemailer: '10.0.10', 'cron-parser': '5.7.0', yaml: '2.9.1', zod: '4.6.5', [desktopSystemAddon]: desktopSystemAddonVersion };
+export const desktopClientPlugins = ['custom', 'browser', 'providers', 'triggers', 'email', 'session-metrics', 'dscode', 'desktop'];
 const modulesToStage = [
   ['dsh-tool-bash', 'bash', patchBash], ['dsh-tool-bash-persistent', 'persistent', patchPersistent],
   ['dsh-terminal-bash', 'terminal', patchTerminalBash], ['dsh-tool-subagent', 'subagent', patchSubagent],
@@ -35,7 +36,10 @@ export function buildDesktopPreset(destination, runtimeDirectory, options = {}) 
   const metadata = desktopPackageMetadata(version, runtime, options);
   mkdirSync(destination, { recursive: true });
   const nativePackages = bundleDesktopSystemAddon(destination);
-  cpSync(join(root, 'plugins'), join(destination, 'plugins'), { recursive: true });
+  // Also remove a previous build's Hub files when the staging directory is reused.
+  rmSync(join(destination, 'plugins/hub'), { recursive: true, force: true });
+  cpSync(join(root, 'plugins'), join(destination, 'plugins'), { recursive: true,
+    filter: source => source !== join(root, 'plugins/hub') });
   mkdirSync(join(destination, 'bin'), { recursive: true });
   cpSync(join(root, 'bin/apply_patch'), join(destination, 'bin/apply_patch'));
   // Agent-facing instructions resolve the matching local guides when present.
@@ -43,7 +47,7 @@ export function buildDesktopPreset(destination, runtimeDirectory, options = {}) 
   const computerUse = bundleDesktopComputerUse(destination);
   cpSync(join(root, 'extensions/browser'), join(destination, 'extensions/browser'), { recursive: true });
   writeFileSync(join(destination, 'plugins/desktop/client.mjs'), composeDesktopClient(name,
-    ['custom', 'browser', 'providers', 'triggers', 'email', 'session-metrics', 'dscode', 'hub'].map(plugin => readFileSync(join(root, 'plugins', plugin, 'desktop-client.mjs'), 'utf8'))));
+    desktopClientPlugins.map(plugin => readFileSync(join(root, 'plugins', plugin, 'desktop-client.mjs'), 'utf8'))));
   cpSync(join(root, 'packages/LICENSE'), join(destination, 'LICENSE'));
   cpSync(join(root, 'assets/desktop-icon.svg'), join(destination, 'icon.svg'));
   cpSync(join(root, 'packages/desktop/locale'), join(destination, 'locale'), { recursive: true });
@@ -51,7 +55,7 @@ export function buildDesktopPreset(destination, runtimeDirectory, options = {}) 
     '.': './plugins/desktop/index.mjs', './client': './plugins/desktop/client.mjs',
     './browser': './plugins/browser/index.mjs', './auto-review': './plugins/auto-review/index.mjs',
     './policy': './plugins/dscode/index.mjs', './control': './plugins/dscode/control.mjs', './compaction': './plugins/compaction/engine.mjs', './code-review': './plugins/code-review/index.mjs', './workspace': './plugins/desktop-workspace/index.mjs',
-    './credentials': './plugins/credentials/index.mjs', './custom': './plugins/custom/index.mjs', './hub': './plugins/hub/desktop-host.mjs',
+    './credentials': './plugins/credentials/index.mjs', './custom': './plugins/custom/index.mjs',
     './openrouter': './plugins/openrouter/index.mjs', './grok': './plugins/grok/index.mjs', './opencode-go': './plugins/opencode-go/index.mjs', './jev': './plugins/jev/index.mjs',
     './session-metrics': './plugins/session-metrics/index.mjs', './session-cards': './plugins/session-cards/index.mjs', './session-bridge': './plugins/session-bridge/index.mjs', './triggers': './plugins/triggers/desktop-host.mjs',
     './email': './plugins/email/desktop-host.mjs', './memory': './plugins/memory/desktop-host.mjs', './computer-use': './plugins/computer-use/desktop-host.mjs',
@@ -104,6 +108,9 @@ export function buildDesktopPreset(destination, runtimeDirectory, options = {}) 
   for (const id of ['agent-instructions', 'skill-filesystem']) {
     preset = replaceOnce(preset, `\n- id: ${id}\n`, `\n- id: ${id}\n  disabled: true\n`);
   }
+  // Native tools, skills, commands and prompt sections inherit this preset's
+  // scope. Standard sessions must not receive DSCODE browser entry points.
+  preset += `\n- id: dscode-browser\n  name: '${name}/browser'\n`;
   const providers = [['subagent', 'subagent-core'], ['subagent-spawn-in-process', 'subagent-spawn', 'spawn'], ['subagent-fork-in-process', 'subagent-fork', 'fork']];
   const permissionPresets = parse(readFileSync(join(root, 'config/auto-review.patch.yml'), 'utf8'))[0].config.presets;
   // Native inference chooses the first matching sandbox/approval pair. Keep
@@ -116,9 +123,8 @@ export function buildDesktopPreset(destination, runtimeDirectory, options = {}) 
     { id: 'permission', config: { presets: desktopPermissions } },
     ...providers.map(([id]) => ({ id, disabled: true })),
     { insert: providers.map(([id, key, providerName]) => ({ id: `dscode-${id}`, name: `${name}/${key}`, ...(providerName ? { config: { providerName } } : {}) })) },
-    { insert: [{ id: 'dscode-credentials', name: `${name}/credentials` }, { id: 'dscode-desktop-workspace', name: `${name}/workspace` },
+    { insert: [{ id: 'dscode-credentials', name: `${name}/credentials`, config: { desktop: true } }, { id: 'dscode-desktop-workspace', name: `${name}/workspace` },
       { id: 'dscode-custom', name: `${name}/custom` }, { id: 'dscode-desktop', name },
-      { id: 'dscode-hub', name: `${name}/hub` },
       { id: 'dscode-openrouter', name: `${name}/openrouter`, config: { providerName: 'dscode-openrouter' } },
       { id: 'dscode-grok', name: `${name}/grok` }, { id: 'dscode-opencode-go', name: `${name}/opencode-go`, config: { providerName: 'dscode-opencode-go' } },
       { id: 'dscode-jev', name: `${name}/jev` },
@@ -133,7 +139,7 @@ export function buildDesktopPreset(destination, runtimeDirectory, options = {}) 
       { id: 'dscode-desktop-computer-use', name: `${name}/computer-use`, config: { observationTtlMs: 30000, allowAllApps: false,
         interaction: { focusPolicy: 'preserve', keyboardPolicy: 'preserve', pointerInputPolicy: 'targeted', cursorVisualization: 'visible' } } },
       { id: 'dscode-desktop-triggers', name: `${name}/triggers` },
-      { id: 'dscode-browser', name: `${name}/browser` }, { id: 'dscode-auto-review', name: `${name}/auto-review` }] },
+      { id: 'dscode-auto-review', name: `${name}/auto-review` }] },
   ]) + '\n' + presetDeclaration(root, preset);
   writeFileSync(join(destination, 'cordis.patch.yml'), patch);
   writeFileSync(join(destination, 'package.json'), JSON.stringify({ ...metadata, exports: { ...exports, './icon': './icon.svg', './locale/*': './locale/*' },

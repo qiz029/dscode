@@ -6,7 +6,16 @@ Per-release notes live in [`docs/releases/`](releases/); the entries below summa
 
 <!-- Add upcoming changes under Unreleased. -->
 
-## [Unreleased]
+## [0.7.35] - 2026-10-08
+
+- Promote the verified Desktop package to both `preview` and `latest` so default installations receive this fix instead of 0.7.33. Promotion requires a matching public-install receipt.
+
+- Scope Desktop browser tools, skill and command to DSCODE sessions. Standard sessions no longer inherit the DSCODE browser entry; TUI Browser Use keeps its existing integration.
+- Group setup, Models, Accounts and Schedules under one DSCODE settings page, using Harness theme tokens and compact controls. Add a community-labeled Plugins item and an activation notice with full-restart and preset-selection instructions.
+- Prefer existing native Desktop credentials and save new Desktop keys to the native store. Terminal credentials remain a legacy fallback; explicit removal clears both copies. Existing Desktop models do not require a separate DSCODE login.
+
+- Remove bundled Plugin Hub functionality from the Desktop package: no Hub settings page, catalog endpoint, conversation discovery tools, source files or Hub-specific runtime dependencies. DSCODE's catalog listing and release synchronization remain available; this does not publish a standalone Hub Desktop plugin. Already published 0.7.34 packages retain their previous contents; update to 0.7.35 to remove the integration.
+- Update the Desktop demo and browser guide to distinguish DSCODE's integration features from official Harness Browser Use, and replace bundled-Hub qualification with checks that the package and running Host contain no Hub integration.
 
 ## [0.7.34] - 2026-10-08
 

@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { hubListingSchema } from '@dsh-plugin-hub/schemas';
 import { desktopHubListing, desktopPackageMetadata, desktopReleaseRuntime } from '../scripts/desktop-package.mjs';
-import { readDesktopRelease } from '../scripts/desktop-release-artifact.mjs';
+import { readDesktopRelease, assertDesktopPublicInstall } from '../scripts/desktop-release-artifact.mjs';
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'desktop-release-test-'));
@@ -29,11 +29,11 @@ function fixture(t) {
     runtimeSources: { runtime: desktopReleaseRuntime }, phases: [{ phase: 'initial' }, { phase: 'reload' }],
     npmPackRoundtrip: true, sourceRuntimeUnchanged: true, persistentShell: true, freshShell: true, bundledPatchHelper: true,
     nativeStandardShellUnchanged: true, workspaceInstructionIsolation: true, workspaceSkillIsolation: true, workspaceHookIsolation: true,
-    hubToolsScoped: true, hubSettingsRpc: true, hubSettingsAuth: true, customSettingsAuth: true, customHostRestart: true,
+    hubUnbundled: true, browserPresetIsolation: true, sessionCreation: true, sessionCreationAfterRestart: true, customSettingsAuth: true, customHostRestart: true,
     combinedDesktopBrowser: true, customBrowserScreenshot: true, customBrowserAnnotation: true, combinedBrowserRevocation: true,
     browserPermissionsSurvivedRestart: true };
   write(join(directory, 'installation.json'), { ...candidate, packageSha256: candidate.sha256,
-    nativeInstall: true, installedHost: true, hubRpc: true, presetResolved: true, defaultHome: true, componentsActive: true });
+    nativeInstall: true, installedHost: true, hubUnbundled: true, presetResolved: true, defaultHome: true, componentsActive: true });
   const save = () => { write(join(directory, 'candidate.json'), candidate); write(join(directory, 'verification.json'), proof); };
   save(); return { root, directory, candidate, proof, save, write };
 }
@@ -65,7 +65,7 @@ test('private or unsupported Desktop candidates cannot enter publication', t => 
 
 test('missing browser, authorization or restart proof stops publication', t => {
   const f = fixture(t);
-  for (const field of ['hubSettingsAuth', 'customBrowserAnnotation', 'browserPermissionsSurvivedRestart']) {
+  for (const field of ['hubUnbundled', 'browserPresetIsolation', 'sessionCreationAfterRestart', 'customBrowserAnnotation', 'browserPermissionsSurvivedRestart']) {
     delete f.proof[field]; f.save();
     assert.throws(() => readDesktopRelease(f.root), new RegExp(field));
     f.proof[field] = true;
@@ -108,4 +108,17 @@ test('release version, npm integrity, filename and release notes are enforced', 
   f.write(join(f.root, 'package.json'), { version: '1.2.3' });
   writeFileSync(join(f.root, 'docs/releases/1.2.3.md'), '');
   assert.throws(() => readDesktopRelease(f.root), /release notes/);
+});
+
+test('default channel promotion requires a public install of the exact qualified archive', t => {
+  const { candidate } = fixture(t);
+  const proof = { ...candidate, packageSha256: candidate.sha256, publicInstall: true,
+    nativeInstall: true, installedHost: true, hubUnbundled: true, presetResolved: true, defaultHome: true, componentsActive: true };
+  assert.doesNotThrow(() => assertDesktopPublicInstall(candidate, proof));
+  for (const field of ['name', 'version', 'runtime', 'integrity', 'packageSha256']) {
+    assert.throws(() => assertDesktopPublicInstall(candidate, { ...proof, [field]: 'stale' }), /mismatch/);
+  }
+  for (const field of ['publicInstall', 'nativeInstall', 'installedHost', 'hubUnbundled', 'presetResolved', 'defaultHome', 'componentsActive']) {
+    assert.throws(() => assertDesktopPublicInstall(candidate, { ...proof, [field]: false }), new RegExp(field));
+  }
 });
