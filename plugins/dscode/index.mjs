@@ -1,13 +1,16 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import { scopeChainOf, scopeOf } from '@deepseek-ai/dsh-scope';
 import { boardSummary, DelegateBoard, setBoardSource } from './board.mjs';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { worktreeBase } from '../worktree-subagent/worktree.mjs';
+import { withChildTarget } from './child-target.mjs';
 export const name = 'dscode-execution-policy';
-export const inject = ['systemPrompt', 'tools', 'agents', 'commands', 'terminals'];
+export const inject = ['systemPrompt', 'tools', 'agents', 'commands', 'terminals', 'subagents'];
 export const SHELL_POLICY = `Use bash as the persistent shell for reading, searching and modifying files. Prefer rg/rg --files, sed and standard CLI tools. Use apply_patch with a standard unified diff on stdin (git apply format, a/ and b/ paths); apply_patch --check validates before writing. It is not the *** Begin Patch format. Quote heredoc delimiters to avoid shell interpolation.
 Each agent has its own persistent shell, initially in the session workspace. cd, exported variables, functions and background jobs persist only while this shell lives. Timeout, cancellation, exit, /shell reset and process restart discard shell state; resume restores conversation, not an OS process. Never assume an environment from a past session still exists. Inspect pwd when paths matter. Keep long-running processes controlled and clean them up when done.
 Normal bash remains confined by the active sandbox. After a genuine sandbox denial, shell_retry provides a fresh, one-shot shell with the existing approval/escalation mechanism. Set an explicit absolute workdir and reconstruct needed non-secret setup; it does not inherit the persistent shell's cd, exports, functions or jobs. Use existing credential-aware CLIs; never paste secrets into arguments. Approval rejection is final for that action; do not work around it.
@@ -37,7 +40,7 @@ export const DELEGATE_SOURCE = 'dscode-delegate';
 export const CHILD_LIMIT = { standard: 5, ultra: 20 };
 const singleLine = text => text.replace(/\s+/g, ' ').trim();
 /** The coordinator protocol `/delegate` hands the main agent together with the user's task. */
-export const delegateMessage = (task, limit) => `[/delegate] The user asked you to coordinate this task through child agents in isolated Git worktrees. You are the coordinator: children do the implementation; you plan, dispatch, answer their questions, verify their work and decide what is merged. This explicit request overrides the usual one-child-at-a-time guidance; the runtime caps you at ${limit} concurrently running children. The user watches progress with /delegate-dashboard.
+export const delegateMessage = (task, limit, viewer = '/delegate-dashboard') => `[/delegate] The user asked you to coordinate this task through child agents in isolated Git worktrees. You are the coordinator: children do the implementation; you plan, dispatch, answer their questions, verify their work and decide what is merged. This explicit request overrides the usual one-child-at-a-time guidance; the runtime caps you at ${limit} concurrently running children. The user watches progress with ${viewer}.
 1. Read enough of the repository to split the task into tasks with disjoint file ownership. One task is fine when the work does not split. If it cannot be isolated from uncommitted state, say so and stop.
 2. Plan order before launching anything. For each task decide what it needs: a task depends on another only when it must build on that task's changes (an interface it calls, a file it extends, a migration it follows), not merely because both are part of the feature. Prefer splits that keep tasks independent; every dependency serialises work. Give high priority to tasks on the critical path and to tasks that unblock others, low priority to optional or polish work. Record every task with delegate_board add: a short title, the unique child name it will run under, its priority, depends_on (child names or ids, including tasks of the same add), and a detail naming its owned files and acceptance checks. The board rejects dependency cycles.
 3. Dispatch: while child slots are free, launch ready tasks in the order the board lists them (highest priority first; a task is ready once all its dependencies are complete), together in one assistant message, using subagent (or subagent_fork when this conversation's history helps) with worktree: true, in the background, name set to the task's planned child name, and a self-contained assignment. Launching a blocked task is refused. A launch under a planned name moves the task to running. Whenever a slot frees, launch the next ready tasks; never exceed the cap. Whenever the board changes you receive its state and the free slots. When a task turns out to depend on something you did not plan, or no longer does, change it with delegate_board update.
@@ -55,9 +58,10 @@ const childLimit = owner => (owner.session.requestHeader?.()?.config ?? owner.op
 // repository there instead of pointing at a path that does not exist.
 const DOCS_DIR = fileURLToPath(new URL('../../docs/', import.meta.url));
 const DOCS_REPO = 'https://github.com/qiz029/dscode/blob/main/docs/';
-export const DOCS_SECTION = `To answer questions about DSCODE itself - what it supports, how a feature is configured, what a command does - treat the bundled user guides as the source of truth instead of guessing: ${existsSync(DOCS_DIR) ? `${DOCS_DIR} plus the repository root README.md (session-bridge.md, session-communication.md, session-cards.md, memory.md, exec.md, acp.md, email.md, skills.md, tui-commands.md, session-metrics.md, dscode-ultra.md, auto-review.md, account-login.md, opencode-go.md, custom-providers.md, demo.md, triggers.md)` : `the repository documentation at ${DOCS_REPO} plus the root README.md (session-bridge.md, session-communication.md, session-cards.md, memory.md, exec.md, acp.md, email.md, skills.md, tui-commands.md, session-metrics.md, dscode-ultra.md, auto-review.md, account-login.md, opencode-go.md, custom-providers.md, demo.md, triggers.md)`}. Read the relevant guide before answering rather than relying on memory of an earlier session. docs/CONTEXT-HANDOFF.md, docs/session-messaging-design.md, docs/cloud-webapp-host.md, docs/triggers-design.md, docs/verification.md, docs/maintainability.md and docs/vendored-tui-upgrade.md are internal development records, not user documentation: never quote them to a user or treat them as a specification. When the guides do not cover something, describe only what the running installation actually does and say plainly that it is not documented.`;
+export const DOCS_SECTION = `To answer questions about DSCODE itself - what it supports, how a feature is configured, what a command does - treat the bundled user guides as the source of truth instead of guessing: ${existsSync(DOCS_DIR) ? `${DOCS_DIR} plus the repository root README.md (session-bridge.md, session-communication.md, session-cards.md, memory.md, exec.md, acp.md, email.md, browser-use.md, plugin-hub.md, computer-use.md, skills.md, tui-commands.md, session-metrics.md, dscode-ultra.md, auto-review.md, account-login.md, opencode-go.md, custom-providers.md, demo.md, triggers.md)` : `the repository documentation at ${DOCS_REPO} plus the root README.md (session-bridge.md, session-communication.md, session-cards.md, memory.md, exec.md, acp.md, email.md, browser-use.md, plugin-hub.md, computer-use.md, skills.md, tui-commands.md, session-metrics.md, dscode-ultra.md, auto-review.md, account-login.md, opencode-go.md, custom-providers.md, demo.md, triggers.md)`}. Read the relevant guide before answering rather than relying on memory of an earlier session. docs/CONTEXT-HANDOFF.md, docs/session-messaging-design.md, docs/cloud-webapp-host.md, docs/triggers-design.md, docs/verification.md, docs/maintainability.md and docs/vendored-tui-upgrade.md are internal development records, not user documentation: never quote them to a user or treat them as a specification. When the guides do not cover something, describe only what the running installation actually does and say plainly that it is not documented.`;
 
-export function apply(ctx) {
+export function apply(ctx, config = {}) {
+  const viewer = config.desktop ? 'Delegation board in the right sidebar' : '/delegate-dashboard';
   ctx.systemPrompt.section({ name: 'dscode:shell-policy', order: 1050, text: SHELL_POLICY });
   ctx.systemPrompt.section({ name: 'dscode:docs', order: 1052, text: DOCS_SECTION });
   ctx.systemPrompt.section({ name: 'dscode:code-discipline', order: 1053, text: CODE_DISCIPLINE });
@@ -68,19 +72,33 @@ export function apply(ctx) {
   const names = new Map();
   const liveChildren = ownerId => {
     const known = names.get(ownerId) ?? new Map();
-    for (const [name, childId] of known) if (ctx.agents.get(childId) === undefined) known.delete(name);
+    for (const [name, childId] of known) if (ctx.agents.get(childId)?.session.header.parentSession !== ownerId) known.delete(name);
     return known;
   };
-  const resolveAgentPath = (owner, value) => {
+  const knownChildren = async (ownerId, signal) => {
+    const rows = await ctx.subagents?.listChildren?.(ownerId, signal) ?? [];
+    const known = new Map(liveChildren(ownerId)), latest = new Map();
+    for (const row of rows) {
+      const name = typeof row.label === 'string' ? row.label.match(/^\/([^ ]+) · /)?.[1] : undefined;
+      if (name && CHILD_NAME.test(name)) latest.set(name, row);
+    }
+    for (const [name, row] of latest) {
+      if (known.has(name) || typeof row.id !== 'string') continue;
+      const live = ctx.agents.get(row.id);
+      if (live ? live.session.header.parentSession === ownerId : row.mode === 'continuable') known.set(name, row.id);
+    }
+    return known;
+  };
+  const resolveAgentPath = async (owner, value, signal) => {
     if (typeof value !== 'string' || !value.startsWith('/')) return value;
     if (value === '/') {
       const parent = owner.session.header.parentSession;
       if (!parent) throw new Error('This agent has no parent; / is only valid inside a child agent.');
       return parent;
     }
-    const known = liveChildren(owner.session.id);
+    const known = await knownChildren(owner.session.id, signal);
     const childId = known.get(value.slice(1));
-    if (!childId) throw new Error(`Unknown child ${value}. Live children: ${[...known.keys()].map(name => '/' + name).join(', ') || '(none)'}.`);
+    if (!childId) throw new Error(`Unknown child ${value}. Available children: ${[...known.keys()].map(name => '/' + name).join(', ') || '(none)'}.`);
     return childId;
   };
   ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
@@ -90,13 +108,14 @@ export function apply(ctx) {
     return { ...assembled, tools: assembled.tools.filter(tool => !hidden.has(tool.name)), sections: assembled.sections.filter(section => !hidden.has(section.name.replace(/^tool:/, ''))) };
   });
   const runningChildren = id => ctx.agents.list().filter(a => a.session.header.origin === 'subagent' && a.session.header.parentSession === id && a.status === 'running').length;
-  const home = process.env.DSH_HOME ?? process.env.DSCODE_HOME ?? join(homedir(), '.local/share/dscode-hub');
+  const home = resolveDshHome();
   const board = new DelegateBoard({ root: join(home, 'delegate-boards'), childName: CHILD_NAME });
   const boardView = sessionId => board.view(sessionId, childId => ctx.agents.get(childId)?.status);
   ctx.effect(() => setBoardSource(sessionId => {
     const agent = ctx.agents.get(sessionId);
+    if (!agent || scopeOf(ctx) !== undefined && !scopeChainOf(scopeOf(agent.ctx)).includes(scopeOf(ctx))) return undefined;
     return { columns: boardView(sessionId), running: runningChildren(sessionId), limit: agent ? childLimit(agent) : CHILD_LIMIT.standard };
-  }), 'dscode-delegate-board.source');
+  }, scopeOf(ctx)), 'dscode-delegate-board.source');
   // The board reaches the coordinator as a message ahead of a step, and only when it
   // changed: editing the system prompt instead would rewrite the request prefix and
   // throw away the provider's prompt cache for the whole conversation on every change.
@@ -110,7 +129,7 @@ export function apply(ctx) {
     boardSent.set(session.id, text);
     return { ...decision, messages: [createUserMessage({ content: [{ type: 'text', text }], source: { kind: BOARD_SOURCE, form: 'snapshot', sections: [{ name: 'delegate-board', text }] } }), ...decision.messages] };
   });
-  ctx.tools.register(defineTool({ name: 'delegate_board', description: 'Task board for /delegate coordination. add plans tasks, each with the child name it will be launched under, a priority and the tasks it depends on; a task is ready once all its dependencies are complete, and launching a blocked task is refused. A subagent started under a planned name moves its task to running automatically, and the task shows as verifying once the child settles. update re-plans a pending task\'s priority or dependencies; complete records a verified task with its evidence; reopen returns a task to pending (optionally under a new child name); drop removes a task and releases tasks that waited on it; list shows the board; clear empties it. The user watches it with /delegate-dashboard.',
+  ctx.tools.register(defineTool({ name: 'delegate_board', description: 'Task board for /delegate coordination. add plans tasks, each with the child name it will be launched under, a priority and the tasks it depends on; a task is ready once all its dependencies are complete, and launching a blocked task is refused. A subagent started under a planned name moves its task to running automatically, and the task shows as verifying once the child settles. update re-plans a pending task\'s priority or dependencies; complete records a verified task with its evidence; reopen returns a task to pending (optionally under a new child name); drop removes a task and releases tasks that waited on it; list shows the board; clear empties it. The user watches it with /delegate-dashboard.'.replace('/delegate-dashboard', viewer),
     parameters: {
       action: { type: 'string', required: true, enum: ['list', 'add', 'update', 'complete', 'reopen', 'drop', 'clear'] },
       tasks: { type: 'array', description: 'For add: tasks to plan', items: { type: 'object', additionalProperties: false, properties: {
@@ -124,7 +143,7 @@ export function apply(ctx) {
       depends_on: { type: 'array', items: { type: 'string' }, description: 'For update: the full new dependency list, by child name or task id' },
       verification: { type: 'string', description: 'For complete: how you verified the work (diff reviewed, checks run and their results)' },
       reason: { type: 'string', description: 'For reopen: why the task goes back to pending' },
-      child: { type: 'string', description: 'For reopen: a new child name when the previous child is still alive' },
+      child: { type: 'string', description: 'For reopen: a new child name when the previous child is live or resumable' },
     },
     output: { schema: { type: 'object', additionalProperties: true, properties: {} }, render: (_args, result) => [{ type: 'text', text: JSON.stringify(result) }] },
     async execute(args, exec) {
@@ -148,41 +167,83 @@ export function apply(ctx) {
     },
   }));
   const reservations = new Map();
+  const pendingNames = new Map();
+  const launching = new AsyncLocalStorage();
+  const foreground = new Map();
+  ctx.on('subagent/start', event => {
+    const launch = launching.getStore();
+    if (!launch?.active || typeof launch.childName !== 'string' || !event.local) return;
+    const child = ctx.agents.get(event.id);
+    if (child?.session.header.parentSession !== launch.id) return;
+    if (!names.has(launch.id)) names.set(launch.id, new Map());
+    names.get(launch.id).set(launch.childName, event.id);
+    board.launched(launch.id, launch.childName, event.id, launch.worktree ? child.session.header.cwd : undefined);
+    if (launch.foreground) foreground.set(event.id, launch.id);
+    launch.release();
+  });
+  ctx.on('subagent/end', event => {
+    const owner = foreground.get(event.id);
+    if (owner === undefined) return;
+    foreground.delete(event.id);
+    board.waiting(owner, event.id, false);
+  });
   ctx.on('tools/execute', async (exec, next) => {
     const owner = exec.agent;
     if (!owner || !['subagent', 'subagent_fork', 'send_message', 'interrupt_agent', 'workflow', 'ralph'].includes(exec.name)) return next();
-    if (exec.name === 'send_message' || exec.name === 'interrupt_agent') exec.arguments.agent_id = resolveAgentPath(owner, exec.arguments.agent_id);
-    if (exec.name === 'interrupt_agent') return next();
+    const targetId = exec.name === 'send_message' || exec.name === 'interrupt_agent' ? await resolveAgentPath(owner, exec.arguments.agent_id, exec.signal) : undefined;
+    const dispatch = () => targetId === undefined ? next() : withChildTarget(exec, targetId, next);
+    if (exec.name === 'interrupt_agent') return dispatch();
     if (owner.session.header.origin === 'subagent' && DELEGATION_TOOLS.includes(exec.name)) throw new Error('Child agents cannot delegate again. Complete the assigned work and report to the parent.');
     // Delegation is open at every effort: the shell policy keeps it rare below Ultra, and the cap below applies throughout.
     if (['workflow', 'ralph'].includes(exec.name)) throw new Error('Use capped subagent/subagent_fork delegation; workflow and ralph are unavailable in dscode.');
-    const target = exec.name === 'send_message' ? ctx.agents.get(exec.arguments.agent_id) : undefined;
-    // A child's question keeps its board task running until the parent's reply reaches it.
-    if (exec.name === 'send_message' && owner.session.header.origin === 'subagent' && exec.arguments.agent_id === owner.session.header.parentSession) board.waiting(owner.session.header.parentSession, owner.session.id, true);
-    if (exec.name === 'send_message' && target?.session.header.parentSession === owner.session.id) board.waiting(owner.session.id, exec.arguments.agent_id, false);
-    if (exec.name === 'send_message' && (exec.arguments.agent_id === owner.session.header.parentSession || target?.status === 'running')) return next();
+    const target = exec.name === 'send_message' ? ctx.agents.get(targetId) : undefined;
+    const deliver = async () => {
+      const result = await dispatch();
+      if (exec.name === 'send_message' && result?.isError !== true) {
+        if (owner.session.header.origin === 'subagent' && targetId === owner.session.header.parentSession) board.waiting(owner.session.header.parentSession, owner.session.id, true);
+        const recipient = ctx.agents.get(targetId) ?? target;
+        if (recipient?.session.header.parentSession === owner.session.id) board.waiting(owner.session.id, targetId, false);
+      }
+      return result;
+    };
+    if (exec.name === 'send_message' && (targetId === owner.session.header.parentSession || target?.status === 'running')) return deliver();
     const id = owner.session.id;
-    const running = runningChildren(id);
-    const limit = childLimit(owner);
-    if (running + (reservations.get(id) ?? 0) >= limit) throw new Error(`Concurrent child limit reached (${limit}). Wait for a child to settle, then delegate or send more work.`);
     const childName = exec.name === 'send_message' ? undefined : exec.arguments.name;
     if (childName !== undefined) {
       if (typeof childName !== 'string' || !CHILD_NAME.test(childName)) throw new Error(CHILD_NAME_RULE);
-      if (liveChildren(id).has(childName)) throw new Error(`Child name /${childName} is already used by a live child of this agent; choose another name.`);
+      if ((await knownChildren(id, exec.signal)).has(childName) || pendingNames.get(id)?.has(childName)) throw new Error(`Child name /${childName} is already used by a live, resumable or starting child of this agent; choose another name.`);
       const blocked = board.launchBlocked(id, childName);
       if (blocked) throw new Error(blocked);
     }
+    const running = runningChildren(id), limit = childLimit(owner);
+    if (running + (reservations.get(id) ?? 0) >= limit) throw new Error(`Concurrent child limit reached (${limit}). Wait for a child to settle, then delegate or send more work.`);
+    if (childName !== undefined) {
+      if (!pendingNames.has(id)) pendingNames.set(id, new Set());
+      pendingNames.get(id).add(childName);
+    }
     reservations.set(id, (reservations.get(id) ?? 0) + 1);
+    let reserved = true;
+    const release = () => {
+      if (!reserved) return; reserved = false;
+      if (childName !== undefined) {
+        const pending = pendingNames.get(id); pending?.delete(childName);
+        if (!pending?.size) pendingNames.delete(id);
+      }
+      const left = (reservations.get(id) ?? 1) - 1;
+      if (left) reservations.set(id, left); else reservations.delete(id);
+    };
+    const launch = { id, childName, active: true, worktree: exec.arguments.worktree === true, foreground: exec.arguments.run_in_background === false, release };
     try {
-      const result = await next();
-      if (childName !== undefined && result?.kind === 'continuable' && typeof result.subagentId === 'string') {
+      const result = await launching.run(launch, deliver);
+      const value = result?.isError === true ? undefined : result?.value ?? result;
+      if (childName !== undefined && value?.kind === 'continuable' && typeof value.subagentId === 'string') {
         if (!names.has(id)) names.set(id, new Map());
-        names.get(id).set(childName, result.subagentId);
-        board.launched(id, childName, result.subagentId, typeof result.worktree === 'string' ? result.worktree : undefined);
+        names.get(id).set(childName, value.subagentId);
+        board.launched(id, childName, value.subagentId, typeof value.worktree === 'string' ? value.worktree : undefined);
       }
       return result;
     }
-    finally { const left = (reservations.get(id) ?? 1) - 1; if (left) reservations.set(id, left); else reservations.delete(id); }
+    finally { launch.active = false; release(); }
   });
   ctx.commands.register({ name: 'delegate', description: 'Coordinate a task through child agents in isolated Git worktrees: /delegate <task>', input: { hint: 'task for child agents' }, handler: async ({ agent, rawInput, signal }) => {
     const task = rawInput.trim();
@@ -194,10 +255,10 @@ export function apply(ctx) {
     // A finished board from an earlier /delegate would otherwise linger in Complete.
     const columns = boardView(agent.session.id);
     if (columns.complete.length && !columns.pending.length && !columns.running.length && !columns.verifying.length) board.clear(agent.session.id);
-    agent.followup(createUserMessage({ content: [{ type: 'text', text: delegateMessage(task, limit) }], source: { kind: DELEGATE_SOURCE, form: 'notice', summary: `/delegate ${singleLine(task)}` } }));
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: delegateMessage(task, limit, viewer) }], source: { kind: DELEGATE_SOURCE, form: 'notice', summary: `/delegate ${singleLine(task)}` } }));
     return { kind: 'success', text: `${agent.status === 'running' ? 'Queued after the current turn' : 'Delegating'}: the main agent will start up to ${limit} children in isolated worktrees and review their work before merging.` };
   }});
-  ctx.commands.register({ name: 'shell', description: 'Persistent shell status or reset (idle only)', handler: async ({ agent, rawInput }) => {
+  ctx.commands.register({ name: 'shell', description: 'Persistent shell status or reset (idle only)', input: { hint: '[status|reset]' }, handler: async ({ agent, rawInput }) => {
     const action = rawInput.trim() || 'status';
     const sessions = ctx.terminals.list(agent);
     if (action === 'status') return { kind: 'success', text: `Persistent terminals: ${sessions.length}. ${sessions.map(s => `${s.sessionId}: ${JSON.stringify(s.status)}`).join('\n')}\nState is process-local, not restored from conversation. /shell reset closes shells and discards cwd, exports and jobs.` };

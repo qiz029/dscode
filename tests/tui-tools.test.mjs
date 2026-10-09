@@ -3,9 +3,57 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { apply, findConflicts } from '../plugins/tui-tools/index.mjs';
+import { apply, applyDesktop, findConflicts } from '../plugins/tui-tools/index.mjs';
 import { hookReportFile } from '../plugins/tui-tools/hook-sources.mjs';
 import { validateHooks } from '../plugins/tui-tools/hooks.mjs';
+import { inspectComposition } from '../plugins/tui-tools/composition.mjs';
+
+test('Desktop diagnostics use separate command names, preserve paths and reject native Standard sessions', async () => {
+  const native = { name: 'skills' }, commands = new Map([['skills', native]]);
+  const agent = { ctx: { preset: 'dscode' }, status: 'idle', options: {}, session: { id: 'desktop', header: { cwd: '/skills', agentPreset: 'dscode' }, requestHeader: () => undefined, snapshotEvents: () => [] } };
+  applyDesktop({ commands: { register: command => commands.set(command.name, command) },
+    agentPresets: { composedPreset: ctx => ctx.preset }, get: () => undefined,
+    tools: { schemas: () => [] }, permissionPresets: { current: () => 'workspace-write' },
+    skills: { snapshot: async () => ({ skills: [], complete: true }) } });
+  assert.equal(commands.get('skills'), native);
+  assert.deepEqual([...commands.keys()].sort(), ['dscode-doctor', 'dscode-mcp', 'dscode-skills', 'dscode-status', 'skills']);
+  const result = await commands.get('dscode-status').handler({ agent, rawInput: '' });
+  assert.match(result.text, /Workspace: \/skills/); assert.match(result.text, /\/dscode-doctor/); assert(!result.text.includes('/statusline'));
+  agent.ctx.preset = 'standard';
+  for (const name of ['status', 'doctor', 'skills', 'mcp']) assert.equal((await commands.get(`dscode-${name}`).handler({ agent, rawInput: '' })).kind, 'error');
+});
+
+test('new registry diagnostics read only the Agent-bound revision without fabricating mutable entries', async () => {
+  const commands = new Map();
+  const host = { id: 'profile:host-mcp', options: { id: 'host-mcp', name: '@deepseek-ai/dsh-mcp-client', config: { serverName: 'host' } }, disabled: false, fiber: { state: 2 }, async update() { throw Error('Unexpected mutation'); } };
+  let queried;
+  const registry = { inspectCompositions(scope) {
+    queried = scope;
+    assert(scope, 'Never enumerate every session preset');
+    return [{ id: 'retained-preset', modules: [{ moduleName: '@deepseek-ai/dsh-mcp-client' }, { moduleName: '@deepseek-ai/dsh-skill-filesystem' }], leakedServices: ['unexpected-service'] }];
+  } };
+  const scope = { get: name => name === 'agentPresets' ? registry : undefined };
+  const agent = { ctx: scope, status: 'idle', session: { id: 'one', header: { cwd: process.cwd(), agentPreset: 'retained-preset' }, requestHeader: () => null, snapshotEvents: () => [] }, options: {} };
+  const ctx = { get: name => name === 'loader' ? { entries: () => [host] } : undefined,
+    commands: { register: d => commands.set(d.name, d) }, agents: { list: () => [agent] },
+    tools: { schemas: () => [] }, permissionPresets: { current: () => 'workspace-write' }, skills: { snapshot: async () => ({ skills: [], complete: true }) } };
+  apply(ctx);
+  assert.deepEqual(inspectComposition(ctx, agent).entries, [host]);
+  assert.equal(queried, scope);
+  const run = (name, rawInput = '') => commands.get(name).handler({ rawInput, agent });
+  const status = await run('status');
+  assert.equal(status.kind, 'success', status.text);
+  assert.match(status.text, /Host plugins: 1 active/);
+  assert.match(status.text, /Preset retained-preset: 2 active modules.*unexpected-service/);
+  const mcp = await run('mcp');
+  assert.match(mcp.text, /server=host/);
+  assert.match(mcp.text, /Preset MCP modules are present/);
+  const mutation = await run('mcp', 'disable retained-preset');
+  assert.equal(mutation.kind, 'error');
+  assert.match(mutation.text, /no mutable preset entries/);
+  const conflicts = await run('skills', 'conflicts');
+  assert.match(conflicts.text, /Incomplete:.*only Host filesystem roots were checked/);
+});
 
 test('unsupported hooks, bad regexes and async gates cannot silently load', () => {
   assert.deepEqual(validateHooks({ hooks: {} }), {});

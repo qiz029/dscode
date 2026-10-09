@@ -17,6 +17,51 @@ directory is `~/.dscode/email`; `DSCODE_EMAIL_DIR` overrides it. New directories
 use mode 0700 and messages use 0600. Message content enters session history only
 when selected with Enter. Existing composer drafts and attachments are preserved.
 
+## Experimental Desktop inbox
+
+The combined Desktop package adds **Open right sidebar → Email inbox**. It reads
+the same local inbox as the terminal. Select a message to preview its plain text;
+**Add email to this session** steers it into the selected DSCODE session, starting
+a turn if idle. The message is explicitly marked as external context. Reading,
+refreshing and syncing never start a turn. Standard sessions can browse the human
+inbox interface but cannot receive a DSCODE email injection or access DSCODE's
+email sender/contact tools.
+
+The Host checks that the selected message revision still matches its preview.
+A changed message must be previewed again. A request retried with the same ID is
+recognized in the persisted session admission history, including after restart;
+it is not inserted or used to wake the agent again. The result acknowledges
+admission, not successful model processing. Cancellation can discard pending
+steering. Reopening and selecting the message again creates a new request if you
+explicitly want to add it again. Switching sessions or hiding the pane clears
+the preview and connection drafts; existing composer text is untouched.
+
+Expand **Mailbox connection** to connect IMAP using a masked application password
+or import a Google Desktop OAuth client by its absolute local path and authorize
+Gmail. These actions use the connectors described below and share their account,
+folder, TLS, filtering and credential-storage rules. Gmail authorization creates
+or reuses the ToAgent label and filter and requests the same three scopes. The
+interface allows an in-flight connection or sync to be cancelled. Passwords never
+enter session history and are cleared from the form after submission.
+
+**Sync now** performs one sync. **Sync in the background while Desktop is open**
+is off by default; enabling it polls every 30 seconds, with IMAP taking precedence
+over Gmail OAuth. The preference is stored under `$DSH_HOME/desktop-email/` and
+survives restart and package removal. Existing mailbox credentials and local
+messages are retained when the package is removed; reinstalling it resumes sync
+if this preference was enabled. Disable it before removal to prevent that resume.
+Enabling sync before connecting a mailbox preserves the preference and shows a
+connection setup hint. A throttled poll reports that it is waiting for the next
+interval; neither state is shown as a completed sync.
+Unloading the plugin cancels connector work, stops its timer and removes the
+interface and scoped tools. An already-started SMTP send is allowed to settle its
+durable receipt; cancelling a task cannot recall submitted mail.
+
+DSCODE sessions receive the existing `send_email`, receipt and contact-alias
+tools. Their authorization and SMTP limitations below still apply. Previewing an incoming message grants no permission to reply. The Desktop email
+RPC has no send action. Mail receipt does not automatically send a message to an
+agent, and the UI has no mailbox deletion or retention controls.
+
 ## Connector boundary
 
 The exported `createEmailInbox()` provides `receive(value)` and `list()`;

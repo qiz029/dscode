@@ -1,7 +1,7 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { reviewSpec } from './git.mjs';
@@ -17,7 +17,7 @@ const SENSITIVE_PATTERNS = ['.env', '.env.*', '.npmrc', '.pypirc', 'id_rsa', 'id
 const IDENTITY = { GIT_AUTHOR_NAME: 'dscode', GIT_AUTHOR_EMAIL: 'review@dscode.invalid', GIT_COMMITTER_NAME: 'dscode', GIT_COMMITTER_EMAIL: 'review@dscode.invalid' };
 export const snapshotLimits = { files: 20000, bytes: 256 * 1024 * 1024, fileBytes: 4 * 1024 * 1024 };
 
-const defaultRoot = () => join(process.env.DSH_HOME ?? process.env.DSCODE_HOME ?? join(homedir(), '.local/share/dscode-hub'), 'review-baselines');
+const defaultRoot = () => join(resolveDshHome(), 'review-baselines');
 const anchored = path => `/${path.replace(/[\\*?[\]!#]/g, '\\$&').replace(/ $/, '\\ ')}`;
 const refPart = value => String(value).replace(/[^A-Za-z0-9_-]/g, '_');
 const refsFor = task => {

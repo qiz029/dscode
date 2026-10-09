@@ -1,9 +1,12 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import z from '@deepseek-ai/schemastery';
 import { BlockAssembler, createSystemMessage, createUserMessage } from '@deepseek-ai/dsh-llm';
 import { REVIEW_POLICY, escalationDiagnosticGrant, needsMcpApproval, redact, fingerprint, contextFor, parseDecision } from './policy.mjs';
 import { join, resolve } from 'node:path';
 import { auditStore } from './audit.mjs';
 import { effortFor } from '../providers/effort.mjs';
+import { browserReviewContext } from '../browser/review.mjs';
+import { chargeTo } from '../session-metrics/attribution.mjs';
 
 export const name = 'dscode-auto-review';
 export const inject = ['approval', 'permissionPresets', 'tools', 'llm', 'commands'];
@@ -13,14 +16,14 @@ export const Config = z.object({
   // Reasoning tokens count against the cap: a reasoning model needs room before its verdict.
   maxOutputTokens: z.number().step(1).min(128).max(16384).default(4096),
   maxReviewsPerTurn: z.number().step(1).min(1).max(100).default(20),
+  maxBrowserReviewsPerTurn: z.number().step(1).min(1).max(200).default(100),
   maxEscalationGrantsPerTurn: z.number().step(1).min(0).max(10).default(2),
   auditDirectory: z.string(),
 });
 
 export function apply(ctx, config) {
   if (Boolean(config.provider) !== Boolean(config.model)) throw new Error('Auto review requires both provider and model, or neither');
-  if (!config.auditDirectory && !process.env.DSH_HOME) throw new Error('Auto review requires DSH_HOME or auditDirectory');
-  const audit = auditStore(config.auditDirectory ?? join(process.env.DSH_HOME, 'auto-review'));
+  const audit = auditStore(config.auditDirectory ?? join(resolveDshHome(), 'auto-review'));
   const calls = new WeakMap();
   const budgets = new WeakMap();
   const mode = agent => ctx.permissionPresets.current(agent.session);
@@ -32,7 +35,7 @@ export function apply(ctx, config) {
     const turn = events.findLast(e => e.type === 'turn/start')?.seq;
     let state = budgets.get(agent);
     if (!state || state.turn !== turn) {
-      state = { turn, reviews: 0, grants: 0, denials: 0, blocked: false, denied: new Map(), tail: Promise.resolve() };
+      state = { turn, reviews: 0, browserReviews: 0, grants: 0, denials: 0, blocked: false, denied: new Map(), tail: Promise.resolve() };
       budgets.set(agent, state);
     }
     return state;
@@ -48,7 +51,7 @@ export function apply(ctx, config) {
     if (decision.kind !== 'allow') return decision;
     if (exec.agent && stateFor(exec.agent).blocked) return { kind: 'deny', reason: 'Automatic review stopped this turn after repeated denials. Wait for user input.' };
     // Under the never policy an ask is rejected before any handler runs, so gating would disable MCP outright.
-    if (needsMcpApproval(exec.name) && (!exec.agent || ctx.approval?.effectivePolicy?.(exec.agent.session) !== 'never')) return { kind: 'ask', reason: `Review MCP action ${exec.name} against the user's authorization` };
+    if (needsMcpApproval(exec.name, exec.arguments) && (!exec.agent || ctx.approval?.effectivePolicy?.(exec.agent.session) !== 'never')) return { kind: 'ask', reason: `Review tool action ${exec.name} against the user's authorization` };
     return decision;
   }, { prepend: true });
   ctx.on('tools/result', exec => {
@@ -105,7 +108,9 @@ export function apply(ctx, config) {
     };
     if (!exec || exec.name !== req.toolName) return fallback('Exact pending tool parameters are unavailable.');
     const workspace = req.agent.session.header.cwd;
-    const action = { tool: exec.name, arguments: exec.arguments, cwd: exec.name === 'shell_retry' && exec.arguments.workdir ? resolve(workspace ?? process.cwd(), exec.arguments.workdir) : workspace, ...(exec.name === 'shell_retry' ? { environment: 'fresh shell; does not inherit persistent bash state' } : {}) };
+    const browserContext = browserReviewContext(exec);
+    if (exec.name === 'mcp__browser__execute_webmcp_tool' && !browserContext?.siteTool) return fallback('WebMCP page and discovered tool definition are unavailable for automatic review.');
+    const action = { tool: exec.name, arguments: exec.arguments, cwd: exec.name === 'shell_retry' && exec.arguments.workdir ? resolve(workspace ?? process.cwd(), exec.arguments.workdir) : workspace, ...(exec.name === 'shell_retry' ? { environment: 'fresh shell; does not inherit persistent bash state' } : {}), ...(browserContext ? { browserContext } : {}) };
     const actionHash = fingerprint(action);
     const userSeq = req.agent.session.snapshotEvents().findLast(e => e.type === 'user/message' && e.data.source?.kind === 'user')?.seq;
     if (state.denied.has(actionHash) && state.denied.get(actionHash) === userSeq) {
@@ -116,13 +121,16 @@ export function apply(ctx, config) {
     }
     const serialized = JSON.stringify(action);
     if (serialized.length > 12000 || redact(serialized) !== serialized) return fallback('Action contains possible credentials or exceeds the review input limit.', { actionHash });
-    if (state.reviews >= config.maxReviewsPerTurn) return fallback('Per-turn automatic review budget reached.', { actionHash });
+    const browserAction = exec.name === 'browser_stop' || exec.name.startsWith('mcp__browser__');
+    const budgetKey = browserAction ? 'browserReviews' : 'reviews';
+    const budget = browserAction ? config.maxBrowserReviewsPerTurn ?? 100 : config.maxReviewsPerTurn;
+    if (state[budgetKey] >= budget) return fallback('Per-turn automatic review budget reached.', { actionHash });
     const context = contextFor(req.agent.session, audit.read(req.agent.session.id));
     if (context.oversized) return fallback('Direct user instructions exceed the bounded review context; manual review required.', { actionHash });
     if (!context.userMessages.length) return fallback('No retained direct user instruction is available.', { actionHash });
     const target = config.provider ? config : req.agent.session.requestHeader()?.config ?? req.agent.options;
     if (!target.provider || !target.model) return fallback('No reviewer model route is configured.', { actionHash });
-    state.reviews++;
+    state[budgetKey]++;
     const started = Date.now();
     // Jev answers the same question far faster and cheaper than the reviewer model.
     // It returns undefined when it is unavailable, unsure or failing, which leaves
@@ -168,12 +176,14 @@ export function apply(ctx, config) {
     try {
       // Independent request: no conversation system prompt, tools, API keys,
       // file reads, or main-agent reasoning are added to the reviewer context.
-      const operation = (async () => {
+      // Charge its owner without a wire sessionId: that identity also activates
+      // session prompt shaping and must not turn review into a main-agent call.
+      const operation = chargeTo(req.agent.session.id, 'review', async () => {
         let terminal = false;
         // A verdict needs little deliberation: the lowest level near low the reviewer model offers.
         const effort = await effortFor(ctx.llm, target, 'low', signal);
         for await (const chunk of ctx.llm.stream({
-          provider: target.provider, model: target.model, sessionId: req.agent.session.id,
+          provider: target.provider, model: target.model, purpose: 'review',
           ...(effort === undefined ? {} : { reasoningEffort: effort }),
           messages: [createSystemMessage(REVIEW_POLICY, name), createUserMessage({
             content: [{ type: 'text', text: JSON.stringify({ action, context }) }],
@@ -190,7 +200,7 @@ export function apply(ctx, config) {
         if (blocks.some(b => b.type !== 'text' && b.type !== 'reasoning')) throw new Error('Reviewer returned non-text content');
         completed = true;
         return parseDecision(blocks.filter(b => b.type === 'text').map(b => b.text).join(''));
-      })();
+      });
       let abortListener;
       const aborted = new Promise((_, reject) => {
         abortListener = () => reject(signal.reason);
@@ -244,8 +254,14 @@ export function apply(ctx, config) {
 
   ctx.commands.register({ name: 'review-usage', description: 'Show automatic permission review usage for this session', handler: ({ agent }) => {
     const records = audit.read(agent.session.id);
-    const measured = records.filter(r => r.usage);
-    const total = key => measured.reduce((sum, r) => sum + (r.usage[key] ?? 0), 0);
-    return { kind: 'success', text: `Auto review: ${records.length} decisions; ${records.filter(r => r.provider).length} model attempts; ${total('inputTokens')} input / ${total('outputTokens')} output tokens reported; ${records.filter(r => r.provider && !r.usageComplete).length} attempts with incomplete/unknown usage; ${records.reduce((s,r) => s + (r.durationMs ?? 0), 0)} ms. Last: ${records.at(-1)?.reason ?? '(none)'}` };
+    // Existing Jev audit rows retain the Decisions API's snake-case usage.
+    // Read both formats without rewriting history or treating malformed values as zero usage.
+    const tokens = (usage, key) => {
+      const value = usage?.[key] ?? usage?.[key === 'inputTokens' ? 'input_tokens' : 'output_tokens'];
+      return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+    };
+    const total = key => records.reduce((sum, r) => sum + (tokens(r.usage, key) ?? 0), 0);
+    const incomplete = records.filter(r => r.provider && (!r.usageComplete || tokens(r.usage, 'inputTokens') === undefined || tokens(r.usage, 'outputTokens') === undefined)).length;
+    return { kind: 'success', text: `Auto review: ${records.length} decisions; ${records.filter(r => r.provider).length} model attempts; ${total('inputTokens')} input / ${total('outputTokens')} output tokens reported; ${incomplete} attempts with incomplete/unknown usage; ${records.reduce((s,r) => s + (r.durationMs ?? 0), 0)} ms. Last: ${records.at(-1)?.reason ?? '(none)'}` };
   } });
 }

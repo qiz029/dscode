@@ -21,6 +21,35 @@ Reading and background generation are on by default. A new root session schedule
 
 The model automatically receives only a summary of at most 6000 characters. When historical experience is needed, use `memory_search` to find entries, procedures and source-session summaries; it returns session IDs, workspaces and original message sequence numbers. Simple tasks skip retrieval. Memory is not proof of the current code state.
 
+## Experimental Desktop package
+
+The [combined Desktop package](browser-use.md#install-the-experimental-combined-desktop-package)
+includes this memory service. It uses the same `/memories` commands and
+`memory_search` tool; there is no separate memory settings panel. Only DSCODE
+agents receive the summary and retrieval tool. Native Standard sessions cannot
+change memory through `/memories`; their history and child-agent history are
+excluded from extraction. A child DSCODE agent also respects its parent's
+session reading opt-out.
+
+Desktop stores memory under its own state directory by default, usually separate
+from the terminal installation. Sharing credentials does not share memory.
+Setting the same `DSCODE_MEMORY_HOME` shares the memory database, including global
+switches, notes and cleanup, between those installations. Extraction still reads
+the current Host's session history.
+
+Session and global switches, consolidated memory and source evidence survive a
+Host restart. Unloading the memory plugin cancels an in-flight generation,
+releases its leases and removes its tool and prompt from open agents. The files
+remain on disk, and reloading restores access for open DSCODE agents. Removing
+the whole package takes effect after quitting and restarting the application;
+use `/memories clear` first if you also want to delete generated memory.
+
+The packed service was checked on `0.2.1-alpha.1` and the signed macOS
+`0.2.0-rc.2` Electron Desktop Host with deterministic local inference. These
+checks cover generation, source evidence, parent opt-out, restart, cancellation,
+live-plugin reload and cost attribution across interleaved sessions. They do not establish live-model memory quality or
+renderer interaction with the slash commands.
+
 ## Two-stage implementation
 
 1. Read the historical JSONL from the existing `sessionPersistence` service. Child agents, non-dscode sessions, active sessions, sessions with contribution switched off and oversized logs are skipped. Only original user messages and visible assistant text are extracted: thinking, tool payloads and injected system information are not read.
@@ -30,7 +59,7 @@ The model automatically receives only a summary of at most 6000 characters. When
 
 A SQLite lease coordinates multiple processes and the background holds a heartbeat; a source session under recovery, an expired lease and a clear operation all stop an old result from committing. The consolidation model has no shell, MCP, file-write or delegation tools, and file paths are determined by the plugin.
 
-Directory resolution order: plugin `root` → `DSCODE_MEMORY_HOME` → `$DSCODE_HOME/memories` → `$DSH_HOME/memories` → `~/.local/share/dscode-hub/memories`. A source launch normally uses the project's `.runtime/memories`, and an npm launch uses the launcher's state directory. To share memory between installations, set the same `DSCODE_MEMORY_HOME` explicitly.
+Directory resolution order: plugin `root` → `DSCODE_MEMORY_HOME` → the native Harness home plus `memories`. Harness resolves a nonblank `DSH_HOME` (including supported tilde paths), otherwise `~/.dsh`. A source launch normally sets the project's `.runtime` as that home; the npm launcher maps its `DSCODE_HOME` into `DSH_HOME`. To share memory between installations, set the same `DSCODE_MEMORY_HOME` explicitly. Version 0.7.34 does not automatically move memory left in an earlier fallback directory.
 
 ```text
 memories/
@@ -66,7 +95,19 @@ A source install overrides the existing plugin configuration in `config/harness.
     # model: deepseek-flash
 ```
 
-Extraction and consolidation efforts are set independently, and neither inherits ultra. Each run does at most 16 per-session requests and 1 consolidation request, executed in order; input and output are both length-bounded, and a single model request has a 90-second default timeout. The background model causes extra API usage that is counted separately in `/memories` and not charged to any one foreground session. A missing usable provider, an unsupported configured effort or a network failure never affects the foreground; the background keeps the failure state and retries.
+Extraction and consolidation efforts are set independently, and neither inherits ultra. Each run does at most 16 per-session requests and 1 consolidation request, executed in order; input and output are both length-bounded, and a single model request has a 90-second default timeout. A missing usable provider, an unsupported configured effort or a network failure never affects the foreground; the background keeps the failure state and retries.
+
+Background generation incurs extra API usage. `/memories` reports its aggregate
+usage, and the initiating session's cost ledger records each call with purpose
+`memory`. Automatic work belongs to the root session that scheduled it; manual
+`run` and `note` belong to their invoking session, even before its first model
+request. A run keeps that owner and model route through extraction and
+consolidation. Starting another session or closing the owner does not transfer
+in-flight costs. Periodic work uses the latest scheduled route and attributes a
+new run only when that remembered session is still live. A request arriving while
+the worker is busy updates the preference for a later run; it does not start a
+second worker or change the current run's attribution. These auxiliary requests
+do not carry the foreground session ID to the model provider.
 
 This is DSCODE's implementation of the two-stage architecture borrowed from Codex, not a line-by-line port: an input fingerprint replaces the Git diff, and a tool-free structured model request replaces the consolidation agent that can edit a directory. There is currently no Codex-style provider remaining-quota gate, and redaction covers only common secret formats; what reaches the model is filtered historical session content. Generation can be switched off globally while reading existing memory is kept.
 

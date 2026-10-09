@@ -28,16 +28,21 @@ export function writeSessionBinding(home, spec, sessionId) {
 }
 
 /** Called under the CLI's trigger lease. A failed resume never erases history. */
-export async function openTriggerSession(ctx, spec, { home, agentOptions, setup }) {
+export async function openTriggerSession(ctx, spec, { home, agentOptions, setup, signal }) {
   const persistent = spec.session?.mode === 'persistent';
   const binding = persistent ? readSessionBinding(home, spec) : undefined;
   const handle = binding
-    ? await ctx.agents.resume({ resumeSessionId: binding.sessionId, agentOptions, setup })
-    : await ctx.agents.create({ sessionId: randomUUID(), meta: { cwd: spec.workspace, agentPreset: spec.preset ?? 'dscode' }, agentOptions, setup });
-  if (handle.agent.session.header.cwd !== spec.workspace) throw new Error('trigger session workspace does not match its definition');
-  if (persistent && !binding) {
-    await ctx.sessions.flush(handle.agent.session);
-    writeSessionBinding(home, spec, handle.agent.session.id);
+    ? await ctx.agents.resume({ resumeSessionId: binding.sessionId, agentOptions, setup, signal })
+    : await ctx.agents.create({ sessionId: randomUUID(), meta: { cwd: spec.workspace, agentPreset: spec.preset ?? 'dscode' }, agentOptions, setup, signal });
+  try {
+    if (handle.agent.session.header.cwd !== spec.workspace) throw new Error('trigger session workspace does not match its definition');
+    if (persistent && !binding) {
+      await ctx.sessions.flush(handle.agent.session);
+      writeSessionBinding(home, spec, handle.agent.session.id);
+    }
+    return handle;
+  } catch (error) {
+    await handle.dispose();
+    throw error;
   }
-  return handle;
 }

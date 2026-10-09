@@ -229,7 +229,7 @@
     workflowEngine: true
   config:
     - id: tool-subagent-control
-      name: '@deepseek-ai/dsh-tool-subagent-control'
+      name: DSCODE_CONTROL_PLUGIN
 
     - id: tool-subagent-list-agents
       name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
@@ -318,4 +318,3 @@
 
 - id: present
   name: '@deepseek-ai/dsh-tool-present'
-

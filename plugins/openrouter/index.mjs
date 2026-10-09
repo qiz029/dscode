@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import z from '@deepseek-ai/schemastery';
 import { LlmError, RetryPolicySchema, assertUsableApiKey, resolveImageAttachmentAccess, resolveRetryPolicy } from '@deepseek-ai/dsh-llm';
 import { credentialRef } from '@deepseek-ai/dsh-credentials';
@@ -22,6 +23,7 @@ const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
 // `.volatile()` reaches the plugin as a reference the Settings form and a profile edit
 // both write, so each read below sees the current value without a change callback.
 export const Config = z.object({
+  providerName: z.union(['openrouter', 'dscode-openrouter']).default('openrouter'),
   apiKeyEnv: z.string().role('credential-ref').default('OPENROUTER_API_KEY').volatile(),
   baseURL: z.string().default(DEFAULT_BASE_URL).volatile(),
   streamIdleTimeoutMs: z.number().min(1).default(300000).volatile(),
@@ -48,6 +50,8 @@ export function resolveOptions(config = {}) {
 }
 
 export function apply(ctx, config = {}) {
+  const provider = config.providerName ?? PROVIDER;
+  const displayName = provider === 'dscode-openrouter' ? 'DSCODE OpenRouter' : 'OpenRouter';
   // The TUI renders this route's own page, so Settings must not generate a form for it.
   ctx.inject(['settings'], settingsCtx => {
     settingsCtx.effect(() => settingsCtx.settings.configure({ auto: false }, ctx.fiber));
@@ -70,9 +74,10 @@ export function apply(ctx, config = {}) {
     if (credentials !== undefined) return (await credentials.resolve(ref))?.value || undefined;
     return launchEnvironmentOf(ctx).get(ref)?.value || undefined;
   };
-  const home = process.env.DSH_HOME;
+  const home = resolveDshHome();
   const ensureModels = () => ensureOpenRouterModels({ home });
   const adapter = new OpenRouterAdapter({
+    displayName,
     options,
     ensureModels,
     resolveApiKey: async connection => {
@@ -83,8 +88,8 @@ export function apply(ctx, config = {}) {
     resolveAttachments: () => ctx.get('attachments'),
     resolveImageAccess: (attachments, ref) => resolveImageAttachmentAccess(attachments, hostPath => ctx.get('fs')?.processPathFromHostPath(hostPath), ref),
   });
-  ctx.llm.registerConfigurableProviders([{ provider: PROVIDER, displayName: 'OpenRouter', settingsNs: ctx.fiber.entry?.options.id ?? NS, settingsPath: [] }]);
-  const registration = ctx.llm.registerAdapter([PROVIDER], adapter);
+  ctx.llm.registerConfigurableProviders([{ provider, displayName, settingsNs: ctx.fiber.entry?.options.id ?? NS, settingsPath: [] }]);
+  const registration = ctx.llm.registerAdapter([provider], adapter);
   // The retry policy is captured at registration, and a reference carries no change
   // callback: re-register the route when an edit lands on a different policy.
   let registeredPolicy = options().retryPolicy;
@@ -92,7 +97,7 @@ export function apply(ctx, config = {}) {
     let policy;
     try { policy = options().retryPolicy; } catch (error) { ctx.logger.warn(error); return; }
     if (deepEqualJson(policy, registeredPolicy)) return;
-    registration.replace([PROVIDER]);
+    registration.replace([provider]);
     registeredPolicy = policy;
   });
   ctx.inject(['web'], webCtx => {

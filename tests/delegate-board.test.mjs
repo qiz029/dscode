@@ -3,7 +3,7 @@ process.env.DSCODE_LANGUAGE = 'en';
 
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boardSummary, DelegateBoard, delegateBoardFor, PRIORITIES, urgency } from '../plugins/dscode/board.mjs';
@@ -14,6 +14,48 @@ import { mount, assertFits, tick } from './fixtures/tui-mount.mjs';
 const home = mkdtempSync(join(tmpdir(), 'dscode-board-'));
 process.env.DSH_HOME = home;
 after(() => rmSync(home, { recursive: true, force: true }));
+
+test('foreground child runs appear while active and remain available for verification after disposal', async () => {
+  const live = new Map(), listeners = new Map(), effects = [];
+  let tool;
+  const owner = { status: 'running', options: {}, session: { id: 'foreground-root', header: {} } };
+  const child = { status: 'running', session: { id: 'foreground-child', header: { origin: 'subagent', parentSession: owner.session.id, cwd: '/workspace/.dscode-worktrees/child' } } };
+  live.set(owner.session.id, owner);
+  apply({ effect: fn => effects.push(fn()), tools: { register: definition => { tool = definition; } }, systemPrompt: { section() {} },
+    on: (event, callback) => listeners.set(event, callback), commands: { register() {} }, agents: { list: () => [...live.values()], get: id => live.get(id) } });
+  try {
+    await tool.execute({ action: 'add', tasks: [{ title: 'Foreground task', child: 'worker' }] }, { agent: owner });
+    await listeners.get('tools/execute')({ name: 'subagent', arguments: { name: 'worker', worktree: true, run_in_background: false }, agent: owner }, async () => {
+      const foreign = { ...child, session: { ...child.session, id: 'foreign-child', header: { ...child.session.header, parentSession: 'another-root' } } };
+      live.set(foreign.session.id, foreign);
+      listeners.get('subagent/start')?.({ id: foreign.session.id, local: true, provider: 'spawn' });
+      assert.equal(delegateBoardFor(owner.session.id).columns.pending.length, 1, 'unrelated launches cannot claim the task');
+      live.set(child.session.id, child);
+      listeners.get('subagent/start')?.({ id: child.session.id, local: true, provider: 'spawn' });
+      assert.deepEqual(delegateBoardFor(owner.session.id).columns.running.map(task => task.id), ['t1']);
+      for (const id of ['parallel-a', 'parallel-b', 'parallel-c']) live.set(id, { status: 'running', session: { id, header: { origin: 'subagent', parentSession: owner.session.id } } });
+      await listeners.get('tools/execute')({ name: 'subagent', arguments: { name: 'fifth' }, agent: owner }, async () => ({ kind: 'continuable', subagentId: 'fifth' }));
+      for (const id of ['parallel-a', 'parallel-b', 'parallel-c']) live.delete(id);
+      listeners.get('subagent/end')?.({ id: child.session.id, stopReason: 'completed' });
+      live.delete(child.session.id);
+      return { isError: false, content: [], value: { kind: 'foreground', runId: child.session.id, output: [], worktree: child.session.header.cwd } };
+    });
+    assert.equal(delegateBoardFor(owner.session.id).columns.verifying[0].worktree, child.session.header.cwd);
+    const result = await tool.execute({ action: 'complete', task_id: 't1', verification: 'Reviewed foreground result and worktree' }, { agent: owner });
+    assert.equal(result.board.complete.length, 1);
+    await tool.execute({ action: 'add', tasks: [{ title: 'Cancelled foreground task', child: 'worker' }] }, { agent: owner });
+    await listeners.get('tools/execute')({ name: 'subagent', arguments: { name: 'worker', run_in_background: false }, agent: owner }, async () => {
+      live.set(child.session.id, child); listeners.get('subagent/start')?.({ id: child.session.id, local: true, provider: 'spawn' });
+      await listeners.get('tools/execute')({ name: 'send_message', arguments: { agent_id: '/', message: 'Question before cancellation' }, agent: child }, async () => 'sent');
+      assert.equal(delegateBoardFor(owner.session.id).columns.running[0].waiting, true);
+      listeners.get('subagent/end')?.({ id: child.session.id, stopReason: 'aborted' }); live.delete(child.session.id);
+      return { isError: true, content: [], error: { code: 'ABORTED' } };
+    });
+    const cancelled = delegateBoardFor(owner.session.id);
+    assert.equal(cancelled.columns.verifying[0].id, 't2'); assert.equal(cancelled.columns.verifying[0].waiting, false);
+    assert.equal(cancelled.columns.complete.length, 1, 'cancelled work still needs verification');
+  } finally { for (const dispose of effects) dispose?.(); }
+});
 
 test('tasks move pending → running → verifying → complete, with the child status read live', () => {
   const board = new DelegateBoard({ root: join(home, 'unit') });
@@ -41,6 +83,36 @@ test('tasks move pending → running → verifying → complete, with the child 
   board.drop('root', 't2');
   const reloaded = new DelegateBoard({ root: join(home, 'unit') });
   assert.deepEqual(reloaded.view('root', () => undefined).pending.map(task => task.note), ['missed a case'], 'the board survives a restart');
+});
+
+test('rejected board changes preserve the live task, saved state and later writes', () => {
+  const root = join(home, 'rejected-changes'), board = new DelegateBoard({ root });
+  board.add('root', [{ title: 'Parser', child: 'parser' }, { title: 'Docs', child: 'docs', depends_on: ['parser'] }]);
+  let changes = 0; board.onChange(() => changes++);
+  const unchanged = (operation, error) => {
+    const before = structuredClone(board.load('root')), saved = readFileSync(board.path('root'), 'utf8'), notifications = changes;
+    assert.throws(operation, error);
+    assert.deepEqual(board.load('root'), before, 'Rejected changes must not alter the live board');
+    assert.equal(readFileSync(board.path('root'), 'utf8'), saved);
+    assert.equal(changes, notifications);
+  };
+  unchanged(() => board.update('root', 't1', { priority: 'high', depends_on: ['missing'] }), /names no task/);
+  unchanged(() => board.update('root', 't1', { priority: 'high', depends_on: ['docs'] }), /dependency cycle/);
+  board.launched('root', 'parser', 'child-id', '/workspace/parser');
+  board.waiting('root', 'child-id', true);
+  unchanged(() => board.reopen('root', 't1', ' '), /reason is required/);
+  unchanged(() => board.reopen('root', 't1', 'x'.repeat(2001)), /reason exceeds/);
+  board.complete('root', 't1', 'Reviewed diff and passed regression test');
+  unchanged(() => board.reopen('root', 't1', ''), /reason is required/);
+  board.add('root', [{ title: 'Follow-up parser', child: 'parser' }]);
+  unchanged(() => board.reopen('root', 't1', 'Needs more work'), /already planned/);
+  board.update('root', 't2', { priority: 'high' });
+  const loaded = new DelegateBoard({ root });
+  assert.deepEqual(loaded.load('root'), board.load('root'), 'A later successful save must not retain a rejected edit');
+  assert.equal(loaded.task('root', 't1').subagentId, 'child-id');
+  assert.equal(loaded.task('root', 't1').verification, 'Reviewed diff and passed regression test');
+  board.reopen('root', 't1', 'New inspection', 'inspect');
+  assert.equal(board.task('root', 't1').child, 'inspect');
 });
 
 test('the coordinator summary names free slots and what to do next', () => {
@@ -85,15 +157,19 @@ test('the dscode plugin tracks launches and questions on the board and serves it
     assert.equal(sections.has('dscode:delegate-board'), false, 'the board never edits the system prompt');
     await execute({ name: 'subagent', arguments: { name: 'parser' }, agent: owner }, () => {
       live.set('child-1', { status: 'running', options: {}, session: { id: 'child-1', header: { origin: 'subagent', parentSession: 'root' } } });
-      return { kind: 'continuable', subagentId: 'child-1' };
+      return { isError: false, content: [], value: { kind: 'continuable', subagentId: 'child-1' } };
     });
     assert.deepEqual(delegateBoardFor('root').columns.running.map(t => t.id), ['t1']);
     assert.match((await step())[0].content[0].text, /Running: t1 \/parser/, 'the launch changed the board, so it is sent again');
     assert.equal(delegateBoardFor('root').running, 1);
     const child = live.get('child-1');
     child.status = 'idle';
+    await execute({ name: 'send_message', arguments: { agent_id: '/', message: 'undelivered question' }, agent: child }, () => ({ isError: true, content: [] }));
+    assert.equal(delegateBoardFor('root').columns.verifying[0].waiting, false, 'failed questions do not create a waiting marker');
     await execute({ name: 'send_message', arguments: { agent_id: '/', message: 'which API?' }, agent: child }, () => 'sent');
     assert.equal(delegateBoardFor('root').columns.running[0].waiting, true);
+    await execute({ name: 'send_message', arguments: { agent_id: '/parser', message: 'undelivered answer' }, agent: owner }, () => ({ isError: true, content: [] }));
+    assert.equal(delegateBoardFor('root').columns.running[0].waiting, true, 'failed replies retain the waiting marker');
     await execute({ name: 'send_message', arguments: { agent_id: '/parser', message: 'the new one' }, agent: owner }, () => 'sent');
     assert.deepEqual(delegateBoardFor('root').columns.verifying.map(t => t.id), ['t1'], 'answered and idle: verifying');
     assert.match((await call({ action: 'complete', task_id: 't1', verification: 'reviewed diff, tests pass' })).board.complete[0].id, /t1/);

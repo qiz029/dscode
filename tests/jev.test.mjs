@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import { DECISIONS_PATH, buildBody, decisionsUrl, readAnswers, requestDecisions, validateQuestions } from '../plugins/jev/client.mjs';
 import { DEFAULT_THRESHOLDS, approvalQuestions, approvalState, approvalVerdict } from '../plugins/jev/approval.mjs';
 import { apply, resolveOptions } from '../plugins/jev/index.mjs';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { readMetrics } from '../plugins/session-metrics/store.mjs';
+import { summarize } from '../plugins/session-metrics/view.mjs';
 
 const noul = { q: { type: 'noul', instructions: 'Is it urgent?' } };
 const answers = overrides => ({
@@ -10,6 +15,44 @@ const answers = overrides => ({
   destructive: { type: 'score', score: 0.4, ...overrides.destructive },
   authorized: { type: 'noul', noul: 0.1, ...overrides.authorized },
   credential_risk: { type: 'noul', noul: 0.02, ...overrides.credential_risk },
+});
+
+test('Jev billed attempts reach the owning and parent ledgers; missing cost stays partial', async t => {
+  const home = mkdtempSync(join(tmpdir(), 'dscode-jev-metrics-')), previous = process.env.DSH_HOME;
+  process.env.DSH_HOME = home;
+  t.after(() => { if (previous === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previous; rmSync(home, { recursive: true, force: true }); });
+  let body = { model: 'typesafe/jev-fixture', answers: answers({}), usage: { input_tokens: 42, output_tokens: 0, cost: 0.000025 } }, calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => { calls++; if (body instanceof Error) throw body; return { ok: true, json: async () => body }; });
+  const agents = { get: id => id === 'child' ? { session: { header: { origin: 'subagent', parentSession: 'parent' } } } : undefined };
+  const ctx = { get: key => key === 'credentials' ? { resolve: async () => ({ value: 'fixture-key' }) } : key === 'agents' ? agents : undefined,
+    provide() {}, logger: { warn() {} } };
+  const service = apply(ctx);
+  const input = { sessionId: 'child', action: { tool: 'fixture', arguments: { text: 'PRIVATE_ACTION' } }, context: { userMessages: [{ text: 'PRIVATE_PROMPT' }] } };
+  assert.equal((await service.approval(input)).decision, 'allow');
+  let rows = readMetrics(home, 'child').rows;
+  assert.equal(rows.length, 2); assert.equal(rows[0].purpose, 'review');
+  assert.deepEqual(rows[1].usage, { inputTokens: 42, outputTokens: 0 }); assert.equal(rows[1].cost, 0.000025);
+  assert.equal(rows[1].model, 'typesafe/jev-fixture'); assert.deepEqual(readMetrics(home, 'parent').rows, rows);
+  assert.equal(summarize(rows).cost, 0.000025); assert.equal(summarize(rows).unknown, false);
+  assert(!JSON.stringify(rows).includes('PRIVATE_')); assert(!JSON.stringify(rows).includes('fixture-key'));
+  body = { answers: {}, usage: { input_tokens: 2, output_tokens: 0, cost: 0.00001 } };
+  assert.equal(await service.approval(input), undefined, 'An unusable verdict still has a bill');
+  assert.equal(readMetrics(home, 'child').rows.at(-1).cost, 0.00001);
+  body = new Error('transport failed'); assert.equal(await service.approval(input), undefined);
+  rows = readMetrics(home, 'child').rows; assert.equal(rows.length, 6);
+  assert.equal(rows.at(-1).cost, null); assert.equal(summarize(rows).unknown, true);
+  assert.equal(summarize(rows).pending, 0); assert.equal(summarize(rows).calls, 3);
+  for (const cost of [undefined, -1, '0.01', Infinity]) {
+    body = { answers: answers({}), usage: { input_tokens: 1, output_tokens: 0, cost } };
+    await service.approval(input); assert.equal(readMetrics(home, 'child').rows.at(-1).cost, null);
+  }
+  body = { answers: answers({}), usage: { input_tokens: 0, output_tokens: 0, cost: 0 } };
+  await service.approval(input); assert.equal(readMetrics(home, 'child').rows.at(-1).cost, 0);
+  const before = calls, count = readMetrics(home, 'child').rows.length;
+  await service.approval({ ...input, signal: AbortSignal.abort() });
+  await apply(ctx, { enabled: false }).approval(input);
+  await apply({ ...ctx, get: () => ({ resolve: async () => undefined }) }).approval(input);
+  assert.equal(calls, before); assert.equal(readMetrics(home, 'child').rows.length, count);
 });
 
 test('the decisions endpoint is built from the configured origin', () => {

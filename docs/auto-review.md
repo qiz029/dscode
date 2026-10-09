@@ -14,6 +14,24 @@ Restart `dscode` to load the plugin. New sessions default to `auto-review`; an e
 
 Both `auto-review` and `ask` are `workspace-write + approval: ask`; the difference is that the first lets the plugin review before the request. The preset was named `auto` until DSH 0.1.7 reserved that name for its own integration; a session recorded under the old name keeps its sandbox and approval values and shows as `custom` until it is switched. The underlying `never` still refuses approval requests and does not mean automatically allowed. Computer Use application authorisation and sensitive-action confirmation always go to the user.
 
+## Experimental Desktop
+
+The [combined Desktop package](browser-use.md#install-the-experimental-combined-desktop-package)
+includes this reviewer. Select **Auto review** explicitly in the session permission
+selector; installing the package preserves the Host's permission default. The
+reviewer follows the session's selected model unless configured otherwise.
+`/review-usage` reads the selected session's review audit. The audit sidecar lives
+under the Desktop Host's `$DSH_HOME/auto-review`, independently of terminal state.
+
+The same permission and fallback rules apply: a denied action does not execute,
+human fallback needs a user decision, and cancelling a pending review grants
+nothing. The `never` approval policy rejects actions that request approval before
+any reviewer or human answerer runs. Computer Use app grants remain human decisions.
+An automatic verdict is not evidence that a model reliably understands every
+action; the native execution checks use scripted decisions. See the
+[verification record](verification.md#desktop-automatic-review-execution--2026-10-06)
+for their exact scope and limits.
+
 ## What triggers a review
 
 - Workspace file changes, ordinary shell, and curl/CLI network access under existing permissions: no new approval and no review model call.
@@ -27,6 +45,14 @@ This is not a global network firewall. A `curl POST` that was already allowed, o
 ## Input and authorisation
 
 Before a tool executes, the plugin records the immutable arguments about to run and binds the review request to the agent and the call ID. Each allow applies to that one call; there is no permanent authorisation cache. The review model has no execution tools and does not receive the main agent's reasoning or a whole tool output.
+
+Built-in browser calls also include the host-observed page URL when available.
+WebMCP execution includes its previously discovered website definition as
+untrusted evidence; missing definitions fall back to a human, and a website's
+read-only annotation never exempts execution from review. The browser separately
+enforces site and Developer permissions and rechecks the proposed page and tool
+definition before execution. Approval does not grant those permissions. See
+[Browser use](browser-use.md) for the redirect and network-boundary limitations.
 
 The review input is the concrete tool arguments, the cwd, the direct user messages and the most recent denial reason. It does not additionally read `.env`, configured credentials or secret files. Common credential formats are redacted; when the action arguments look like they contain credentials the request goes to a human instead of asking a model to approve a distorted action. That detection is not complete DLP and cannot guarantee every arbitrary secret format is recognised, so do not paste credentials into arguments or user text.
 
@@ -44,11 +70,14 @@ When the reviewer route is a [Custom provider](custom-providers.md), it skips th
     timeoutMs: 30000
     maxOutputTokens: 768
     maxReviewsPerTurn: 20
+    maxBrowserReviewsPerTurn: 100
 ```
 
-provider/model must be set together or both left empty. Each request asks for at most 768 output tokens with a 30-second timeout; each agent makes at most 20 review model calls per turn, and beyond that requests go to a human. This call cap is not a billing cap: provider/adapter retries, thinking tokens and pricing are decided by the model configuration.
+provider/model must be set together or both left empty. The default output cap is 4096 tokens; the example above lowers it to 768. Reasoning tokens also consume this cap, so a low cap can leave insufficient room for a verdict and trigger human fallback. The default timeout is 30 seconds. Each agent has a budget of 20 ordinary action reviews and a separate budget of 100 built-in browser action reviews per turn; exhausted budgets send further requests to a human. This call cap is not a billing cap: provider/adapter retries, thinking tokens and pricing are decided by the model configuration.
 
-`/review-usage` shows this session's decision count, model attempts, reported input/output tokens, accumulated review time and the attempts missing complete usage. Missing usage is not treated as zero cost. A review that fails, is truncated, returns invalid JSON or times out goes to a human; when the human path is unavailable too, the native approval service refuses execution.
+Independent reviewer model calls remain charged to the requesting session as auxiliary `review` usage. They do not contribute to the main model's smoothed speed or active-request indicator, and they carry no wire session identity that could activate session-only prompt rewriting.
+
+`/review-usage` shows this session's decision count, model attempts, reported input/output tokens, accumulated review time and the attempts missing complete usage. The token totals accept both ordinary reviewer usage and Jev's original snake-case fields, including existing audit files. Missing, invalid or explicitly incomplete readings are counted as incomplete; valid reported tokens from partial readings remain in the totals. No historical files are rewritten. Missing usage is not treated as zero cost. A review that fails, is truncated, returns invalid JSON or times out goes to a human; when the human path is unavailable too, the native approval service refuses execution.
 
 Three denials in a row cancel the current agent's run for the turn. An explicit denial is never silently converted into another "human allow" path; the agent receives the denial reason and the instruction not to take an equivalent detour. The user can switch with `/permission ask` and then give a new explicit instruction.
 
@@ -81,6 +110,8 @@ One `defer` leaves two rows in the audit: first Jev's own verdict and risk score
 When Jev is not configured (no `OPENROUTER_API_KEY` resolves), is disabled, times out, errors or returns something unusable, it always returns "no verdict" and auto review continues with the original reviewer model — **a Jev failure only falls back to the old behaviour and never loosens any permission**.
 
 The `state` sent out has only two items: the call about to execute, and the direct user instructions retained for this session; each is truncated to 8000 characters and neither contains credentials.
+
+Jev requests also write metadata-only usage records to the requesting session and its live parent sessions. Reported billed costs enter the session total even when the verdict is unusable and the chat reviewer must run afterward. Failed requests and missing or invalid costs remain unknown, so the total is marked partial; a reported zero cost remains zero. Disabled, unconfigured and already-cancelled calls send no request and add no ledger entry. This accounting does not change approval decisions.
 
 Configuration lives on the `plugins/jev` line: `enabled` (default true), `model` (default `~typesafe/jev-latest`), `endpoint`, `apiKeyEnv` (default `OPENROUTER_API_KEY`), `timeoutMs` (default 8000), and the thresholds `autoAllow`(0.85), `autoDeny`(0.95), `autoDenyProbability`(0.9), `autoDenyCorroborated`(0.9), `authorizedVeto`(0.6), `credentialRisk`(0.5), `destructiveCeiling`(2). Setting `enabled: false` or removing the line returns to pure model review.
 

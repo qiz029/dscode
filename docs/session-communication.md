@@ -31,7 +31,38 @@ dscode new-task SESSION_ID
 
 `--steer` and `--defer` are mutually exclusive, and queue is the default. An explicit `--title` sets the title immediately instead of waiting for a defer to be claimed; a repeated send does not overwrite a title that was changed later. Before sending, the client prints the requestId to stderr; when the receipt is lost, retry with the same `--request-id`, target, kind, mode, body and title.
 
-The TUI `/session` shows the mailbox counts; `/mailbox` lists messages and `/mailbox cancel MESSAGE_ID` cancels a request or an unclaimed message.
+The `/session` command shows the mailbox counts and CLI examples with the current
+state directory in `--home`; `/mailbox` lists messages and `/mailbox cancel
+MESSAGE_ID` cancels a request or an unclaimed message. The experimental
+[combined Desktop package](browser-use.md#install-the-experimental-combined-desktop-package)
+mounts these same services and commands. Use its printed `--home` when addressing
+a Desktop session from the separately installed DSCODE CLI; the terminal's
+default state directory can be different.
+
+## Time context for delayed work
+
+The terminal and experimental combined Desktop package give DSCODE agents clock
+readings when inbox messages enter a model step. Each reading names the time zone
+and UTC offset. A relay with a saved composition time also reports how long it
+waited, starting at one second. The following step can report the previous turn's
+end and duration. These readings describe the Host clock and delivery timing;
+they do not add instructions to the original message body.
+
+Marks are durable auxiliary context: they consume model context and replay with
+the session. Normal terminal and Desktop chat hide them; Desktop's **Trajectory**
+view shows them for inspection. Native Standard sessions receive no DSCODE marks.
+Runtime snapshots and skill catalogs are not inbox arrivals and receive no mark.
+
+Each step adds at most eight lines, with arrivals first. An arrival burst can
+omit arrival readings beyond that limit; it leaves pending turn endings for a
+later step. Resume or plugin reload recovers up to eight recent unreported turn
+endings from the native session log. A fresh load into an older session may
+therefore report recent endings that occurred while the plugin was absent.
+Unloading stops new marks and retains existing history.
+
+The `dscode-time-marks` plugin's `timeZone` setting accepts an IANA zone such as
+`UTC` or `America/Los_Angeles`; empty uses the Host zone. An invalid zone rejects
+the plugin configuration. Clock accuracy depends on the Host system clock.
 
 ## Seeing the traffic in the terminal
 

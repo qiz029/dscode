@@ -49,8 +49,16 @@ export async function migrateOpenRouterProfile(settings) {
 }
 
 export function providerSpec(id) {
+  if (canonicalProvider(id) !== id) {
+    const provider = PROVIDERS.find(provider => provider.id === canonicalProvider(id));
+    return { ...provider, id, name: `DSCODE ${provider.name}` };
+  }
   return PROVIDERS.find(provider => provider.id === id) ?? (typeof id === 'string' && /^custom-[a-zA-Z0-9-]+$/.test(id) ? { id, name: 'Custom', aliases: [id] } : undefined);
 }
+
+/** Desktop keeps its enhanced adapter separate from the native pi-ai route. */
+export const canonicalProvider = provider => provider === 'dscode-openrouter' ? 'openrouter' : provider === 'dscode-opencode-go' ? 'opencode-go' : provider;
+export const isOpenRouterRoute = provider => canonicalProvider(provider) === 'openrouter';
 
 /**
  * Resolve a `/provider` or `/login` argument.
@@ -85,6 +93,8 @@ export function providerOfHeader(header) {
 const OPENCODE_GO_OFFICIAL = Object.freeze({ 'deepseek-flash': 'deepseek-v4-flash' });
 
 function counterpart(from, model, to) {
+  from = canonicalProvider(from);
+  to = canonicalProvider(to);
   if (from === to) return model;
   if (from === 'deepseek-official' && to === 'openrouter') return OPENROUTER_MODELS.find(entry => entry.official.includes(model))?.id;
   if (from === 'openrouter' && to === 'deepseek-official') return OPENROUTER_MODELS.find(entry => entry.id === model)?.official[0];

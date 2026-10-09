@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -81,7 +82,7 @@ export async function currentGoUsage({ home, resolveAuth, fetch, now = Date.now(
 }
 
 /** The snapshot the status line renders: this process's own, else the file another process wrote. */
-export function goUsageNow(home = process.env.DSH_HOME, now = Date.now()) {
+export function goUsageNow(home = resolveDshHome(), now = Date.now()) {
   if (state !== undefined) return state;
   if (home === undefined) return undefined;
   if (disk !== undefined && disk.home === home && now - disk.at < GO_USAGE_TTL_MS) return disk.value;

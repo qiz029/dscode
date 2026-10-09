@@ -29,7 +29,7 @@ function coverage() {
     return [resolve(root, file), { record: record.trim() + '\nend_of_record\n', lines }];
   }));
   const walk = directory => readdirSync(directory, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? walk(join(directory, entry.name)) : [join(directory, entry.name)]);
-  const files = ['plugins', 'packages', 'scripts', 'bin'].flatMap(dir => walk(join(root, dir))).filter(file => file.endsWith('.mjs'))
+  const files = ['plugins', 'packages', 'scripts', 'bin', 'extensions'].flatMap(dir => walk(join(root, dir))).filter(file => file.endsWith('.mjs'))
     // `checks` and `e2e` are the runners themselves, not measured source.
     .filter(file => !/\/(?:verify-[^/]+|[^/]*probe[^/]*|hook-fixture|test-runtime|checks|e2e)\.mjs$/.test(file))
     // packages/tui/lib is compiled, gitignored build output: the vendored terminal is

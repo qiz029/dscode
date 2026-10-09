@@ -4,6 +4,75 @@ One event starts one run. By default each run starts a fresh session; a persiste
 
 A trigger is not a way to reach a session that is already open: that is [session communication](session-communication.md) (`dscode send`, the mailbox). A persistent trigger owns its session binding; it does not attach to an arbitrary open conversation. Each run ends independently, while its session history remains durable.
 
+## Experimental Desktop scheduling
+
+The [combined Desktop package](browser-use.md#install-the-experimental-combined-desktop-package)
+adds **Settings → DSCODE → Schedules**. Open a DSCODE session in the target project,
+then select that session in the settings page. The form creates or edits an
+interval, calendar, external-event or script task. New form entries default to
+read-only execution and a persistent task-owned session. You can pause a task,
+queue one manual run, cancel a pending job, and start, stop or restart a script
+source and inspect its output. Recent job states refresh while the page is open.
+The same four agent tools and `/trigger` commands remain available inside DSCODE
+sessions, with the workspace and mutation restrictions described below.
+
+Background refresh preserves form errors and unsaved entries. A refresh failure
+appears separately and clears after a successful refresh. Source output clears
+when you select another session or the selected session closes.
+Polling keeps the form editable. An action submitted during a refresh waits for
+that refresh to finish and then runs once, even if the refresh failed. A failed
+action focuses its error message so it is visible after submitting a long form;
+background refresh does not move focus.
+
+If a manual run cannot be confirmed, its button changes to **Retry**. While the
+settings page remains mounted, retries reuse the same request for that workspace
+and task, including when queuing succeeded but refreshing the result failed.
+Running another task or selecting another workspace does not discard that
+request. Closing and reopening the page discards this retry state; inspect
+**Recent jobs** before submitting another run after reopening it.
+
+Delivery is off by default. **Enable delivery and resume on launch** starts the
+Desktop queue owner for every registered project in this state directory and
+saves that choice in `<state>/config/desktop-scheduler.json`. Later Desktop
+launches start it after the Host's providers and preset hooks are ready.
+**Stop delivery and disable resume** cancels active trigger runs, drains script
+sources and disables automatic startup. Pending jobs and task definitions stay
+saved. A paused definition does not consume its pending jobs.
+
+Desktop uses `/trigger scheduler status|start|stop` and the corresponding
+`trigger_scheduler` actions. It does not install a launchd service. Another
+process may already own the same queue; the page reports that owner and cannot
+stop it. Use the terminal or service manager that started it. A native background
+job cancellation stops the current Desktop owner but retains the saved launch
+preference; use the settings stop action to disable that preference too.
+
+Keep Desktop running for delivery. Its quit and update inspection counts an
+enabled scheduler as active work, including time between task runs. A graceful
+quit drains its owned work while keeping the saved preference. After a crash,
+unclaimed jobs can resume on the next enabled launch; a task already running at
+the crash is recorded as interrupted and is not automatically executed again.
+Removing the package stops its owner and retains the saved data. Reinstallation
+can resume delivery if the saved preference is enabled, so disable delivery
+before removal when you do not want that behavior.
+
+Desktop runs require the DSCODE preset and `read-only` or `workspace-write`
+permission. Plan mode, read-only management sessions, unattended runs and
+subagents cannot change schedules through the agent tools or session-bound
+settings controls. The global delivery buttons are explicit user settings.
+An unattended task also cannot stop the shared scheduler through `job_kill`.
+Events do not grant authority, and required approvals stop unattended execution.
+
+This remains an unpublished integration. The queue and shutdown path have been
+qualified against two independent Host versions and the signed macOS Desktop
+Host. Component tests, shared Web-client interaction and the signed macOS
+Electron settings cover task creation, editing, manual queuing, cancellation and
+delivery controls. Windows source execution still requires qualification.
+The updated package passed native macOS installation, upgrade, removal and
+reinstallation with delivery enabled: its preference, definition and pending job
+survived, and enabled delivery resumed after upgrade and reinstallation.
+Scripted model fixtures establish
+delivery and cleanup, not live-model task quality.
+
 ## Define a trigger
 
 | Where | Who reads it |
@@ -50,7 +119,7 @@ The agent has four tools over the same definition files and SQLite jobs used by 
 | `trigger_manage` | `list`, `get`, `create`, `update`, `enable`, `disable`, `register`, `unregister` |
 | `trigger_jobs` | `schedule`, `list`, `cancel` |
 | `trigger_source` | `status`, `start`, `stop`, `restart`, `logs` |
-| `trigger_scheduler` | `status`, `install` |
+| `trigger_scheduler` | Terminal: `status`, `install`; experimental Desktop: `status`, `start`, `stop` |
 
 For example, ask “Check this project's build every weekday at 9 am in America/Los_Angeles” or “Run this trigger once in 30 minutes.” The agent creates a project-local definition with `trigger_manage`, then uses `trigger_jobs` for a one-shot event. Creating or updating a `calendar` or `interval` definition also registers its cadence. A `script` definition registers a supervised producer. An `external` definition has no recurring schedule. `update` merges top-level fields; a supplied nested object, such as `limits`, replaces that entire object and omitted fields inside it receive their normal defaults. Both `new` and `persistent` session modes are supported.
 

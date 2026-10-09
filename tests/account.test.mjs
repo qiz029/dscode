@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { setTimeout as delay } from 'node:timers/promises';
 import { apply, authorizeReady, followAttempt, openBrowser, runSignIn, settled } from '../plugins/account/index.mjs';
 import { balanceLine, callbackOrigin, signInBlocked, statusLines } from '../plugins/account/state.mjs';
 
@@ -111,7 +112,12 @@ test('following an attempt returns as soon as the predicate holds, and survives 
 
   // A wait that outlives its budget reports the last view instead of hanging or throwing.
   const stuck = fakeAccount([signedOut({ id: 'a1', phase: 'initializing' })]);
-  const last = await followAttempt(stuck, 'a1', view => settled(view, 'a1'), new AbortController().signal, { timeoutMs: 40 });
+  // AbortSignal.timeout is unreferenced. The real account Host has a callback
+  // server; keep this serverless double alive until its deadline can fire too.
+  const [last] = await Promise.all([
+    followAttempt(stuck, 'a1', view => settled(view, 'a1'), new AbortController().signal, { timeoutMs: 40 }),
+    delay(50),
+  ]);
   assert.equal(last.attempt.phase, 'initializing');
 });
 

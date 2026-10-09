@@ -61,8 +61,32 @@ jobs:
           if-no-files-found: error
           path: release-candidates.tar.gz
 
+  desktop:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run prepare:desktop
+      - name: Qualify the exact public Desktop tarball
+        env:
+          DSCODE_TEST_CHROME: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+        run: |
+          test -x "$DSCODE_TEST_CHROME"
+          npm run release:desktop -- .research/desktop-release-runtime
+      - run: tar -czf desktop-candidate.tar.gz artifacts/desktop/release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-candidate
+          if-no-files-found: error
+          path: desktop-candidate.tar.gz
+
   publish:
-    needs: build
+    needs: [build, desktop]
     if: github.ref_type == 'tag' || inputs.publish || inputs.verify_credentials
     runs-on: macos-14
     timeout-minutes: 60
@@ -79,9 +103,13 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: release-candidates
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-candidate
       - name: Restore the verified artifacts
         run: |
           tar -xzf release-candidates.tar.gz
+          tar -xzf desktop-candidate.tar.gz
           test -f artifacts/npm/bundle-pack.json || { echo "::error::the release candidate archive is incomplete"; exit 1; }
           test -f artifacts/local/hub-verification.json || { echo "::error::the hub verification record is missing"; exit 1; }
       # Read-only: both tokens authenticate and this version is still free. A manual
@@ -91,9 +119,10 @@ jobs:
           NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
           DSH_HUB_TOKEN: ${{ secrets.DSH_HUB_TOKEN }}
         run: |
-          test -n "$NPM_PUBLISH_TOKEN" || { echo "::error::add the NPM_PUBLISH_TOKEN secret (granular npm token with bypass 2FA for @toddzheng024/dscode and @toddzheng024/dscode-bundle)"; exit 1; }
+          test -n "$NPM_PUBLISH_TOKEN" || { echo "::error::add the NPM_PUBLISH_TOKEN secret (granular npm token with bypass 2FA for the launcher, bundle and Desktop package)"; exit 1; }
           test -n "$DSH_HUB_TOKEN" || { echo "::error::add the DSH_HUB_TOKEN secret (Hub CI token)"; exit 1; }
           node scripts/check-publish-credentials.mjs
+          npm run publish:desktop -- credentials
       # Never publish the launcher before its Hub release resolves: the three
       # phases each re-check the artifact hashes they verified above.
       - name: Publish the bundle to npm
@@ -111,6 +140,22 @@ jobs:
         env:
           NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
         run: npm run publish:hub -- launcher
+      - name: Publish the qualified Desktop plugin and verify public discovery
+        if: github.ref_type == 'tag' || inputs.publish
+        env:
+          NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
+          DSH_HUB_TOKEN: ${{ secrets.DSH_HUB_TOKEN }}
+        run: |
+          npm run publish:desktop -- npm
+          npm run publish:desktop -- hub
+          npm run publish:desktop -- verify
+          npm run publish:desktop -- promote
+      - uses: actions/upload-artifact@v4
+        if: github.ref_type == 'tag' || inputs.publish
+        with:
+          name: desktop-public-verification
+          if-no-files-found: error
+          path: artifacts/local/desktop-public-install.json
       # The curl installer, `dscode update` and the README all fetch these tarballs from
       # the release: the prebuilt ones install without npm, the source one is the fallback.
       - name: Attach the release tarballs to the GitHub release
@@ -119,7 +164,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(node -p "require('./package.json').version")
-          set -- "artifacts/dscode-$version.tar.gz" "artifacts/dscode-$version-darwin-arm64.tar.gz" "artifacts/dscode-$version-darwin-x64.tar.gz"
+          set -- "artifacts/dscode-$version.tar.gz" "artifacts/dscode-$version-darwin-arm64.tar.gz" "artifacts/dscode-$version-darwin-x64.tar.gz" artifacts/desktop/release/*.tgz artifacts/desktop/release/*.sha256 artifacts/desktop/release/*-README.md artifacts/desktop/release/*-release-notes.md
           for tarball in "$@"; do
             test -f "$tarball" || { echo "::error::missing $tarball"; exit 1; }
           done

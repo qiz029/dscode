@@ -81,11 +81,22 @@ export function serializeMessages(messages, { model, system, images, dialect = {
     wire.push({ role: 'user', content: [{ type: 'text', text: TOOL_RESULT_IMAGE_TEXT }, ...pendingImages] });
     pendingImages = [];
   };
+  const appendResult = (callId, content) => {
+    const nested = contentParts(content, images);
+    const text = nested.filter(part => part.type === 'text').map(part => part.text).join('');
+    const attached = nested.filter(part => part.type !== 'text');
+    wire.push({ role: 'tool', tool_call_id: callId, content: text || (attached.length > 0 ? '(see attached image)' : '(no output)') });
+    pendingImages.push(...attached);
+  };
   for (const message of messages) {
     if (message.role === 'system') {
       flush();
       const text = textOf(message.content);
       if (text.length > 0) wire.push({ role: 'system', content: text });
+      continue;
+    }
+    if (message.role === 'tool') {
+      appendResult(message.toolCallId, message.content);
       continue;
     }
     if (message.role === 'assistant') {
@@ -94,20 +105,14 @@ export function serializeMessages(messages, { model, system, images, dialect = {
       if (entry) wire.push(entry);
       continue;
     }
-    const results = message.role === 'tool'
-      ? [{ toolCallId: message.toolCallId, content: message.content }]
-      : message.content.filter(block => block.type === 'tool-result');
-    const parts = message.role === 'tool' ? [] : contentParts(message.content.filter(block => block.type !== 'tool-result'), images);
+    const results = message.content.filter(block => block.type === 'tool-result');
+    const parts = contentParts(message.content.filter(block => block.type !== 'tool-result'), images);
     if (parts.length > 0 || results.length === 0) {
       flush();
       wire.push({ role: 'user', content: collapse(parts) });
     }
     for (const result of results) {
-      const nested = contentParts(result.content, images);
-      const text = nested.filter(part => part.type === 'text').map(part => part.text).join('');
-      const attached = nested.filter(part => part.type !== 'text');
-      wire.push({ role: 'tool', tool_call_id: result.toolCallId, content: text || (attached.length > 0 ? '(see attached image)' : '(no output)') });
-      pendingImages.push(...attached);
+      appendResult(result.toolCallId, result.content);
     }
   }
   flush();

@@ -1,6 +1,7 @@
 import z from '@deepseek-ai/schemastery';
 import { watchFile, unwatchFile } from 'node:fs';
 import { credentialRef } from '@deepseek-ai/dsh-credentials';
+import { createToolResultMessage, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm';
 import { CustomStore, validateProfile, customId, keyRef, isCustomId } from './config.mjs';
 import { CustomAdapter, authHeaders } from './adapter.mjs';
 
@@ -10,10 +11,10 @@ export const Config = z.object({ path: z.string().default('') });
 export const getCustomProviders = ctx => ctx.get('dscodeCustom');
 
 export class CustomProviders {
-  constructor({ store = new CustomStore(), credentials, fetch = globalThis.fetch, changed = () => {} }) {
+  constructor({ store = new CustomStore(), credentials, resolveAttachments, resolveImageAccess, fetch = globalThis.fetch, changed = () => {} }) {
     Object.assign(this, { store, credentials, fetch, changed });
     this.providers = [];
-    this.adapter = new CustomAdapter({ profile: id => this.providers.find(p => p.id === id), resolveKey: p => this.resolveKey(p), fetch });
+    this.adapter = new CustomAdapter({ profile: id => this.providers.find(p => p.id === id), resolveKey: p => this.resolveKey(p), resolveAttachments, resolveImageAccess, fetch });
   }
   async refresh() {
     const snapshot = await this.store.read();
@@ -69,19 +70,24 @@ export class CustomProviders {
     // Transport exceptions can carry request headers; do not retain their cause.
     // eslint-disable-next-line preserve-caught-error
     catch (error) { if (signal?.aborted) throw Error('Discovery cancelled'); throw Error(error.message?.startsWith('Model discovery returned HTTP') ? error.message : 'Could not discover models; check the address and key, or add a model manually'); }
+    if (signal?.aborted) throw Error('Discovery cancelled');
     if (!Array.isArray(listing.data)) throw Error('Model listing has no data array; enter a model manually');
     const backend = listing.data.some(m => m.owned_by === 'omlx') ? 'omlx' : 'generic';
     let status = [];
     if (backend === 'omlx') {
-      try { status = (await this.json(profile, '/models/status', key, signal)).models ?? []; } catch { /* Optional oMLX metadata; the standard listing still works. */ }
+      try {
+        const metadata = await this.json(profile, '/models/status', key, signal);
+        if (Array.isArray(metadata?.models)) status = metadata.models;
+      } catch { /* Optional oMLX metadata; the standard listing still works. */ }
+      if (signal?.aborted) throw Error('Discovery cancelled');
     }
     const positive = value => Number.isSafeInteger(value) && value > 0;
     const models = [];
     for (const entry of listing.data) {
       if (typeof entry.id !== 'string' || !entry.id.trim() || models.some(m => m.id === entry.id)) continue;
-      const detail = status.find(m => m.id === entry.id);
-      const contextWindow = detail?.max_context_window ?? entry.max_model_len ?? entry.context_length ?? entry.context_window;
-      const maxTokens = detail?.max_tokens ?? entry.max_output_tokens;
+      const detail = status.find(m => m?.id === entry.id);
+      const contextWindow = [detail?.max_context_window, entry.max_model_len, entry.context_length, entry.context_window].find(positive);
+      const maxTokens = [detail?.max_tokens, entry.max_output_tokens].find(value => positive(value) && (!contextWindow || value < contextWindow));
       models.push({ id: entry.id, name: entry.name ?? entry.id, thinking: 'default',
         ...(positive(contextWindow) ? { contextWindow, contextSource: 'server' } : {}),
         ...(positive(maxTokens) && (!positive(contextWindow) || maxTokens < contextWindow) ? { maxTokens, outputSource: 'server' } : {}) });
@@ -112,10 +118,10 @@ export class CustomProviders {
       if (calls.length !== 1 || calls[0].name !== 'lookup_probe' || JSON.parse(calls[0].arguments).name !== 'studio') throw Error('Tool probe returned an unexpected call');
       stages.push({ name: 'Streamed tool arguments', status: 'passed' });
       messages.push({ role: 'assistant', source: { provider: profile.id, model: model.id, replayState: first.replayState }, content: first.blocks });
-      messages.push({ role: 'user', content: [{ type: 'tool-result', toolCallId: calls[0].id, content: [{ type: 'text', text: '{"value":"CUSTOM_TOOL_OK"}' }] }] });
+      messages.push(createToolResultMessage({ callId: calls[0].id, content: [{ type: 'text', text: '{"value":"CUSTOM_TOOL_OK"}' }], isError: false }));
       const second = await call(messages, tools);
       if (second.blocks.some(b => b.type === 'tool-call') || !second.blocks.some(b => b.type === 'text' && b.text.trim() === 'CUSTOM_TOOL_OK')) throw Error('Tool result replay returned an unexpected answer');
-      stages.push({ name: 'Tool result round trip', status: 'passed' }, { name: 'Thinking and long context', status: 'not tested' });
+      stages.push({ name: 'Tool result round trip', status: 'passed' }, { name: 'Images, thinking and long context', status: 'not tested' });
     } catch (error) { stages.push({ name: 'Probe', status: 'failed', message: signal?.aborted ? 'Cancelled' : error.message }); }
     return stages;
   }
@@ -123,7 +129,10 @@ export class CustomProviders {
 
 export async function apply(ctx, config = {}) {
   let registration;
-  const service = new CustomProviders({ store: new CustomStore(config.path || undefined), credentials: ctx.credentials, changed: profiles => {
+  const service = new CustomProviders({ store: new CustomStore(config.path || undefined), credentials: ctx.credentials,
+    resolveAttachments: () => ctx.get('attachments'),
+    resolveImageAccess: (attachments, ref) => resolveImageAttachmentAccess(attachments, hostPath => ctx.get('fs')?.processPathFromHostPath(hostPath), ref),
+    changed: profiles => {
     const ids = profiles.map(p => p.id);
     if (registration) registration.replace(ids);
     else if (ids.length) registration = ctx.llm.registerAdapter(ids, service.adapter);

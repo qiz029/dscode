@@ -5,8 +5,10 @@ import { createEmailSender } from '../email/smtp.mjs';
 export const name = 'dscode-email-tools';
 export const inject = ['tools', 'systemPrompt'];
 export function apply(ctx) {
-  const sender = createEmailSender();
-  const contacts = createEmailContacts();
+  return registerEmailTools(ctx);
+}
+
+export function registerEmailTools(ctx, { sender = createEmailSender(), contacts = createEmailContacts() } = {}) {
   const recipient = args => {
     const resolved = contacts.resolve(args.to);
     if (resolved.alias && args.resolved_to !== resolved.to) throw Error('Resolve the email alias first, then supply its exact address as resolved_to. The mapping may have changed.');

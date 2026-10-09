@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { apply, name } from '../plugins/time-marks/index.mjs';
+import { apply, applyDesktop, pendingTimeMarks, name } from '../plugins/time-marks/index.mjs';
 import { arrivalMark, clockText, elapsedText, hostTimeZone, resolveTimeZone, turnEndMark } from '../plugins/time-marks/marks.mjs';
 import { createTranscriptView, projectEvent } from '../packages/tui/src/render/projection.ts';
 
@@ -54,9 +54,23 @@ test('a closed turn reports how long it ran', () => {
     'Time mark: 2026-09-19T02:03:10-07:00[America/Los_Angeles] — turn 3 ended.');
 });
 
+test('resume restores only pending turn endings from authoritative history', () => {
+  const start = (turn, time) => ({ type: 'turn/start', data: { turn }, time });
+  const end = (turn, time) => ({ type: 'turn/end', data: { turn }, time });
+  const mark = { type: 'user/message', data: { source: { kind: name, form: 'snapshot', closedTurns: [1] } } };
+  const arrivalOnly = { type: 'user/message', data: { source: { kind: name, form: 'snapshot', closedTurns: [] } } };
+  assert.deepEqual(pendingTimeMarks([start(1, 10), arrivalOnly, end(1, 20)]), [{ turn: 1, startedAt: 10, endedAt: 20 }]);
+  assert.deepEqual(pendingTimeMarks([start(1, 10), end(1, 20), arrivalOnly]), [{ turn: 1, startedAt: 10, endedAt: 20 }], 'an arrival-only burst has not reported the pending ending');
+  assert.deepEqual(pendingTimeMarks([start(1, 10), end(1, 20), mark]), []);
+  assert.deepEqual(pendingTimeMarks([end(1, 20), { ...mark, data: { source: { kind: 'plugin', plugin: name }, content: [{ type: 'text', text: 'Time mark: clock — turn 1 ended.' }] } }]), []);
+  assert.deepEqual(pendingTimeMarks([end(1, 20), { type: 'user/message', data: { source: { kind: 'user' } } }, start(2, 30), end(2, 50)]),
+    [{ turn: 1, endedAt: 20 }, { turn: 2, startedAt: 30, endedAt: 50 }]);
+  assert.deepEqual(pendingTimeMarks(Array.from({ length: 10 }, (_, i) => end(i + 1, i * 100))).map(item => item.turn), [3, 4, 5, 6, 7, 8, 9, 10]);
+});
+
 function fixture() {
   const hooks = {};
-  const ctx = { on: (event, listener, options) => { hooks[event] = { listener, options }; } };
+  const ctx = { effect: callback => { hooks.dispose = callback(); }, on: (event, listener, options) => { hooks[event] = { listener, options }; } };
   apply(ctx, {});
   const agent = { id: 'fixture' };
   const step = (messages, turn = 1, stepNumber = 1) => hooks['agent/pre-step'].listener(
@@ -88,6 +102,46 @@ test('a step with nothing to say adds no message', async () => {
   // Our own marks are context, not an arrival, even on a future delivery path.
   const own = { id: 'own', content: [], source: { kind: 'plugin', plugin: name } };
   assert.deepEqual((await step([own])).messages, [own], 'the admitted message passes through untouched');
+});
+
+test('only messages admitted by the remaining pre-step handlers receive marks', async () => {
+  const { hooks, agent } = fixture();
+  const excluded = { id: 'excluded', source: { kind: 'discarded-producer' } };
+  const accepted = { id: 'accepted', source: { kind: 'user' }, content: [] };
+  const context = { id: 'catalog', source: { kind: 'skill-catalog' }, content: [] };
+  const decision = await hooks['agent/pre-step'].listener({ agent, messages: [excluded, accepted], turn: 1, step: 1 },
+    async () => ({ kind: 'enter', messages: [accepted, context] }));
+  assert.equal(decision.messages[1], accepted);
+  assert.equal(decision.messages[2], context);
+  assert.match(decision.messages[0].content[0].text, /user message arrived/);
+  assert(!decision.messages[0].content[0].text.includes('discarded-producer'));
+  assert(!decision.messages[0].content[0].text.includes('skill-catalog'), 'runtime additions are not inbox arrivals, even without a snapshot form');
+  const rejected = { kind: 'reject', reason: 'fixture' };
+  assert.equal(await hooks['agent/pre-step'].listener({ agent, messages: [accepted], turn: 2, step: 1 }, async () => rejected), rejected);
+});
+
+test('unloading during an awaited pre-step cannot inject a late mark', async () => {
+  const { hooks, agent } = fixture(), pending = Promise.withResolvers();
+  const decision = { kind: 'enter', messages: [{ id: 'late', source: { kind: 'user' }, content: [] }] };
+  const work = hooks['agent/pre-step'].listener({ agent, turn: 1, step: 1, messages: decision.messages }, () => pending.promise);
+  hooks.dispose(); pending.resolve(decision);
+  assert.equal(await work, decision);
+});
+
+test('Desktop keeps native Standard unchanged and resets pending marks when reloaded', async () => {
+  const hooks = {};
+  const ctx = { agentPresets: { composedPreset: scope => scope.preset },
+    on: (event, listener) => { hooks[event] = listener; }, effect: cb => { hooks.dispose = cb(); } };
+  const standard = { ctx: { preset: 'standard' } }, agent = { ctx: { preset: 'dscode' } };
+  const enter = { kind: 'enter', messages: [] };
+  applyDesktop(ctx, { timeZone: 'UTC' });
+  hooks['agent/turn-stopping']({ agent: standard, turn: 1 });
+  assert.equal(await hooks['agent/pre-step']({ agent: standard, messages: [], turn: 2, step: 1 }, async () => enter), enter);
+  hooks['agent/turn-stopping']({ agent, turn: 1 });
+  assert.match((await hooks['agent/pre-step']({ agent, messages: [], turn: 2, step: 1 }, async () => enter)).messages[0].content[0].text, /turn 1 ended/);
+  hooks['agent/turn-stopping']({ agent, turn: 2 });
+  hooks.dispose(); applyDesktop(ctx, { timeZone: 'UTC' });
+  assert.equal(await hooks['agent/pre-step']({ agent, messages: [], turn: 3, step: 1 }, async () => enter), enter);
 });
 
 test('a closed turn is marked on the step that answers it', async () => {

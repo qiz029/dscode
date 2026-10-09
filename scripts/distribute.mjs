@@ -6,7 +6,7 @@ import { PREBUILT_MARKER } from './self-update.mjs';
 
 const ENTRIES = [
   'package.json', 'package-lock.json', '.npmrc', '.env.example', 'LICENSE',
-  'bin', 'scripts', 'packages', 'plugins', 'tests', 'presets', 'config/cordis.patch.yml', 'config/preset.json',
+  'bin', 'scripts', 'packages', 'plugins', 'extensions', 'tests', 'presets', 'config/cordis.patch.yml', 'config/preset.json',
   'config/mcp.local.example.yml', 'config/auto-review.patch.yml', 'README.md', 'docs', 'install.sh',
 ];
 

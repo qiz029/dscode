@@ -1,0 +1,36 @@
+/* Scoped to DSCODE. Tokens are supplied by Harness ui-theme (0.2.0-rc.2).
+   Do not target the host's hashed classes or change other plugins' controls. */
+.dscode-ui { box-sizing: border-box; color: var(--dsw-alias-label-primary); font-family: inherit; font-size: 14px; line-height: 22px; min-width: 0; }
+.dscode-ui *, .dscode-ui *::before, .dscode-ui *::after { box-sizing: border-box; }
+.dscode-ui h2 { font-size: 16px; line-height: 24px; font-weight: 500; margin: 0; }
+.dscode-ui h3, .dscode-ui legend { font-size: 14px; line-height: 22px; font-weight: 500; margin: 0; }
+.dscode-ui p { margin: 0; color: var(--dsw-alias-label-tertiary); }
+.dscode-ui button { cursor: pointer; min-height: 36px; padding: 6px 14px; border: .5px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-md); color: var(--dsw-alias-label-primary); background: transparent; font: inherit; }
+.dscode-ui button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.dscode-ui button:disabled { opacity: .4; cursor: default; }
+.dscode-ui :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }
+.dscode-ui :is(input:not([type=checkbox]), select, textarea) { min-width: 0; max-width: 100%; min-height: 36px; padding: 6px 10px; border: .5px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-md); color: var(--dsw-alias-label-primary); background: var(--dsw-alias-settings-card-fill); font: inherit; }
+.dscode-ui input[type=checkbox] { accent-color: var(--dsw-alias-state-business-primary); margin-right: 8px; }
+.dscode-ui label { color: var(--dsw-alias-label-secondary); font-size: 13px; }
+.dscode-ui fieldset { min-width: 0; }
+.dscode-ui [role=alert] { color: var(--dsw-alias-state-error-primary); overflow-wrap: anywhere; }
+.dscode-ui [role=status] { font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.dscode-settings { padding: 8px 0; display: grid; gap: 16px; }
+.dscode-heading { display: flex; align-items: center; gap: 8px; }
+.dscode-heading svg { flex: none; width: 20px; height: 20px; }
+.dscode-heading span { margin-left: auto; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
+.dscode-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 12px; border-bottom: .5px solid var(--dsw-alias-border-l2); }
+.dscode-tabs button { border: 0; padding: 6px 12px; }
+.dscode-tabs button[aria-pressed=true] { background: var(--dsw-specific-sidebar-nav-item-active); }
+.dscode-setup { display: grid; gap: 12px; }
+.dscode-steps { list-style: none; margin: 0; padding: 0; counter-reset: setup; }
+.dscode-steps li { counter-increment: setup; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; padding: 16px 0; border-bottom: .5px solid var(--dsw-alias-border-l2); }
+.dscode-steps li::before { content: counter(setup); display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.dscode-steps strong { display: block; font-weight: 500; margin-bottom: 4px; }
+.dscode-steps p, .dscode-note { font-size: 13px; line-height: 20px; }
+.dscode-activation { display: grid; gap: 16px; padding: 16px 0; }
+.dscode-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.dscode-ui .dscode-primary { background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-foreground); border-color: transparent; }
+.dscode-ui .dscode-primary:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }
+
+.dscode-ui .dscode-card { background: var(--dsw-alias-settings-card-fill); margin: 0; display: grid; gap: 12px; }

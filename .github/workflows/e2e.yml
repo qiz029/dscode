@@ -39,4 +39,7 @@ jobs:
       # directory over artifacts/local makes the packaging steps race the host's
       # leftovers. Every assertion is in this job's log either way.
       - name: Run the Linux end-to-end steps
-        run: docker run --rm -t dscode-e2e:local
+        # bubblewrap needs mount namespaces for real source-script probes. The
+        # default AppArmor/seccomp profiles can deny mounts and pivot_root.
+        # The disposable container has no host mounts or Docker socket access.
+        run: docker run --rm --cap-add SYS_ADMIN --security-opt apparmor=unconfined --security-opt seccomp=unconfined -t dscode-e2e:local

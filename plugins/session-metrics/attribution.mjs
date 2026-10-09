@@ -17,3 +17,14 @@ export function chargeTo(sessionId, purpose, fn) {
 export function currentCharge() {
   return charges.getStore();
 }
+
+/** Charge a live child request to its ancestors once, with the original session first. */
+export function metricRecipients(agents, sessionId) {
+  const recipients = new Set([sessionId]);
+  let child = agents?.get(sessionId);
+  while (child?.session.header.origin === 'subagent' && child.session.header.parentSession && !recipients.has(child.session.header.parentSession)) {
+    recipients.add(child.session.header.parentSession);
+    child = agents.get(child.session.header.parentSession);
+  }
+  return recipients;
+}

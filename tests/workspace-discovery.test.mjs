@@ -92,6 +92,25 @@ test('the preset reads both ancestor results from the launcher environment', () 
   assert.equal(instructions.config.maxBytes, 65536);
 });
 
+test('session-owned instruction outputs retain the shared global file without overwriting another workspace', () => {
+  const { home, project, state, cleanup } = scaffold();
+  try {
+    const other = join(home, 'other/project');
+    write(join(other, '.git/HEAD'), 'fixture');
+    write(join(home, 'ws/AGENTS.md'), 'alpha only');
+    write(join(home, 'other/AGENTS.md'), 'beta only');
+    write(join(state, 'AGENTS.md'), 'shared global');
+    const alpha = join(state, 'sessions/alpha/instructions');
+    const beta = join(state, 'sessions/beta/instructions');
+    assert.equal(writeWorkspaceInstructions({ cwd: project, home, stateDir: state, outputDir: alpha }), alpha);
+    assert.equal(writeWorkspaceInstructions({ cwd: other, home, stateDir: state, outputDir: beta }), beta);
+    assert.equal(readFileSync(join(alpha, 'AGENTS.md'), 'utf8'), 'shared global\n\nalpha only\n');
+    assert.equal(readFileSync(join(beta, 'AGENTS.md'), 'utf8'), 'shared global\n\nbeta only\n');
+    assert.equal(readFileSync(join(state, 'AGENTS.md'), 'utf8'), 'shared global');
+    assert.equal(existsSync(join(state, 'workspace-instructions')), false);
+  } finally { cleanup(); }
+});
+
 test('the aggregate is bounded so an oversized ancestor cannot take the user-global file down with it', () => {
   const { home, project, state, cleanup } = scaffold();
   try {

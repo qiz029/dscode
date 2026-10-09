@@ -44,7 +44,7 @@ export function requestBody(options, { entry, images } = {}) {
   if (effort !== undefined && reasoning !== undefined && wireEffort === undefined) {
     throw new LlmError(`${LABEL} model "${options.model}" does not offer reasoning effort "${effort}"`, 'UNSUPPORTED_REASONING_EFFORT');
   }
-  const messages = ultraRequest(options, serializeMessages(options.messages, { model: options.model, system: options.system, images, dialect: DIALECT }));
+  const messages = ultraRequest(options, serializeMessages(options.messages, { model: options.model, system: options.system, images, dialect: { ...DIALECT, provider: options.provider ?? PROVIDER } }));
   // Delegation tools are offered at every effort; workflow and ralph never are.
   const tools = (options.tools ?? []).filter(tool => tool.name !== 'workflow' && tool.name !== 'ralph')
     .map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.parameters } }));

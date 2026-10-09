@@ -22,9 +22,10 @@ If a provider rejects a request for content filtering, the turn stops with a `CO
 | `/goal [<objective>\|clear\|edit <objective>\|pause\|resume]` | Show or control this session's goal: one objective plus the round cap that bounds automatic continuation. `/goal[20] <objective>` creates the goal with a 20-round cap, and `/goal[20]` re-caps the current goal — so an unattended task stops after the rounds you allowed instead of running indefinitely. A cap with no goal, or a control word after a cap, is refused with the usage. |
 | `/trigger` (alias `/triggers`) | Manage this workspace's triggers without a model turn. The default overview shows definitions, registrations and scheduler status. Use `new`, `create`/`update` with JSON fields, `enable`/`disable`, `register`/`unregister`, `run`, `schedule`, `jobs`/`cancel`, `events`, `runs`, `source` and `scheduler`; `/trigger help` lists the syntax. `run` queues an event and reports a stopped scheduler. `new` creates a disabled starter. Mutations require a writable session outside plan mode; scheduler installation starts the shared service for all registered projects. [Triggers](triggers.md). |
 | `/doctor [local\|preview]` | Read-only runtime health plus self-diagnosis from recent warning/error logs and session event traces for this workspace. By default, sends bounded, redacted event metadata to the selected model. `local` skips the model; `preview` shows the exact evidence payload. Does not read conversation text, tool arguments, or tool output. Falls back to local findings if model analysis fails. |
+| `/browser` | Browser status, start/stop, profiles, extension pairing, site permissions, Developer mode, WebMCP, human handoff/resume and tab retention; see [Browser use](browser-use.md). |
 | `/mcp` | List MCP entry IDs, loader state and transport; credentials, headers and environment values are not printed. |
 | `/mcp tools <id>` | List registered tools for a server. |
-| `/mcp enable|disable|reconnect <id>` | Change a server for this process. All agents must be idle. Reconnect disposes and remounts the server. Host servers are configured in `config/mcp.local.yml`; the dscode preset mounts none. IDs may be full loader IDs or an unambiguous short ID. |
+| `/mcp enable|disable|reconnect <id>` | Change a server for this process. All agents must be idle. Reconnect disposes and remounts the server. Host servers are configured in `config/mcp.local.yml`; the dscode preset mounts none at startup. Built-in browser connections are managed separately with `/browser`. IDs may be full loader IDs or an unambiguous short ID. |
 | `/skills` | Effective skill catalog, source, provider and invocation permissions. |
 | `/skills <name>` | Description and effective file path, without injecting its instructions into the model. |
 | `/skills conflicts` | Duplicate names in the configured filesystem roots, with the runtime's effective source. Hidden candidates from runtime/remote providers are not enumerable. |
@@ -53,6 +54,86 @@ The reviewer sees the latest direct user task and at most 160 KiB of selected di
 Task completion guidance keeps scope and acceptance checks stable. Once requested behavior and required checks pass, the agent proceeds to delivery; optional refactors and optimizations are separate follow-ups. Changes invalidate only the checks they affect unless evidence requires broader verification. This guidance reduces unnecessary work, but does not mechanically prove that arbitrary shell commands or agent decisions satisfy the task.
 
 `dscode doctor` runs the same diagnostic collector and model analysis without opening the TUI. It checks the current working directory's recent sessions, including subagents, and reads the owner-only `diagnostics/runtime.jsonl` warning/error journal under `DSH_HOME`. `--local` skips the model; `--preview` shows the exact evidence payload. A model call is limited to 45 seconds; missing credentials or model failure leave a local trace summary. These commands diagnose existing evidence and do not execute tools or repair state. `npm run doctor` remains the separate deterministic integration fixture.
+
+Child aliases such as `/reader` are scoped to their parent session. Names of
+continuable children survive a Host restart: sending to the alias resumes the
+same child, and the name stays reserved while that child is cold. Looking up a
+name does not start a turn. Finished foreground children cannot be resumed by
+name; reopen their tasks with an available name to launch new work. A child's
+`send_message` to `/` addresses its parent. Waiting indicators change only after
+successful delivery, so a failed reply keeps the outstanding question visible.
+Edits rejected by validation leave the task unchanged, including its child, worktree,
+verification evidence and priority. Reopening a completed task must use a child
+name that is not already planned for another open task.
+
+Both foreground and background named child runs enter the task board when the
+runtime accepts their launch. A foreground call waits for its child and releases
+that one-shot agent before returning; the task then remains in Verifying with
+its recorded worktree path. Cancellation or failure after launch also leaves the
+task for review. The coordinator must inspect the outcome and explicitly
+complete, reopen or drop it. A task is never marked complete solely because the
+child stopped. Starting a child unsuccessfully before launch leaves it Pending.
+
+## Experimental Desktop delegation board
+
+The combined Desktop package adds **Delegation board** to the right sidebar.
+Select an open DSCODE main session and run `/delegate <task>` in chat to start
+coordination. Its board shows Pending, Running, Verifying and Complete tasks,
+priorities, dependencies, blocked tasks, children waiting for the coordinator,
+and the number of running child slots. Expand **Task details** for owned scope,
+checks, worktree paths, reopen reasons and recorded verification evidence.
+
+The view reads the same live board as the coordinator and refreshes once per
+second while visible. Reading it does not launch children, change tasks or merge
+work. Closing another session leaves the selected board available; switching
+sessions clears the previous view. Task records survive restart, while running
+and verifying status is derived from live children. Recorded evidence describes
+the coordinator's checks; displaying it does not run those checks again.
+
+Child sessions and native Standard sessions cannot read a DSCODE main session's
+board through this view. The terminal continues to use `/delegate-dashboard`;
+Desktop's `/delegate` instructions point to **Delegation board**. The package is
+experimental and unpublished; see [Browser use](browser-use.md#install-the-experimental-combined-desktop-package)
+for local build and installation instructions.
+
+## Experimental Desktop diagnostics
+
+In the combined Desktop package, type complete commands such as
+`/memories status`, `/shell status`, `/review --staged`,
+`/mailbox cancel <message-id>` and `/computer status` in the composer. Their
+arguments go to the native command handler. The diagnostic commands below also
+accept arguments there. None of these commands accepts attachments. Existing
+behavior still applies: a valid `/review` uses the reviewer model, bare
+`/dscode-doctor` requests model analysis, and memory generation may run in the
+background. `/dscode-doctor local` skips model analysis.
+
+The experimental combined Desktop package registers `/dscode-status`,
+`/dscode-doctor [local|preview]`, `/dscode-skills [name|conflicts]` and
+`/dscode-mcp [list|tools|enable|disable|reconnect]`. Select a DSCODE session before
+using them. Native command names keep their existing handlers, and Standard
+sessions cannot use the DSCODE diagnostic commands. Desktop keeps its own updater
+and terminal interface; the package does not add `/dscode-update`,
+`/dscode-shell-exec` or `/dscode-hooks`.
+
+Desktop doctor reads up to six recent sessions in the selected session's
+workspace, including the current session. A workspace with no persisted history
+does not fall back to another workspace. Warning/error logs come from the shared
+Host and can include other workspaces. The collector summarizes session event
+metadata without copying conversation bodies, tool arguments or tool output.
+Known credential patterns in logs and command results are redacted; log messages
+can still contain other application details. Use `preview` to inspect the
+evidence, `local` for local findings, or the command without an argument for one
+bounded analysis call to the selected model. That call is charged to the invoking
+session under `doctor`; failure falls back to local findings.
+
+MCP changes apply only to mutable Host entries and require all agents to be idle.
+Preset modules are inspection-only. Skill conflict reports explicitly mark
+per-agent filesystem roots as unchecked, because the preset inventory does not
+expose their configuration. Current user guides ship in the package's `docs/`
+directory, and the DSCODE agent's documentation prompt points there. Links to
+unbundled developer records open the public repository, which may lag this
+unpublished package. See [Browser use](browser-use.md#install-the-experimental-combined-desktop-package)
+for local installation.
 
 ## Hooks
 

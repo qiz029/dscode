@@ -1,15 +1,81 @@
-# The 90-second demo
+# Demo guide
 
-Most coding agents work alone. This script shows the three things DSCODE does
-instead — sessions that can see each other, an independent reviewer for code and
-for approvals, and side questions that never disturb the main conversation — in
-an order a stranger can follow.
+## Desktop feature summary
+
+The 0.7.35 Desktop preview installs into official Harness Desktop.
+Its qualified target is macOS Apple Silicon with runtime **0.2.0-rc.2**.
+This version removes bundled Hub functionality. Demonstrate DSCODE on its own
+and state which version is being shown.
+
+| Area | What the user gains | Boundary |
+| --- | --- | --- |
+| DSCODE coding workflow | A DSCODE preset with custom model/account settings, session communication, memory, usage and delegation views | Terminal-only panels retain their terminal UI; model behavior depends on the configured provider. |
+| DSCODE browser integration | Per-site and Developer permissions, screenshot preview and point annotations delivered to the conversation, manual login handoff | Official Harness already has Browser Use. DSCODE connects external Chrome; it does not enhance or share login state with the official embedded browser. |
+| DSCODE optional services | Email inbox integration and scheduled work | Account configuration and explicit opt-in are required. Desktop must stay open for scheduled delivery. |
+
+Hub community discovery belongs in a separate product demo. The removal does
+not deliver a standalone Hub Desktop package. See [Plugin Hub](plugin-hub.md)
+for the behavior of earlier published versions.
+
+## Five-minute Desktop walkthrough draft
+
+Allow separate time for downloads and account setup. This complete timed
+walkthrough has not been rehearsed with a live model.
+
+### Prepare
+
+1. Use a disposable Desktop profile and scratch workspace. For the published
+   demo, install `@toddzheng024/dscode-desktop@0.7.35` through **Plugins → Add
+   plugin**, then choose **Enable now**. Fully quit and reopen Desktop after
+   updating. Hub is separate from this package. For local development builds,
+   follow the [installation guide](browser-use.md#install-the-experimental-combined-desktop-package)
+   and identify the checkout being demonstrated.
+2. Select the **DSCODE** preset when creating the session. Harness 0.2.0-rc.2
+   gates the preset picker behind **Show coding view**; ensure that option and
+   the Agent presets UI are enabled before recording. A Standard session does
+   not acquire the complete DSCODE preset just because the package is installed.
+3. Configure a model in private, confirm one short response and install Chrome.
+   For annotations, choose a model that accepts images. Do not record API keys,
+   account login or personal workspace contents.
+4. Rehearse one small coding task and the browser annotation with that model.
+   Keep the matching release page or local-build information ready. A local
+   build must not be presented as the published 0.7.35 archive.
+
+### Walkthrough
+
+| Approximate time | Action | Point to explain |
+| --- | --- | --- |
+| 0:00–0:30 | Show the enabled DSCODE plugin and a DSCODE session. | Existing DSH Desktop users can add the coding workflow through a plugin. |
+| 0:30–2:00 | Run the rehearsed small coding task in the scratch workspace. | Show actual changes and verification; model quality is not established by the installation checks. |
+| 2:00–4:00 | Ask the agent to open https://example.com. Grant that origin if requested. In **Browser preview**, refresh, select a point, enter “Summarize the text at this point” and choose **Send annotation**. | Basic browsing overlaps official Browser Use. The demonstrated DSCODE additions are the permission controls and screenshot/point handoff into the conversation. |
+| 4:00–4:30 | Open the session usage view; show the delegation view only if the task actually delegated. | Views reflect the current DSCODE session and available records. |
+| 4:30–5:00 | Show the matching install specification and release notes, or label the local build. | Published availability and an unreleased change are distinct states. |
+
+### Rehearsal and reset
+
+- Reopen Desktop after a package update. Confirm both plugin activation and a
+  working new DSCODE session before starting the recording.
+- Refresh the screenshot and select a new point after navigation or expiry.
+  Image understanding needs an image-capable model. Describe text-only delivery
+  as text-only.
+- Stop the session browser between rehearsals. Its Chrome profile and login
+  state are separate from the official embedded browser.
+- Keep standalone DMG delivery, Hub integration, coordinated update/changelog
+  UI, Profile rollback and native Computer Use permission qualification out of
+  this demo's claims. See [Browser use](browser-use.md) and the
+  [0.7.35 release notes](releases/0.7.35.md) for published behavior and limits.
+
+## The 90-second terminal demo
+
+The terminal script shows sessions that can see each other, an independent
+reviewer for code and approvals, and side questions that leave the main
+conversation's context unchanged.
 
 The recording lands in `assets/demo.gif`; put that image directly under the
-README tagline. Every command below is real, so the demo is reproducible: the
-only unpredictable part is the model's own wording.
+README tagline. Rehearse the commands below with the selected model before
+recording: response quality and timing are not established by this script.
 
-## Record it
+### Record it
 
 ```sh
 brew install asciinema agg
@@ -39,12 +105,12 @@ Before you hit record:
   or full home paths). Any interface language works; the captions below are
   English.
 
-## Shot list
+### Shot list
 
 | Time | Screen | Do this | Say this (captions) |
 |---|---|---|---|
 | 0:00–0:06 | Shell in the scratch repo | `dscode` | "A coding agent in your terminal — macOS, local, one pinned harness." |
-| 0:06–0:22 | TUI, main session | Type `Add a bounds check to parse() in parser.ts and run the tests.` | "It reads the file, edits it, runs the tests." |
+| 0:06–0:22 | TUI, main session | Type `Trim whitespace and ignore empty fields in parse() in parser.ts. Add and run tests.` | "It reads the file, edits it, runs the tests." |
 | 0:22–0:36 | Same terminal | `/btw why would the first turn have a cold cache?` — leave the main turn running | "A side question runs in its own read-only child session. The answer never enters the main conversation." |
 | 0:36–0:56 | Second terminal | `dscode sessions` then `dscode send <the other session id> --steer "review the change in parser.ts and reply with what you would change"` | "Two sessions on one machine can find each other, hand work over and answer." |
 | 0:56–1:06 | Back in the first terminal | Show the reply arriving (`/mailbox`, or the agent's `read_session`/`send_session` tools if you asked it to hand the review over itself) | "The answer comes back as a message, not as a new task." |
@@ -60,7 +126,7 @@ Two beats worth keeping if you have the seconds:
 - `/agents` at the end: the `/btw` child session is a real, read-only session,
   not a hidden prompt.
 
-## Reproduce it without recording
+### Reproduce it without recording
 
 ```sh
 npm i -g @toddzheng024/dscode

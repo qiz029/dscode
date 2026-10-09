@@ -11,18 +11,20 @@ function nativeReasoning(message, profile, model) {
     ? replay.nativeReasoning ?? [] : [];
 }
 
-export function requestBody(profile, model, options) {
+export function requestBody(profile, model, options, images) {
   const budget = options.maxTokens ?? model.maxTokens ?? Math.min(4096, Math.floor(model.contextWindow / 4));
   const temperature = options.temperature === undefined ? {} : { temperature: options.temperature };
   const tools = toolDefinitions(options);
-  const messages = serializeMessages(options.messages, { system: options.system, model: model.id, dialect: { provider: profile.id, reasoningContent: () => false } });
+  const serialization = { model: model.id, images, dialect: { provider: profile.id, reasoningContent: () => false } };
   const effort = options.reasoningEffort;
   const thinking = effort === 'off' ? false : effort === 'high' ? true : model.thinking === 'off' ? false : model.thinking === 'on' ? true : undefined;
   if (effort !== undefined && !(profile.backend === 'omlx' && ['off', 'high'].includes(effort))) throw new LlmError('This custom model does not advertise that reasoning effort', 'UNSUPPORTED_REASONING_EFFORT');
   if (thinking !== undefined && profile.backend !== 'omlx') throw new LlmError('Thinking overrides currently require an identified oMLX service; use Server default', 'INVALID_REQUEST');
   const extra = thinking === undefined ? {} : profile.api === 'chat-completions' ? { enable_thinking: thinking } : { chat_template_kwargs: { enable_thinking: thinking } };
   const common = { model: model.id, stream: true, ...temperature, ...extra };
-  if (profile.api === 'chat-completions') return { ...common, messages, max_tokens: budget, stream_options: { include_usage: true }, ...(tools.length ? { tools: tools.map(f => ({ type: 'function', function: f })) } : {}), ...(options.stop ? { stop: options.stop } : {}) };
+  if (profile.api === 'chat-completions') return { ...common,
+    messages: serializeMessages(options.messages, { ...serialization, system: options.system }),
+    max_tokens: budget, stream_options: { include_usage: true }, ...(tools.length ? { tools: tools.map(f => ({ type: 'function', function: f })) } : {}), ...(options.stop ? { stop: options.stop } : {}) };
 
   // Stateless replay: the local session remains authoritative, including native
   // reasoning items/signatures when the same endpoint protocol produced them.
@@ -33,14 +35,25 @@ export function requestBody(profile, model, options) {
     if (profile.api === 'responses') input.push(...native);
     const parts = [];
     if (profile.api === 'anthropic' && message.role === 'assistant') parts.push(...native);
-    for (const wire of serializeMessages([message], { model: model.id, dialect: { provider: profile.id, reasoningContent: () => false } })) {
+    for (const wire of serializeMessages([message], serialization)) {
       if (wire.role === 'tool') {
         input.push({ type: 'function_call_output', call_id: wire.tool_call_id, output: wire.content });
-        parts.push({ type: 'tool_result', tool_use_id: wire.tool_call_id, content: wire.content });
+        parts.push({ type: 'tool_result', tool_use_id: wire.tool_call_id, content: wire.content,
+          ...(message.role === 'tool' && message.isError ? { is_error: true } : {}) });
       } else {
         if (wire.content) {
-          input.push({ role: wire.role, content: [{ type: wire.role === 'assistant' ? 'output_text' : 'input_text', text: wire.content }] });
-          parts.push({ type: 'text', text: wire.content });
+          const content = typeof wire.content === 'string' ? [{ type: 'text', text: wire.content }] : wire.content;
+          if (profile.api === 'responses') input.push({ role: wire.role, content: content.map(part => part.type === 'text'
+            ? { type: wire.role === 'assistant' ? 'output_text' : 'input_text', text: part.text }
+            : { type: 'input_image', image_url: part.image_url.url, detail: 'auto' }) });
+          else for (const part of content) {
+            if (part.type === 'text') parts.push(part);
+            else {
+              // The shared serializer creates data URLs from prepared attachment bytes.
+              const [, mediaType, data] = /^data:([^;]+);base64,(.*)$/.exec(part.image_url.url);
+              parts.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data } });
+            }
+          }
         }
         for (const call of wire.tool_calls ?? []) {
           input.push({ type: 'function_call', call_id: call.id, name: call.function.name, arguments: call.function.arguments });
@@ -57,6 +70,11 @@ export function requestBody(profile, model, options) {
     }
   }
   if (profile.api === 'responses') return { ...common, input, ...(system ? { instructions: system } : {}), max_output_tokens: budget, store: false, include: ['reasoning.encrypted_content'], ...(tools.length ? { tools: tools.map(t => ({ type: 'function', ...t })) } : {}) };
+  // Native parallel tool results arrive as separate messages. After merging
+  // their user turns, all results must precede accompanying text and screenshots.
+  for (const message of anthropic) if (message.role === 'user') {
+    message.content = [...message.content.filter(p => p.type === 'tool_result'), ...message.content.filter(p => p.type !== 'tool_result')];
+  }
   return { ...common, messages: anthropic, ...(system ? { system } : {}), max_tokens: budget, ...(tools.length ? { tools: tools.map(t => ({ name: t.name, description: t.description, input_schema: t.parameters })) } : {}), ...(options.stop ? { stop_sequences: options.stop } : {}) };
 }
 

@@ -30,11 +30,17 @@ export function validateProfile(input) {
     for (const field of ['contextWindow', 'maxTokens']) if (model[field] !== undefined && !positive(model[field])) throw Error(`${field} must be a positive integer`);
     if (model.maxTokens && model.contextWindow && model.maxTokens >= model.contextWindow) throw Error('Output budget must be smaller than the context window');
     if (!['default', 'off', 'on'].includes(model.thinking ?? 'default')) throw Error('Invalid thinking setting');
+    const inputModalities = model.inputModalities ?? ['text'];
+    if (!Array.isArray(inputModalities) || !inputModalities.includes('text') || inputModalities.some(m => !['text', 'image'].includes(m)) || new Set(inputModalities).size !== inputModalities.length) throw Error('Model input must be text or text and image');
     return {
       id: model.id.trim(), name: cleanText(model.name) ? model.name.trim() : model.id.trim(),
       ...(model.contextWindow ? { contextWindow: model.contextWindow, contextSource: model.contextSource === 'server' ? 'server' : 'user' } : {}),
-      ...(model.maxTokens ? { maxTokens: model.maxTokens, outputSource: model.outputSource === 'server' ? 'server' : 'user' } : {}),
+      // A deliberately blank output budget selects the calculated default and
+      // remains a user override when the service is discovered again.
+      ...(model.maxTokens ? { maxTokens: model.maxTokens, outputSource: model.outputSource === 'server' ? 'server' : 'user' }
+        : model.outputSource === 'user' ? { outputSource: 'user' } : {}),
       thinking: model.thinking ?? 'default',
+      inputModalities: inputModalities.includes('image') ? ['text', 'image'] : ['text'],
     };
   });
   if (new Set(models.map(m => m.id)).size !== models.length) throw Error('Model IDs must be unique within a provider');

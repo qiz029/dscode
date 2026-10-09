@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { randomUUID } from 'node:crypto';
 import { appendMetric } from './store.mjs';
 import { estimateCost, priceVersionFor } from './pricing.mjs';
@@ -7,7 +8,7 @@ import { refreshOpenRouterModels } from '../openrouter/models.mjs';
 import { REPLAY_KIND } from '../openrouter/wire.mjs';
 import { providerSpec } from '../providers/catalog.mjs';
 import { createSmoothedRate } from './rate.mjs';
-import { currentCharge } from './attribution.mjs';
+import { currentCharge, metricRecipients } from './attribution.mjs';
 
 // Chunks that carry generated output; the first one marks time to first token.
 const OUTPUT_CHUNKS = new Set(['text-delta', 'reasoning-delta', 'tool-call-delta']);
@@ -30,7 +31,7 @@ export function apply(ctx) {
     snapshots.set(session, { seq: session.seq, value });
     return { ...value, currentTps: smoothedRate.get(session), requestActive };
   }));
-  const home = process.env.DSH_HOME;
+  const home = resolveDshHome();
   // Remaining balance is best-effort decoration: resolve the key lazily (never
   // inject the credentials service, so a missing one cannot fail startup), keep
   // the request on a five-minute cache, and never let it reach the render path.
@@ -64,12 +65,7 @@ export function apply(ctx) {
     if (!sessionId || !home) { yield* next(); return; }
     const id = randomUUID(), time = Date.now();
     const purpose = options.purpose ?? charge?.purpose ?? 'agent';
-    const recipients = new Set([sessionId]);
-    let child = ctx.agents.get(sessionId);
-    while (child?.session.header.origin === 'subagent' && child.session.header.parentSession && !recipients.has(child.session.header.parentSession)) {
-      recipients.add(child.session.header.parentSession);
-      child = ctx.agents.get(child.session.header.parentSession);
-    }
+    const recipients = metricRecipients(ctx.agents, sessionId);
     const save = entry => { for (const recipient of recipients) record(recipient, { ...entry, sessionId }); };
     save({ kind: 'start', id, time, provider: options.provider, model: options.model, purpose });
     let usage, firstTokenTime, billed;

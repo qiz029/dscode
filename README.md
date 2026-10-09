@@ -35,7 +35,7 @@ Most coding agents work alone. DSCODE is built on the opposite assumption: sessi
 | `dscode send <session-id> --steer "review the change in parser.ts and reply"` | Work handed to another session on this machine; it can read your transcript, answer, and hand the result back. |
 | `/permission auto-review` · `/review-usage` | Approvals decided by an independent reviewer from your instruction, with what it allowed and what it cost. |
 
-The [90-second demo script](docs/demo.md) has the shot list, the exact commands, and how to record it.
+The [demo guide](docs/demo.md) summarizes DSCODE features, outlines a five-minute Desktop walkthrough, and retains the 90-second terminal shot list and recording commands.
 
 ## 🧭 Core features
 
@@ -54,6 +54,8 @@ The [90-second demo script](docs/demo.md) has the shot list, the exact commands,
 | **[Agent email](docs/email.md)** | A local `[ToAgent]` inbox shared by all sessions: Enter steers a message into the live session as user-selected context, and with Gmail configured the agent can send mail through the same approval flow. |
 
 ## 🆕 What's new
+
+**0.7.35** — Removes bundled Hub functionality, scopes Desktop browser tools to DSCODE sessions, and aligns settings and activation guidance with Harness. Existing Desktop models/accounts remain usable; TUI Browser Use is retained. See the [release notes](docs/releases/0.7.35.md).
 
 **0.7.32** — OpenCode Go now signs in only with an OpenCode account: `/opencode login` shows a code, opens the console and signs in in the background. The login renews itself and sends requests to the inference endpoint the console names for your organisation. The console API key from 0.7.31 is no longer read, so run `/opencode login` once. The footer shows the subscription's usage of its five-hour, weekly and monthly caps, and when an exhausted one lifts. The consent page names the OpenCode CLI, whose login client DSCODE uses.
 
@@ -77,7 +79,7 @@ Every release is listed in the **[changelog](docs/CHANGELOG.md)**; the [0.7.29 n
 
 ## 🚀 Quick start
 
-Requires **macOS 14+, Node 22.19+ (22.x) or 24+, npm, Git and Google Chrome**.
+Requires **macOS 14+, Node 22.19+ (22.x) or 24+, npm and Git; Google Chrome for browser tasks**.
 
 ```sh
 npm install -g @toddzheng024/dscode
@@ -99,7 +101,7 @@ The one-line installer resolves the newest release, verifies the sha256 digest G
 
 The first launch installs the pinned complete preset from [DSH Plugin Hub](https://dshpluginhub.ai)—no manual plugin assembly, no global pnpm. Then enter `/login` and paste your DeepSeek API key into the hidden input: it is stored locally in `~/.dscode/credentials.yaml` with `0600` permissions, shared across projects and installed versions, and never sent to the agent. A `DEEPSEEK_API_KEY` environment variable takes precedence. To use OpenRouter, enter `/provider openrouter`: DSCODE asks for your OpenRouter key (stored the same way, or taken from `OPENROUTER_API_KEY`) and switches the session to the DeepSeek model you were on; `/model` then lists a curated set instead of the whole catalogue—the current flagship models from DeepSeek, GLM, Kimi, Qwen and MiMo, plus the flagship line of Anthropic, OpenAI, Google and xAI—and typing searches it. Those five are tuned and tested; the Western flagships work on a best-effort basis. A model outside the list still runs when a session is already on it. `/provider deepseek` switches back, and `/login openrouter` replaces the key. An [OpenCode Go](docs/opencode-go.md) subscription works the same way: `/opencode login` signs in with your OpenCode account, then `/provider opencode-go` offers Go's DeepSeek, GLM, Kimi, MiMo, LongCat, Hy and Space Bunny models. Use `/model` to pick a model or another provider, and `/effort` to adjust reasoning effort; the default route is `deepseek-official/deepseek-flash`. The TUI checks npm for a newer release at startup and `/update` upgrades the whole installation after you exit.
 
-Use `/provider custom` to add a self-hosted or private API with Chat Completions, Responses or Anthropic Messages. Configure the endpoint and optional key, discover or enter models, set their context windows, and test streaming tool calls. Saved services appear by name in `/provider`; Enter switches to their model. See [Custom model providers](docs/custom-providers.md).
+Use `/provider custom` to add a self-hosted or private API with Chat Completions, Responses or Anthropic Messages. Configure the endpoint and optional key, discover or enter models, set their context windows, and test streaming tool calls. For a model that supports vision, enable **Input → Text and images** to send screenshots and image attachments; the default is text only. Saved services appear by name in `/provider`; Enter switches to their model. See [Custom model providers](docs/custom-providers.md).
 
 **Six interface languages, English by default.** `/language` opens the picker and `/language ja` switches straight to a locale; 中文, 日本語 and 한국어 are accepted as names too. The set is English, 简体中文, 繁體中文, 日本語, 한국어 and Español. The choice is stored per machine in `~/.dsh/dsh-code/language.json`, and `DSCODE_LANGUAGE=es` overrides it for one run.
 
@@ -112,10 +114,18 @@ dscode doctor                     # analyse recent logs and session traces
 dscode --version                  # print the DSCODE version
 ```
 
-The launcher checks installed bundles and Harness dependencies against the recommended combination; on a mismatch it prints one consolidated warning and keeps running, without editing dependencies or downgrading. No MCP server is mounted by default. Desktop tools load progressively through a skill, screenshot understanding needs a model that accepts images, the MCP bridge provides tools rather than resources or prompts, and Computer Use permissions are granted separately in macOS. Add your own MCP servers — Chrome DevTools MCP among them — in `config/mcp.local.yml`.
+The launcher checks installed bundles and Harness dependencies against the recommended combination; on a mismatch it prints one consolidated warning and keeps running, without editing dependencies or downgrading. Browser tools load on demand: ask the agent to use the browser, or run `/browser start`. CSS rule inspection uses snapshot element IDs and requires global and per-site Developer grants. Dedicated persistent profiles, existing-Chrome connections, experimental extension sharing of selected tabs, tab retention and the experimental Desktop sidebar preview with point annotations and site permission controls are described in [Browser use](docs/browser-use.md). While visible and idle, the sidebar synchronizes permission changes made elsewhere, clears affected previews and keeps annotation drafts. The preview has been verified in the shared Web client and the official macOS Electron application using an isolated local fixture. Desktop tools load progressively through a skill; screenshot understanding needs an image-capable model. The MCP bridge supports tools and resources; Computer Use permissions are granted separately in macOS. Add other MCP servers in `config/mcp.local.yml`.
+
+An experimental combined Desktop package adds the DSCODE preset, custom-model and account settings, browser preview, durable session communication, cross-session memory and opt-in scheduling to the official application. **Settings → DSCODE → Schedules** manages tasks and enables delivery while Desktop stays open. Build and local installation instructions are in [Browser use](docs/browser-use.md#install-the-experimental-combined-desktop-package). Native installation, upgrade, removal and reinstallation with scheduling enabled, plus rendered account and scheduling controls, were checked on macOS Desktop 0.2.0-rc.2; qualification limits are covered in [Triggers](docs/triggers.md#experimental-desktop-scheduling). The package also includes an experimental [native Computer Use adapter](docs/computer-use.md); window observation and input still await qualification with macOS Accessibility permission. Durable [time context](docs/session-communication.md#time-context-for-delayed-work) gives DSCODE agents arrival times, relay waits and previous turn endings while keeping ordinary chat clear. Namespaced [Desktop diagnostics](docs/tui-commands.md#experimental-desktop-diagnostics) inspect the selected session, skills and Host MCP entries; matching user guides ship with the package. The [Desktop email inbox](docs/email.md#experimental-desktop-inbox) previews shared local mail, connects IMAP or Gmail OAuth, and adds a selected message to a DSCODE session. Background sync is opt-in; outgoing mail keeps the existing approval and receipt rules. The [Session usage sidebar](docs/session-metrics.md#experimental-desktop-usage) shows DSCODE cost, context, cache, request speed and per-turn estimates. The [Delegation board sidebar](docs/tui-commands.md#experimental-desktop-delegation-board) follows the selected main session’s tasks, dependencies, worktrees and verification evidence. The Desktop plugin is distributed separately from the terminal packages; terminal popups and terminal-only commands keep their existing UI.
+
+The Desktop plugin uses the package name `@toddzheng024/dscode-desktop`. Version 0.7.35 removes bundled [Plugin Hub](docs/plugin-hub.md) UI, discovery tools and runtime dependencies; DSCODE remains listed in the Hub catalog. It targets Harness runtime 0.2.0-rc.2. In official **Plugins → Add plugin**, enter `@toddzheng024/dscode-desktop@0.7.35`, install, then choose **Enable now**. Fully quit and reopen Desktop after updating. Both `preview` and the default `latest` channel receive this verified preview release.
+
+**Settings → DSCODE** groups setup, Models, Accounts and Schedules at the same level; **Plugins → DSCODE · Community** opens the same page. DSCODE browser tools are scoped to DSCODE sessions. Existing Desktop models/accounts work through the normal picker; optional provider settings use the native credential store. Enable **Show coding view** and **Agent presets**, then choose DSCODE for a new session after fully restarting.
 
 <details>
 <summary><b>Other install paths, upgrades and rollback</b></summary>
+
+The Desktop package includes DSCODE's unified-diff `apply_patch` command for its persistent, child and fresh shells. It leaves the Host PATH and native Standard shell providers unchanged.
 
 **From source**
 
@@ -178,6 +188,7 @@ dscode update 0.7.29           # an exact version
 | `/permission auto-review`, `/permission ask` | Switch between automatic review and human approval |
 | `/review-usage` | Extra tokens and time spent on automatic review |
 | `/shell`, `/shell reset` | Inspect or reset the persistent terminal |
+| `/browser` | Browser sessions, profiles, extension pairing, site permissions, Developer mode, WebMCP, handoff and tab retention |
 | `/mcp`, `/skills`, `/hooks` | Manage MCP, inspect skill sources, view or reload hooks |
 | `/plan`, `/goal` | Plans and long-running objectives |
 | `/agents` | Sub-agent tasks, status and current activity |
@@ -240,6 +251,9 @@ The bundle generates its modified modules at build time and never rewrites third
 | [Session cards](docs/session-cards.md) | Project, workspace and topic fields, and how they are derived |
 | [Memory](docs/memory.md) | Global cross-session memory, background usage and switches |
 | [Persistent shell and Ultra](docs/dscode-ultra.md) | Presets, reasoning effort, per-child effort and worktree isolation |
+| [Computer Use](docs/computer-use.md) | Native macOS Desktop adapter, app grants, image evidence and qualification limits |
+| [Browser use](docs/browser-use.md) | Browser setup, profiles, site permissions, Developer mode, WebMCP and task evaluation with DeepSeek or custom models |
+| [Plugin Hub](docs/plugin-hub.md) | DSCODE/Hub separation and behavior of earlier published packages |
 | [Account login](docs/account-login.md) | Signing the DeepSeek route in with a browser account instead of an API key: the flow, the loopback callback, the limits |
 | [OpenCode Go](docs/opencode-go.md) | Running a session on an OpenCode Go subscription: the account login, footer usage, the models and their reasoning efforts, what is not supported yet |
 | [Custom model providers](docs/custom-providers.md) | Connect self-hosted and private APIs: protocols, model discovery, context windows, credentials and tool-call testing |
@@ -248,7 +262,7 @@ The bundle generates its modified modules at build time and never rewrites third
 | [Skills and workspace instructions](docs/skills.md) | Discovery scopes, the ancestor mode and instruction files |
 | [TUI commands](docs/tui-commands.md) | Command reference and hooks |
 | [Session metrics](docs/session-metrics.md) | Definition of the footer TPS, context, cost and cache figures |
-| [Demo script](docs/demo.md) | The 90-second demo: shot list, exact commands, how to record it |
+| [Demo guide](docs/demo.md) | Desktop feature summary and walkthrough draft; 90-second terminal shot list and recording commands |
 | [npm + Hub distribution](docs/hub-distribution.md) | Bundle, Hub release and launcher pipeline |
 | [tar distribution](docs/distribution.md) | The standalone tar installer |
 | [Verification](docs/verification.md) | What the maintained checks cover |

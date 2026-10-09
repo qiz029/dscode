@@ -1,3 +1,4 @@
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { runShell } from './shell.mjs';
 import { VERSION_PATTERN, scheduleUpdate } from './update.mjs';
 import { readLanguage, t } from '../i18n/messages.mjs';
@@ -6,7 +7,7 @@ import { readFile, readdir, access, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
-import { standingMountFor } from '@deepseek-ai/dsh-agent-preset-registry';
+import { inspectComposition, presetInventoryLines, presetMcpNotice } from './composition.mjs';
 import { hookEvents, validateHooks } from './hooks.mjs';
 import { redact } from '../auto-review/policy.mjs';
 import { plainConfig } from '../cordis-config/plain.mjs';
@@ -93,26 +94,50 @@ export async function staleLayers(resolvedPath, sources = []) {
 }
 
 export function apply(ctx) {
-  const diagnosticsHome = process.env.DSH_HOME ?? process.env.DSCODE_HOME;
+  return install(ctx, false);
+}
+
+export function applyDesktop(ctx) {
+  return install(ctx, true);
+}
+
+function install(ctx, desktop) {
+  const diagnosticsHome = resolveDshHome();
   // A minimal composition (and the unit fixtures) may mount no logger; diagnostics are best-effort.
   if (diagnosticsHome) ctx.logger?.exporter?.({ levels: { default: 2 }, export: message => recordRuntimeLog(diagnosticsHome, message) });
-  const entries = agent => [
-    ...(ctx.get('loader')?.entries() ?? []),
-    ...(agent?.ctx ? standingMountFor(agent.ctx)?.tree.entries() ?? [] : []),
-  ].filter(e => e.options.group !== true);
+  const composition = agent => {
+    const inventory = inspectComposition(ctx, agent);
+    if (!desktop) return inventory;
+    // Older runtimes also expose mutable standing preset entries. Desktop keeps
+    // those out of process-wide controls on every supported runtime version.
+    return { ...inventory, hostOnly: true,
+      entries: [...(ctx.get('loader')?.entries() ?? [])].filter(entry => entry.options.group !== true) };
+  };
+  const entries = agent => composition(agent).entries;
   const mcps = agent => entries(agent).filter(e => e.options.name === '@deepseek-ai/dsh-mcp-client');
   const hook = () => entries().find(e => e.options.id === 'dscode-hooks');
   const state = e => e.disabled ? 'disabled' : phases[e.fiber?.state] ?? 'unavailable';
   let changing = false;
+  const commandName = name => desktop ? `dscode-${name}` : name;
   const mutate = async fn => {
     if (changing || ctx.agents.list().some(a => a.status === 'running')) return fail('Wait until all agents are idle before changing process-wide plugins.');
     changing = true;
     try { return await fn(); } finally { changing = false; }
   };
-  const register = (name, description, handler) => ctx.commands.register({ name, description, handler: async inv => {
-    try { const result = await handler(inv); return { ...result, text: redact(result.text ?? '') }; }
-    catch (e) { return fail(redact(`${name}: ${e.message}`)); }
-  }});
+  const register = (name, description, handler) => {
+    // Desktop owns its updater and shell UI. Register diagnostics separately
+    // so the native commands and other presets retain their own handlers.
+    if (desktop && !['status', 'doctor', 'mcp', 'skills'].includes(name)) return;
+    const hint = { doctor: '[preview|local]', mcp: '[list|tools <id>|enable <id>|disable <id>|reconnect <id>]', skills: '[list|conflicts|<name>]' }[name];
+    return ctx.commands.register({ name: commandName(name), description, ...(hint ? { input: { hint } } : {}), handler: async inv => {
+      if (desktop && ctx.agentPresets.composedPreset(inv.agent.ctx) !== 'dscode') return fail('Choose a DSCODE session to use DSCODE diagnostics.');
+      try {
+        const result = await handler(inv);
+        return { ...result, text: redact(result.text ?? '') };
+      }
+      catch (e) { return fail(redact(`${name}: ${e.message}`)); }
+    }});
+  };
   register('shell-exec', 'Run a user shell command (also !command)', async ({ rawInput, agent, signal }) => {
     const result = await runShell(rawInput, { cwd: agent.session.header.cwd ?? process.cwd(), signal });
     // What the user ran belongs to the conversation: the command and its (redacted) output
@@ -133,6 +158,8 @@ export function apply(ctx) {
     const projections = ctx.get('sessionProjections');
     const usage = projections?.stateOf(session, 'tokenUsage')?.totals;
     const pressure = projections?.stateOf(session, 'contextPressure');
+    const inventory = composition(agent);
+    const hostOnly = inventory.hostOnly || inventory.inspections !== null;
     return ok([
       `Session: ${session.id}`, `Workspace: ${session.header.cwd ?? process.cwd()}`,
       `Agent: ${agent.status} | preset: ${session.header.agentPreset ?? 'standard'}`,
@@ -142,9 +169,10 @@ export function apply(ctx) {
       `Tokens: ${show(usage ?? 'no provider usage yet')}`,
       `Context: ${pressure?.pressureTokens ?? pressure?.surfaceTokens ?? '?'} / ${pressure?.contextWindow ?? '?'} tokens`,
       `Events: ${events.length}; /review-usage shows reviewer tokens`,
-      `Tools: ${ctx.tools.schemas(agent).length}; MCP entries: ${mcps(agent).length}`,
-      `Plugins: ${entries(agent).filter(e => state(e) === 'active').length} active, ${entries(agent).filter(e => state(e) === 'failed').length} failed`,
-      'Use /doctor for diagnostics; /statusline for live context/token display.',
+      `Tools: ${ctx.tools.schemas(agent).length}; ${hostOnly ? 'Host ' : ''}MCP entries: ${inventory.entries.filter(e => e.options.name === '@deepseek-ai/dsh-mcp-client').length}`,
+      `${hostOnly ? 'Host plugins' : 'Plugins'}: ${inventory.entries.filter(e => state(e) === 'active').length} active, ${inventory.entries.filter(e => state(e) === 'failed').length} failed`,
+      ...presetInventoryLines(inventory),
+      desktop ? 'Use /dscode-doctor for diagnostics; inspect execution details in Trajectory.' : 'Use /doctor for diagnostics; /statusline for live context/token display.',
     ].join('\n'));
   });
   register('update', 'Upgrade DSCODE after this session exits', ({ rawInput }) => {
@@ -156,20 +184,21 @@ export function apply(ctx) {
   });
   register('doctor', 'Analyze recent runtime logs and session traces', async ({ agent, signal, rawInput }) => {
     const action = rawInput.trim();
-    if (!['', 'preview', 'local'].includes(action)) return fail('Usage: /doctor [preview|local]');
+    if (!['', 'preview', 'local'].includes(action)) return fail(`Usage: /${commandName('doctor')} [preview|local]`);
     const tools = ctx.tools.schemas(agent).map(t => t.name);
     const catalog = await ctx.skills.snapshot({ cwd: agent.session.header.cwd, scope: agent, signal });
     const computer = ctx.get('computerUse');
     const health = [
       `Node: ${process.version}; platform: ${process.platform}/${process.arch}`,
       ...entries(agent).filter(e => !e.disabled && state(e) !== 'active').map(e => `CHECK plugin ${e.id}: ${state(e)}`),
+      ...presetInventoryLines(composition(agent)),
       `Skills: ${catalog.skills.length}; discovery ${catalog.complete ? 'complete' : 'incomplete'}`,
       `Core tools: ${['bash', 'skill', 'computer_use_activate'].map(n => `${n}=${tools.includes(n)}`).join(', ')}`,
       ...mcps(agent).map(e => `MCP ${e.id}: ${state(e)}; ${tools.filter(n => n.startsWith(`mcp__${e.options.config?.serverName}__`)).length} registered tools`),
-      `Computer Use: ${computer ? show(computer.status()) : 'service unavailable'}`,
+      `Computer Use: ${computer ? show(await computer.status()) : 'service unavailable'}`,
       'Credentials are not read or printed. Diagnostic metadata may be sent to the selected model.',
     ].join('\n');
-    const evidence = await collectDoctorEvidence(ctx, { agent, signal });
+    const evidence = await collectDoctorEvidence(ctx, { agent, signal, workspaceOnly: desktop });
     if (action === 'preview') return ok(JSON.stringify(evidence, null, 2));
     const route = agent.session.requestHeader()?.config ?? agent.options;
     return ok(`${health}\n\n${await analyzeDoctorEvidence(ctx, evidence, route, signal, { model: action !== 'local', sessionId: agent.session.id })}`);
@@ -177,29 +206,37 @@ export function apply(ctx) {
   register('mcp', 'MCP list, tools <id>, enable/disable/reconnect <id>', async ({ agent, rawInput }) => {
     const [action = 'list', id, extra] = rawInput.trim().split(/\s+/).filter(Boolean);
     const list = mcps(agent);
-    if (action === 'list') return ok(list.map(e => `${e.id}: ${state(e)} | server=${show(e.options.config?.serverName)} | transport=${show(e.options.config?.transport)}`).join('\n') + '\n/mcp tools|enable|disable|reconnect <entry-id> — changes last for this process.');
+    const notice = presetMcpNotice(composition(agent), commandName('mcp'))
+      || (desktop ? 'Only Host MCP entries can be changed here. Change preset servers through their bundle configuration and restart.' : '');
+    if (action === 'list') return ok([...list.map(e => `${e.id}: ${state(e)} | server=${show(e.options.config?.serverName)} | transport=${show(e.options.config?.transport)}`), ...(notice ? [notice] : [])].join('\n') + `\n/${commandName('mcp')} tools|enable|disable|reconnect <entry-id> — changes last for this process.`);
     const matches = list.filter(e => e.id === id || e.options.id === id);
     const entry = matches.length === 1 ? matches[0] : undefined;
-    if (!entry || extra) return fail('Usage: /mcp [list | tools|enable|disable|reconnect <entry-id>]');
+    if (!entry || extra) return fail(`Usage: /${commandName('mcp')} [list | tools|enable|disable|reconnect <entry-id>]` + (notice ? `\n${notice}` : ''));
     if (action === 'tools') return ok(ctx.tools.schemas(agent).filter(t => t.name.startsWith(`mcp__${entry.options.config?.serverName}__`)).map(t => t.name).join('\n') || 'No tools currently registered.');
     if (!['enable', 'disable', 'reconnect'].includes(action)) return fail('Unknown MCP action.');
     return mutate(async () => {
       if (action === 'reconnect' && entry.disabled) return fail('Enable this server before reconnecting.');
       if (action === 'reconnect') await entry.update({ disabled: true });
       await entry.update({ disabled: action === 'disable' });
-      return ok(`${entry.id}: ${state(entry)}. Use /mcp tools ${entry.id} to check discovery.`);
+      return ok(`${entry.id}: ${state(entry)}. Use /${commandName('mcp')} tools ${entry.id} to check discovery.`);
     });
   });
   register('skills', 'Skill catalog, sources, details and filesystem conflicts', async ({ agent, rawInput, signal }) => {
     const options = { cwd: agent.session.header.cwd ?? process.cwd(), scope: agent, signal };
     const { skills, complete } = await ctx.skills.snapshot(options);
     const arg = rawInput.trim();
-    if (arg === 'conflicts') return ok(await findConflicts(options.cwd, entries(agent).filter(e => !e.disabled && e.options.name === '@deepseek-ai/dsh-skill-filesystem').map(e => plainConfig(e.options.config)), skills));
+    if (arg === 'conflicts') {
+      const inventory = composition(agent);
+      const report = await findConflicts(options.cwd, inventory.entries.filter(e => !e.disabled && e.options.name === '@deepseek-ai/dsh-skill-filesystem').map(e => plainConfig(e.options.config)), skills);
+      const missingPresetConfig = inventory.inspections?.some(preset => preset.modules.some(module => module.moduleName === '@deepseek-ai/dsh-skill-filesystem'));
+      return ok(report + (desktop ? '\nIncomplete: per-agent Desktop filesystem roots are not exposed by the preset inventory; only Host filesystem roots were checked.'
+        : missingPresetConfig ? '\nIncomplete: this runtime does not expose preset filesystem configuration; only Host filesystem roots were checked.' : ''));
+    }
     if (arg && arg !== 'list') {
       const skill = await ctx.skills.get(arg, options);
       return skill ? ok(`${skill.name}\n${skill.description}\nsource: ${skill.source}\nprovider: ${skill.provider}\npath: ${skill.path ?? '(provider managed)'}\ninvocation: ${show(skill.invocation)}`) : fail(`Unknown skill: ${arg}`);
     }
-    return ok(`Discovery: ${complete ? 'complete' : 'incomplete'}\n${skills.map(s => `${s.name} [${s.source}; ${s.provider}] user=${s.invocation.userInvocable} model=${s.invocation.modelInvocable}\n  ${s.description}`).join('\n')}\n/skills <name> for details; /skills conflicts for duplicate filesystem names.`);
+    return ok(`Discovery: ${complete ? 'complete' : 'incomplete'}\n${skills.map(s => `${s.name} [${s.source}; ${s.provider}] user=${s.invocation.userInvocable} model=${s.invocation.modelInvocable}\n  ${s.description}`).join('\n')}\n/${commandName('skills')} <name> for details; /${commandName('skills')} conflicts for duplicate filesystem names.`);
   });
   const hookPaths = new WeakMap();
   const hookPath = entry => {
