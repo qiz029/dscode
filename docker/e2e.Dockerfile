@@ -3,7 +3,9 @@
 # gate cannot cover: a nested Seatbelt profile is refused inside a dscode session,
 # so `verify:hub` (install the bundle, boot the installed profile, fail an upgrade,
 # roll back) can never run there, and nothing verified the harness on Linux at all.
-FROM node:22-bookworm-slim
+# The Docker Official Images mirror avoids Docker Hub's anonymous pull quota on
+# shared CI runners while retaining the same Node/Debian image.
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim
 
 # git: verify:hub initialises a repository and the worktree probe creates its own.
 # curl: install.sh needs it on the piped path, and its unit tests run it for real.
