@@ -6,11 +6,14 @@ Per-release notes live in [`docs/releases/`](releases/); the entries below summa
 
 <!-- Add upcoming changes under Unreleased. -->
 
-## [Unreleased]
+## [0.7.36] - 2026-10-09
 
 ### Added
 
 - `dscode acp` serves standard ACP stdio clients with the DSCODE agent preset and configured providers. It supports native DSH session controls and forwards approval requests to the client. See [ACP clients](acp.md) for setup and inherited protocol limitations.
+
+- The source and npm launchers preserve ACP stdin/stdout, use client tool approvals, and require an installed-protocol probe before Hub publication.
+- Linux CI pulls the official Node image through its ECR Public mirror to avoid Docker Hub anonymous pull limits.
 
 ## [0.7.35] - 2026-10-08
 
