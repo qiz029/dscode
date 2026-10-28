@@ -152,6 +152,8 @@ Use [OpenAI / ChatGPT](docs/openai.md) with `/openai login` and `/provider opena
 
 Use [Anthropic](docs/anthropic.md) with `/login anthropic` (or `ANTHROPIC_API_KEY`), then `/provider anthropic`. Choose Claude Opus 5.5, Sonnet 5.5 or Fable 5.1 with `/model`, and set reasoning with `/effort`. This route calls the Anthropic API directly using API billing. Automatic compaction defaults to 50% of the usable input window (436,000 tokens after reserving the output budget).
 
+Use [MiniMax](docs/minimax.md) with `/login minimax` (or `MINIMAX_API_KEY`), then `/provider minimax`. `/model` offers MiniMax M3.1 Flash and MiniMax M3 through the direct Messages endpoint; MiniMax M3.1 Flash supports `low` through `max` reasoning effort.
+
 Use `/provider custom` to add a self-hosted or private API with Chat Completions, Responses or Anthropic Messages. Configure the endpoint and optional key, discover or enter models, set their context windows, and test streaming tool calls. For a model that supports vision, enable **Input → Text and images** to send screenshots and image attachments; the default is text only. Saved services appear by name in `/provider`; Enter switches to their model. See [Custom model providers](docs/custom-providers.md).
 
 **Six interface languages, English by default.** `/language` opens the picker and `/language ja` switches straight to a locale; 中文, 日本語 and 한국어 are accepted as names too. The set is English, 简体中文, 繁體中文, 日本語, 한국어 and Español. The choice is stored per machine in `$DSCODE_HOME/tui/language.json` (under `~/.local/share/dscode-state` by default), and `DSCODE_LANGUAGE=es` overrides it for one run.
@@ -273,6 +275,7 @@ DSH is pinned to `0.2.1-rc.3` (the Desktop package stays on `0.2.0-rc.2`, the of
 | [Antigravity](docs/antigravity.md) | Google account sign-in, Gemini models, conversation replay and connection limits |
 | [OpenAI / ChatGPT](docs/openai.md) | ChatGPT login, API keys, Fast/Ultrafast speed and 272k compaction |
 | [Anthropic](docs/anthropic.md) | API keys, Claude Opus 5.5, Sonnet 5.5, Fable 5.1 and thinking replay |
+| [MiniMax](docs/minimax.md) | Direct API keys, MiniMax M3.1 Flash, MiniMax M3 and thinking replay |
 | [OpenCode Go](docs/opencode-go.md) | Running a session on an OpenCode Go subscription: the account login, footer usage, the models and their reasoning efforts, what is not supported yet |
 | [Custom model providers](docs/custom-providers.md) | Connect self-hosted and private APIs: protocols, model discovery, context windows, credentials and tool-call testing |
 | [Auto review](docs/auto-review.md) | Scope, cost and limits of independent permission review |

@@ -152,6 +152,8 @@ tar -xzf dscode-0.7.47-darwin-arm64-standalone.tar.gz -C dscode-app
 
 使用 [Anthropic](docs/anthropic.md) 时，先运行 `/login anthropic`（或设置 `ANTHROPIC_API_KEY`），再运行 `/provider anthropic`。通过 `/model` 选择 Claude Opus 5.5、Sonnet 5.5 或 Fable 5.1，通过 `/effort` 设置推理强度。这条路由直接调用 Anthropic API，使用 API 计费。 默认在可用输入窗口达到 50% 时自动压缩（预留输出预算后为 436,000 tokens）。
 
+使用 [MiniMax](docs/minimax.md) 时，先运行 `/login minimax`（或设置 `MINIMAX_API_KEY`），再运行 `/provider minimax`。`/model` 可通过直连 Messages endpoint 选择 MiniMax M3.1 Flash 和 MiniMax M3；MiniMax M3.1 Flash 支持从 `low` 到 `max` 的推理强度。
+
 使用 `/provider custom` 添加自托管或私有 API，支持 Chat Completions、Responses 和 Anthropic Messages。配置地址及可选密钥，发现或手动添加模型，设置上下文窗口，并测试流式工具调用。支持视觉的模型可开启 **Input → Text and images** 来接收截图和图片附件；默认仅接收文本。已保存的服务会按名称显示在 `/provider` 中，按 Enter 即可切换到其模型。详见[自定义模型服务](docs/custom-providers.md)。
 
 **默认英文，界面支持 6 种语言。** `/language` 打开选择器，`/language ja` 可直接切换；也可以直接写「中文」「日本語」「한국어」。支持 English、简体中文、繁體中文、日本語、한국어、Español。选择按机器保存在 `$DSCODE_HOME/tui/language.json`（默认位于 `~/.local/share/dscode-state`），`DSCODE_LANGUAGE=es` 可覆盖单次运行。
@@ -272,6 +274,7 @@ DSH 固定为 `0.2.1-rc.3`（Desktop 组合包仍为 `0.2.0-rc.2`，即官方 De
 | [Antigravity](docs/antigravity.md) | Google 账号登录、Gemini 模型、会话回放与连接限制 |
 | [OpenAI / ChatGPT](docs/openai.md) | ChatGPT 登录、API Key、Fast/Ultrafast 速度与 272k 压缩线 |
 | [Anthropic](docs/anthropic.md) | API key、Claude Opus 5.5、Sonnet 5.5、Fable 5.1 与思考块续接 |
+| [MiniMax](docs/minimax.md) | 直连 API key、MiniMax M3.1 Flash、MiniMax M3 与思考块续接 |
 | [OpenCode Go](docs/opencode-go.md) | 用 OpenCode Go 订阅运行会话：账号登录、状态栏用量、模型及其推理强度、暂不支持的部分 |
 | [自定义模型服务](docs/custom-providers.md) | 接入自托管与私有 API：协议、模型发现、上下文窗口、密钥和工具调用测试 |
 | [Auto 审核](docs/auto-review.md) | 独立权限审核的范围、成本与限制 |

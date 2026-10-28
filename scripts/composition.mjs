@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { Scalar, stringify } from 'yaml';
 
 export const customPlugins = Object.freeze([
-  'openrouter', 'grok', 'opencode-go', 'antigravity', 'openai', 'anthropic', 'custom', 'jev', 'auto-review', 'session-metrics', 'session-cards', 'session-bridge', 'memory', 'time-marks', 'tui-tools', 'email-tools', 'triggers', 'computer-use', 'account', 'browser',
+  'openrouter', 'grok', 'opencode-go', 'antigravity', 'openai', 'anthropic', 'minimax', 'custom', 'jev', 'auto-review', 'session-metrics', 'session-cards', 'session-bridge', 'memory', 'time-marks', 'tui-tools', 'email-tools', 'triggers', 'computer-use', 'account', 'browser',
 ]);
 
 /**

@@ -66,7 +66,7 @@ export function buildDesktopPreset(destination, runtimeDirectory, options = {}) 
     './browser': './plugins/browser/index.mjs', './auto-review': './plugins/auto-review/index.mjs',
     './policy': './plugins/dscode/index.mjs', './control': './plugins/dscode/control.mjs', './compaction': './plugins/compaction/engine.mjs', './code-review': './plugins/code-review/index.mjs', './workspace': './plugins/desktop-workspace/index.mjs',
     './credentials': './plugins/credentials/index.mjs', './custom': './plugins/custom/index.mjs',
-    './openrouter': './plugins/openrouter/index.mjs', './grok': './plugins/grok/index.mjs', './opencode-go': './plugins/opencode-go/index.mjs', './antigravity': './plugins/antigravity/index.mjs', './openai': './plugins/openai/index.mjs', './anthropic': './plugins/anthropic/index.mjs', './jev': './plugins/jev/index.mjs',
+    './openrouter': './plugins/openrouter/index.mjs', './grok': './plugins/grok/index.mjs', './opencode-go': './plugins/opencode-go/index.mjs', './antigravity': './plugins/antigravity/index.mjs', './openai': './plugins/openai/index.mjs', './anthropic': './plugins/anthropic/index.mjs', './minimax': './plugins/minimax/index.mjs', './jev': './plugins/jev/index.mjs',
     './session-metrics': './plugins/session-metrics/index.mjs', './session-cards': './plugins/session-cards/index.mjs', './session-bridge': './plugins/session-bridge/index.mjs', './triggers': './plugins/triggers/desktop-host.mjs',
     './email': './plugins/email/desktop-host.mjs', './memory': './plugins/memory/desktop-host.mjs', './computer-use': './plugins/computer-use/desktop-host.mjs',
     './time-marks': './plugins/time-marks/desktop-host.mjs', './diagnostics': './plugins/tui-tools/desktop-host.mjs', './metrics-ui': './plugins/session-metrics/desktop-host.mjs', './delegation-ui': './plugins/dscode/desktop-host.mjs' };
@@ -140,7 +140,7 @@ export function buildDesktopPreset(destination, runtimeDirectory, options = {}) 
     { insert: [{ id: 'dscode-credentials', name: `${name}/credentials`, config: { desktop: true } }, { id: 'dscode-desktop-workspace', name: `${name}/workspace` },
       { id: 'dscode-custom', name: `${name}/custom` }, { id: 'dscode-desktop', name },
       { id: 'dscode-openrouter', name: `${name}/openrouter`, config: { providerName: 'dscode-openrouter' } },
-      { id: 'dscode-antigravity', name: `${name}/antigravity` }, { id: 'dscode-openai', name: `${name}/openai` }, { id: 'dscode-anthropic', name: `${name}/anthropic` }, { id: 'dscode-grok', name: `${name}/grok` }, { id: 'dscode-opencode-go', name: `${name}/opencode-go`, config: { providerName: 'dscode-opencode-go' } },
+      { id: 'dscode-antigravity', name: `${name}/antigravity` }, { id: 'dscode-openai', name: `${name}/openai` }, { id: 'dscode-anthropic', name: `${name}/anthropic` }, { id: 'dscode-minimax', name: `${name}/minimax` }, { id: 'dscode-grok', name: `${name}/grok` }, { id: 'dscode-opencode-go', name: `${name}/opencode-go`, config: { providerName: 'dscode-opencode-go' } },
       { id: 'dscode-jev', name: `${name}/jev` },
       { id: 'dscode-session-metrics', name: `${name}/session-metrics` }, { id: 'dscode-session-cards', name: `${name}/session-cards` },
       { id: 'dscode-desktop-metrics', name: `${name}/metrics-ui` },

@@ -46,7 +46,7 @@ test('command arguments name a provider or are refused without interpretation', 
   assert.equal(providerArgument('sk-or-v1-synthetic'), null);
   assert.equal(providerArgument('OpenCode'), 'opencode-go');
   assert.equal(providerArgument('opencode-go'), 'opencode-go');
-  assert.deepEqual(PROVIDERS.map(provider => provider.credentialRef), ['DEEPSEEK_API_KEY', 'OPENROUTER_API_KEY', 'GROK_CLI_TOKEN', 'OPENCODE_OAUTH', 'ANTIGRAVITY_OAUTH', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY']);
+  assert.deepEqual(PROVIDERS.map(provider => provider.credentialRef), ['DEEPSEEK_API_KEY', 'OPENROUTER_API_KEY', 'GROK_CLI_TOKEN', 'OPENCODE_OAUTH', 'ANTIGRAVITY_OAUTH', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'MINIMAX_API_KEY']);
 });
 
 test('labels split at the first slash so OpenRouter model ids keep their vendor', () => {
