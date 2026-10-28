@@ -57,7 +57,7 @@ DSCODE 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 
 ## 🆕 最新变化
 
-**0.7.53** — 修复配置了消息提交 hook 的项目无法发送消息的问题，以及 IPv6 就绪检查失败导致正常运行的 Host 在 90 秒后被终止的问题。详见[发布说明](docs/releases/0.7.53.md)。
+**0.7.54** — 修复配置了消息提交 hook 的项目无法发送消息的问题，以及 IPv6 就绪检查失败导致正常运行的 Host 在 90 秒后被终止的问题。详见[发布说明](docs/releases/0.7.54.md)。
 
 **0.7.51** — 终端升级至 Harness `0.2.1-rc.3`，新增批量编辑、有界缓存读取和大段 Bash 输出落盘。`server --yolo` 支持无人值守运行；Linux 新增局部桌面观察、动作结果检查、控制租约和 server 专用桌面。Wayland 串流控制仍为实验性功能。详见[发布说明](docs/releases/0.7.51.md)。
 

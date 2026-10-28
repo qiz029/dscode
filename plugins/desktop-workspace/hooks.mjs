@@ -12,9 +12,7 @@ export async function mountWorkspaceHooks(agentContext, configPath, creation) {
       // its listeners. Invoke only the newly registered SessionStart callback;
       // re-emitting agent/created would repeat unrelated lifecycle handlers.
       applyHooks({
-        shell: scope.shell,
-        sessionProjections: scope.sessionProjections,
-        workingDirectory: scope.workingDirectory,
+        ...Object.fromEntries(hookServices.map(name => [name, scope[name]])),
         logger: scope.logger,
         effect: scope.effect.bind(scope),
         on(event, listener, ...options) {

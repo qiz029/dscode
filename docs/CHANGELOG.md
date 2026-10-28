@@ -10,12 +10,16 @@ Per-release notes live in [`docs/releases/`](releases/); the entries below summa
 
 ## [Unreleased]
 
-## [0.7.53] - 2026-10-28
+## [0.7.54] - 2026-10-28
 
 ### Fixed
 
 - Session-scoped hooks receive the runtime working-directory service required by Harness rc.3. Projects with a `UserPromptSubmit` hook can send messages without `UNKNOWN: Cannot read properties of undefined (reading 'ensure')`; startup, tool and stop hooks use the session's effective directory too.
 - IPv6 runtime requests strip URL brackets before connecting through Node HTTP. `dscode server --bind ::` now passes authenticated readiness instead of terminating a reachable Host after 90 seconds; unary and streaming clients share the fix. Runtime URLs retain their IPv6 brackets.
+
+## [0.7.53] - Unpublished candidate
+
+- Publication was cancelled after Desktop qualification found an undeclared service access in the hook adapter. Use 0.7.54, which includes both fixes and the older-runtime compatibility correction.
 
 ## [0.7.52] - 2026-10-28
 

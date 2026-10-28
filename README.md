@@ -57,7 +57,7 @@ The [demo guide](docs/demo.md) summarizes DSCODE features, outlines a five-minut
 
 ## 🆕 What's new
 
-**0.7.53** — Fixes message submission in projects with prompt hooks and IPv6 server readiness checks that could terminate a healthy Host after 90 seconds. See the [release notes](docs/releases/0.7.53.md).
+**0.7.54** — Fixes message submission in projects with prompt hooks and IPv6 server readiness checks that could terminate a healthy Host after 90 seconds. See the [release notes](docs/releases/0.7.54.md).
 
 **0.7.51** — The terminal moves to Harness `0.2.1-rc.3`, adds batched edits, bounded cached reads and saved large Bash output. `server --yolo` supports unattended operation; Linux gains scoped desktop observation, verified actions, control leases and private server desktops. Wayland stream control remains experimental. See the [release notes](docs/releases/0.7.51.md).
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mountWorkspaceHooks } from '../plugins/desktop-workspace/hooks.mjs';
@@ -72,4 +72,28 @@ test('a UserPromptSubmit hook still blocks delivery when it exits 2', async t =>
   assert.equal(result.kind, 'reject');
   assert.equal(entered, false);
   assert(f.events.some(event => event.type === 'hook/result'));
+});
+
+test('the adapter does not read services absent from an older hook bridge', async () => {
+  const moduleUrl = source => `data:text/javascript,${encodeURIComponent(source)}`;
+  const legacyBridge = moduleUrl(`
+    export const inject = ['shell', 'sessionProjections'];
+    export function apply(ctx) {
+      ctx.shell.mounted = true;
+      ctx.on('agent/created', () => { ctx.shell.started = true; });
+    }
+  `);
+  const source = readFileSync(new URL('../plugins/desktop-workspace/hooks.mjs', import.meta.url), 'utf8');
+  const { mountWorkspaceHooks: mountLegacy } = await import(moduleUrl(source.replace("'@deepseek-ai/dsh-hooks-codex'", JSON.stringify(legacyBridge))));
+  const services = { shell: {}, sessionProjections: {}, logger: {}, effect() {}, on() {} };
+  const scope = new Proxy(services, { get(target, name) {
+    if (!(name in target)) throw Error(`cannot get property "${String(name)}" without inject`);
+    return target[name];
+  } });
+  await mountLegacy({ plugin: async plugin => {
+    assert.deepEqual(plugin.inject, ['shell', 'sessionProjections']);
+    await plugin.apply(scope);
+  } }, '/unused/hooks.json', {});
+  assert.equal(services.shell.mounted, true);
+  assert.equal(services.shell.started, true);
 });
