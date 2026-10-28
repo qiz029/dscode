@@ -84,7 +84,7 @@ async function main() {
     return;
   }
   const groups = {
-    integration: ['verify-session-bridge', 'verify-local-carrier', 'verify-tui-runner', 'verify-host', 'verify-remote', 'verify-server-service', 'verify-server-yolo', 'verify-session-messaging', 'verify-runtime-foundations', 'verify-session-cards', 'verify-memory', 'verify-login-runtime', 'verify-exec', 'verify-acp', 'verify-triggers', 'verify-trigger-tools'],
+    integration: ['verify-session-bridge', 'verify-local-carrier', 'verify-tui-runner', 'verify-host', 'verify-remote', 'verify-server-service', 'verify-server-yolo', 'verify-server-ipv6', 'verify-session-messaging', 'verify-runtime-foundations', 'verify-session-cards', 'verify-memory', 'verify-login-runtime', 'verify-exec', 'verify-acp', 'verify-triggers', 'verify-trigger-tools'],
     package: ['build-packages', 'verify-packages'],
   };
   if (!groups[suite]) throw Error('Unknown check suite: ' + suite);

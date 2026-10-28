@@ -57,6 +57,8 @@ The [demo guide](docs/demo.md) summarizes DSCODE features, outlines a five-minut
 
 ## 🆕 What's new
 
+**0.7.53** — Fixes message submission in projects with prompt hooks and IPv6 server readiness checks that could terminate a healthy Host after 90 seconds. See the [release notes](docs/releases/0.7.53.md).
+
 **0.7.51** — The terminal moves to Harness `0.2.1-rc.3`, adds batched edits, bounded cached reads and saved large Bash output. `server --yolo` supports unattended operation; Linux gains scoped desktop observation, verified actions, control leases and private server desktops. Wayland stream control remains experimental. See the [release notes](docs/releases/0.7.51.md).
 
 **0.7.50** — Remote servers can run as a managed macOS or Linux user service, with authenticated readiness checks and safe pause/resume during updates. Remote status, diagnosis and connection identity are easier to inspect. Session writes recover after a server restart, delivery request IDs prevent duplicate retries, interrupts can target an observed turn, and deletion respects storage ownership. Both ends must use the same protocol revision and pinned Harness version. See the [release notes](docs/releases/0.7.50.md).

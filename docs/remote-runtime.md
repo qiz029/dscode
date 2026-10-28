@@ -35,6 +35,8 @@ Connect a client with:
 
 The token is stored in `run/server-token` in the server's state directory (`~/.local/share/dscode-state/run/` for a self-contained installation), readable only by you, and reused on the next start.
 
+For IPv6, pass an unbracketed bind address (`--bind ::` for every IPv6 interface or `--bind ::1` for loopback). Client runtime addresses need brackets, for example `dscode config --runtime '[::1]:8080' --token dsk_… --alias devbox`. The startup readiness check uses IPv6 loopback when binding to `::`.
+
 A terminal on the server itself still works: plain `dscode` there attaches to the same runtime through its local socket, so you can share a session between the server and your machine. If a background host is already running when you start the server, it is stopped first when it has no attached terminal and no running turn; otherwise the server refuses to start until you exit those terminals.
 
 ## Unattended YOLO server

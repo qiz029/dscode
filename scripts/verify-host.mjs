@@ -22,6 +22,10 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const home = mkdtempSync(join(tmpdir(), 'dscode-host-'));
 const workspace = join(home, 'workspace'); mkdirSync(workspace);
+mkdirSync(join(workspace, '.codex'));
+writeFileSync(join(workspace, '.codex/hooks.json'), JSON.stringify({ hooks: {
+  UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'true' }] }],
+} }));
 const userHome = join(home, 'user'); mkdirSync(userHome);
 const patch = join(home, 'host-fixture.patch.yml');
 writeFileSync(patch, [
@@ -80,6 +84,18 @@ try {
   assert.equal(new Set(created.map(item => item.sessionId)).size, 1);
   const { sessionId } = created[0];
   report.concurrentCreate = true;
+  // Exercise a real prompt hook before the terminal scenario. Without the
+  // workingDirectory service in the workspace adapter, this throws UNKNOWN
+  // (reading 'ensure') despite the same Host working in hook-free projects.
+  await callDscode(socket, 'session/deliver', { sessionId, content: [{ type: 'text', text: 'hello with a project hook' }], mode: 'followup' });
+  const hooked = await until('prompt hook turn completed', async () => {
+    const snapshot = await sessionSnapshot(socket, sessionId);
+    return snapshot.records.some(record => record.event.type === 'turn/end') ? snapshot : undefined;
+  });
+  assert.deepEqual(hooked.records.find(record => record.event.type === 'turn/end').event.data.reason, { kind: 'completed' });
+  assert(hooked.records.some(record => record.event.type === 'hook/result' && record.event.data.point === 'UserPromptSubmit' && record.event.data.exitCode === 0), 'the prompt hook must execute successfully');
+  assert(hooked.records.some(record => record.event.type === 'assistant/message' && JSON.stringify(record.event).includes('Streaming through the fixture works.')), 'the hooked turn must produce the fixture reply');
+  report.workspacePromptHook = true;
   const viewer = terminal(socket, 'attach', ['--resume', sessionId]);
   await until('terminal attached', () => viewer.state.output.includes('TUI_PROBE_READY') || viewer.state.code !== undefined);
   assert.equal(viewer.state.code, undefined, viewer.state.output.slice(-3000));

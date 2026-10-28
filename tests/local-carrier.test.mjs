@@ -5,11 +5,11 @@ import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { apply, authorized, hostDiagnostics, VERSION } from '../plugins/local-carrier/index.mjs';
-import { call, callDscode, openDscodeStream, openStream } from '../plugins/local-carrier/client.mjs';
+import { call, callDscode, describeTarget, openDscodeStream, openStream, requestOptions } from '../plugins/local-carrier/client.mjs';
 import { checkRemote, runtimeInspect, writeRuntimes } from '../scripts/runtimes.mjs';
 import { RUNTIME_PROTOCOL } from '../plugins/local-carrier/protocol.mjs';
 
-const freePort = () => new Promise(resolve => { const probe = createServer().listen(0, '127.0.0.1', () => { const { port } = probe.address(); probe.close(() => resolve(port)); }); });
+const freePort = (bind = '127.0.0.1') => new Promise((resolve, reject) => { const probe = createServer().on('error', reject).listen(0, bind, () => { const { port } = probe.address(); probe.close(() => resolve(port)); }); });
 
 async function carrier(t, extra = {}) {
   const home = mkdtempSync(join(tmpdir(), 'carrier-unit-'));
@@ -49,15 +49,15 @@ async function carrier(t, extra = {}) {
 }
 
 /** A carrier that also serves TCP with a token, as `dscode server` runs it. */
-async function tcpCarrier(t, options = {}) {
+async function tcpCarrier(t, options = {}, bind = '127.0.0.1') {
   const home = mkdtempSync(join(tmpdir(), 'carrier-tcp-'));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const tokenFile = join(home, 'server-token');
   const token = 'dsk_unit-test-token-0123456789';
   writeFileSync(tokenFile, token + '\n', { mode: 0o600 });
-  const port = await freePort();
-  const base = await carrier(t, { ...options, config: { tcp: { port, bind: '127.0.0.1', tokenFile } } });
-  const url = `http://127.0.0.1:${port}`;
+  const port = await freePort(bind);
+  const base = await carrier(t, { ...options, config: { tcp: { port, bind, tokenFile } } });
+  const url = `http://${bind.includes(':') ? '[::1]' : bind}:${port}`;
   return { ...base, target: { url, token }, wrong: { url, token: 'dsk_not-the-right-token-000' } };
 }
 
@@ -108,8 +108,25 @@ test('bearer tokens are compared exactly', () => {
   assert.equal(authorized(undefined, 'dsk_abcdefghijklmnop'), false);
 });
 
-test('the TCP listener serves every route with the token and refuses each without it', async t => {
-  const { target, wrong } = await tcpCarrier(t);
+test('HTTP options use bare IP literals while runtime URLs retain IPv6 brackets', () => {
+  for (const [address, host] of [['127.0.0.1', '127.0.0.1'], ['box.local', 'box.local'], ['[::1]', '::1'], ['[2001:db8::1234]', '2001:db8::1234']]) {
+    const target = { url: `http://${address}:18080`, token: 'test-token' };
+    const options = requestOptions(target, '/dscode/host%2Fstatus', 'POST', { 'content-type': 'application/json' });
+    assert.equal(options.host, host);
+    assert.equal(options.port, 18080);
+    assert.equal(options.path, '/dscode/host%2Fstatus');
+    assert.equal(options.method, 'POST');
+    assert.deepEqual(options.headers, { 'content-type': 'application/json', authorization: 'Bearer test-token' });
+    assert.equal(describeTarget(target), `${address}:18080`);
+    assert.equal(target.url, `http://${address}:18080`);
+  }
+  assert.equal(requestOptions({ url: 'http://[::1]', token: 'test-token' }, '/', 'GET').port, 80);
+  assert.deepEqual(requestOptions('/tmp/host.sock', '/', 'GET'), { socketPath: '/tmp/host.sock', path: '/', method: 'GET', headers: {} });
+});
+
+for (const bind of ['127.0.0.1', '::1', '::']) test(`the TCP listener on ${bind} serves every route with the token and refuses each without it`, async t => {
+  const { target, wrong } = await tcpCarrier(t, {}, bind);
+  assert.equal((await callDscode(target, 'host/status')).pid, 123);
   assert.deepEqual(await call(target, 'session/create', { request: { cwd: '/w' } }), { ok: true, value: { request: { cwd: '/w' } } });
   assert.deepEqual(await callDscode(target, 'sessions/list', { a: 1 }), { method: 'sessions/list', args: { a: 1 } });
   const items = [];
@@ -122,6 +139,7 @@ test('the TCP listener serves every route with the token and refuses each withou
   await assert.rejects(call(wrong, 'session/create', { request: {} }), error => error.code === 'dscode/unauthorized');
   await assert.rejects(callDscode(wrong, 'sessions/list', {}), error => error.code === 'dscode/unauthorized');
   await assert.rejects(async () => { for await (const _ of openStream(wrong, 'once', { args: {} })) void _; }, error => error.remote?.code === 'dscode/unauthorized');
+  await assert.rejects(async () => { for await (const _ of openDscodeStream(wrong, 'notices/watch')) void _; }, error => error.remote?.code === 'dscode/unauthorized');
 });
 
 test('the local socket needs no token while the TCP listener runs beside it', async t => {

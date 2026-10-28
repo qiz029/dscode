@@ -25,8 +25,10 @@ export function requestOptions(target, path, method, headers = {}) {
   if (!isRemoteTarget(target)) return { socketPath: target, path, method, headers };
   const url = new URL(target.url);
   if (url.protocol !== 'http:') throw Error(`unsupported runtime address ${target.url}; expected http://host:port`);
+  // WHATWG URLs retain IPv6 brackets; node:http expects the bare address.
+  const host = url.hostname.startsWith('[') && url.hostname.endsWith(']') ? url.hostname.slice(1, -1) : url.hostname;
   return {
-    host: url.hostname, port: Number(url.port || 80), path, method, agent: remoteAgent,
+    host, port: Number(url.port || 80), path, method, agent: remoteAgent,
     headers: { ...headers, authorization: `Bearer ${target.token}` },
   };
 }

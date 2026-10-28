@@ -1,10 +1,11 @@
-import { apply as applyHooks } from '@deepseek-ai/dsh-hooks-codex';
+import { apply as applyHooks, inject as hookServices } from '@deepseek-ai/dsh-hooks-codex';
 
 /** Reuse the native hook protocol while binding registrations to one Agent. */
 export async function mountWorkspaceHooks(agentContext, configPath, creation) {
   await agentContext.plugin({
     name: 'dscode-workspace-hooks',
-    inject: ['shell', 'sessionProjections'],
+    // Match the loaded bridge: older Desktop runtimes have no workingDirectory.
+    inject: hookServices,
     async apply(scope) {
       let sessionStart;
       // Hooks are mounted during agent/created, after that dispatch collected
@@ -13,6 +14,7 @@ export async function mountWorkspaceHooks(agentContext, configPath, creation) {
       applyHooks({
         shell: scope.shell,
         sessionProjections: scope.sessionProjections,
+        workingDirectory: scope.workingDirectory,
         logger: scope.logger,
         effect: scope.effect.bind(scope),
         on(event, listener, ...options) {
