@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { replaceOnce } from './patch-util.mjs';
 import { patchAcpErrors, patchDeepSeekErrors } from './patch-acp-errors.mjs';
 import { patchAcpStatus } from './patch-acp-status.mjs';
+import { patchAcpTitles } from './patch-acp-titles.mjs';
 import { patchMacStdin } from './patch-mac-stdin.mjs';
 import { patchStdinStall } from './patch-stdin-stall.mjs';
 import { patchShellCapture, patchTerminalCapture } from './patch-shell-capture.mjs';
@@ -290,7 +291,7 @@ export function patchGoalCommand(text) {
 }
 
 export function patchRuntime(root, { requireMacStdin = true } = {}) {
-  for (const [pkg, patch] of [['dsh-acp', text => patchAcpStatus(patchAcpErrors(text))], ['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash], ['dsh-command-goal', patchGoalCommand], ['dsh-agent-instructions', patchAgentInstructions], ['dsh-tool-fs', patchFileTools], ['dsh-fs-local', patchLocalFileIO]]) {
+  for (const [pkg, patch] of [['dsh-acp', text => patchAcpTitles(patchAcpStatus(patchAcpErrors(text)))], ['dsh-tool-subagent', patchSubagent], ['dsh-subagent', patchSubagentCore], ['dsh-llm-deepseek', patchDeepSeek], ['dsh-tool-bash', patchBash], ['dsh-tool-bash-persistent', patchPersistent], ['dsh-terminal-bash', patchTerminalBash], ['dsh-command-goal', patchGoalCommand], ['dsh-agent-instructions', patchAgentInstructions], ['dsh-tool-fs', patchFileTools], ['dsh-fs-local', patchLocalFileIO]]) {
     const dir = join(root, 'node_modules/@deepseek-ai', pkg);
     if (JSON.parse(readFileSync(join(dir, 'package.json'))).version !== RUNTIME_VERSION) throw new Error('Revalidate runtime patches before upgrading ' + pkg);
     const path = join(dir, 'lib/index.js');

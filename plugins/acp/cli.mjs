@@ -28,7 +28,7 @@ export function parseAcpArgs(argv) {
 }
 
 export function acpOverlay(entry, options = {}) {
-  return `${['tui-startup', 'tui-runner', 'tui-host', 'session-title-llm'].map(id => `- id: ${id}\n  disabled: true`).join('\n')}
+  return `${['tui-startup', 'tui-runner', 'tui-host'].map(id => `- id: ${id}\n  disabled: true`).join('\n')}
 - id: dscode-session-cards
   config:
     enabled: false
