@@ -73,6 +73,15 @@ const verifyModels = result => {
   assert(model.options.some(group => group.group === 'custom-acp-keyed' && group.options.length === 2));
   assert(!model.options.some(group => group.group === 'custom-acp-missing'), 'unconfigured custom providers must not be advertised');
 };
+const waitFor = async (predicate, reason) => {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  assert.fail(reason + '\n' + stderr);
+};
+const titleUpdates = sessionId => updates.filter(m => m.params?.sessionId === sessionId && m.params?.update?.sessionUpdate === 'session_info_update').map(m => m.params.update.title);
 try {
   const initialized = await request('initialize', { protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: 'dscode-test', version: '1' } });
   assert.equal(initialized.protocolVersion, 1);
@@ -93,6 +102,8 @@ try {
     assert(!updates.slice(start).some(m => m.params?.update?.sessionUpdate === 'tool_call'));
   };
   await verifyStatus('llama');
+  assert.equal(stderr.split('ACP_TITLE_CALL').length - 1, 0, '/status does not trigger automatic naming');
+  assert.deepEqual(titleUpdates(session.sessionId), [], 'a session stays unnamed before ordinary user input');
   await request('session/set_config_option', { sessionId: session.sessionId, configId: 'model', value: JSON.stringify(['custom-acp', 'llama-alt']) });
   await verifyStatus('llama-alt');
   await assert.rejects(request('session/set_config_option', { sessionId: session.sessionId, configId: 'model', value: JSON.stringify(['custom-acp-missing', 'llama']) }), /unknown model/);
@@ -102,6 +113,11 @@ try {
   assert(updates.some(m => m.params?.update?.sessionUpdate === 'tool_call'), JSON.stringify(updates));
   assert(updates.some(m => m.params?.update?.content?.text?.includes('fixture reply')), JSON.stringify(updates));
   assert.equal(approvals.length, 1, 'the ACP client must receive tool permission requests');
+  await waitFor(() => titleUpdates(session.sessionId).includes('ACP fixture session'), 'the generated title must reach the ACP client');
+  assert(titleUpdates(session.sessionId).includes('USE_TOOL then answer'), 'the deterministic fallback is also published');
+  assert.equal(stderr.split('ACP_TITLE_CALL').length - 1, 1, 'the first ordinary message generates one title');
+  await request('session/prompt', { sessionId: session.sessionId, prompt: [{ type: 'text', text: 'Follow up without renaming' }] });
+  assert.equal(stderr.split('ACP_TITLE_CALL').length - 1, 1, 'later messages retain the generated title without another title request');
   approvalChoice = 'reject-once';
   const denied = await request('session/new', { cwd: root, mcpServers: [] });
   await request('session/prompt', { sessionId: denied.sessionId, prompt: [{ type: 'text', text: 'USE_TOOL' }] });
@@ -127,13 +143,25 @@ try {
     return true;
   });
   await request('session/close', { sessionId: failed.sessionId });
+  const fallback = await request('session/new', { cwd: root, mcpServers: [] });
+  const beforeTitleFailure = stderr.length;
+  const fallbackTitle = 'TITLE_FAIL Keep fallback title';
+  assert.equal((await request('session/prompt', { sessionId: fallback.sessionId, prompt: [{ type: 'text', text: fallbackTitle }] })).stopReason, 'end_turn');
+  await waitFor(() => stderr.slice(beforeTitleFailure).includes('ACP_TITLE_EMPTY'), 'the fixture must exercise an empty title response');
+  assert.deepEqual(titleUpdates(fallback.sessionId), [fallbackTitle], 'title failure preserves the deterministic fallback');
+  assert(!updates.some(m => m.params?.sessionId === fallback.sessionId && m.params?.update?._meta?.['dscode.dev/status'] === 'error'), 'auxiliary title failure does not fail the model turn');
+  await request('session/close', { sessionId: fallback.sessionId });
   await request('session/close', { sessionId: session.sessionId });
   const listed = await request('session/list', {});
-  assert(listed.sessions.some(s => s.sessionId === session.sessionId));
+  assert.equal(listed.sessions.find(s => s.sessionId === session.sessionId)?.title, 'ACP fixture session', 'listing returns the persisted model-generated title');
+  assert.equal(listed.sessions.find(s => s.sessionId === fallback.sessionId)?.title, fallbackTitle, 'listing returns the fallback when model naming fails');
   const beforeResume = updates.length;
   verifyModels(await request('session/resume', { sessionId: session.sessionId, cwd: root, mcpServers: [] }));
   assert(hasStatusCommand(updates.slice(beforeResume)), 'resumed sessions advertise /status again before the next user prompt');
+  assert(updates.slice(beforeResume).some(m => m.params?.sessionId === session.sessionId && m.params?.update?.title === 'ACP fixture session'), 'resuming publishes the saved title without generating another');
+  const titleCallsBeforeResumeStatus = stderr.split('ACP_TITLE_CALL').length;
   await verifyStatus('llama');
+  assert.equal(stderr.split('ACP_TITLE_CALL').length, titleCallsBeforeResumeStatus);
   const updateCount = updates.length;
   providers[0].auth = 'bearer';
   saveProviders();
@@ -155,7 +183,7 @@ try {
   child.stdin.end();
   assert.equal(await exited, 0, stderr);
   assert.equal(protocolFailure, undefined);
-  console.log(`ACP_PROBE_PASSED: /status discovery and execution without inference before/after model switch and resume; configured model filtering, selection, current-model retention, handshake, custom API, DSCODE tool call, allow/reject, cancellation, failure notice and error response, reply, list, resume, close and EOF; ${approvals.length} permission requests`);
+  console.log(`ACP_PROBE_PASSED: automatic titles, fallback, title updates/list/resume; /status discovery and execution without inference before/after model switch and resume; configured model filtering, selection, current-model retention, handshake, custom API, DSCODE tool call, allow/reject, cancellation, failure notice and error response, reply, close and EOF; ${approvals.length} permission requests`);
 } finally {
   clearTimeout(timeout);
   if (child.exitCode === null) child.kill('SIGTERM');

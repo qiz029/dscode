@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -102,7 +102,7 @@ jobs:
   publish-terminal:
     needs: [build, verify-intel, verify-linux]
     if: github.ref_type == 'tag' || inputs.publish
-    runs-on: macos-14
+    runs-on: macos-15
     environment: release
     permissions:
       contents: write
@@ -128,7 +128,7 @@ jobs:
           fi
 
   desktop:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -154,7 +154,7 @@ jobs:
   publish-desktop:
     needs: [desktop, publish-terminal]
     if: always() && needs.desktop.result == 'success' && (needs.publish-terminal.result == 'success' || inputs.verify_credentials)
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     environment: release
     permissions:

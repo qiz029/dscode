@@ -259,7 +259,7 @@ DSH is pinned to `0.2.1-rc.3` (the Desktop package stays on `0.2.0-rc.2`, the of
 |---|---|
 | [Changelog](docs/CHANGELOG.md) | Every release, newest first |
 | [Non-interactive runs](docs/exec.md) | `dscode exec`, JSON output, resume and effort/model/permission flags |
-| [ACP clients](docs/acp.md) | `dscode acp`, configured-provider model filtering, custom providers, client approval and protocol limits |
+| [ACP clients](docs/acp.md) | `dscode acp`, automatic session titles, configured-provider model filtering, custom providers, client approval and protocol limits |
 | [Triggers](docs/triggers.md) | Event-driven runs with fresh or persistent sessions: cron, delay jobs, supervised script loops, `/trigger` TUI management, agent tools, the run log |
 | [Background host](docs/host.md) | The separate runtime process, `dscode host` commands, idle exit, single-process mode and updates |
 | [Remote runtime](docs/remote-runtime.md) | `dscode server`, `dscode config --runtime` and `dscode runtime`: the runtime on a server, the terminal on your machine |

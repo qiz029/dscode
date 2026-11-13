@@ -14,6 +14,13 @@ export function apply(ctx) {
     const body = JSON.parse(options.body);
     if (process.env.DSCODE_ACP_VERIFY_VERBOSE) process.stderr.write('ACP_BODY ' + JSON.stringify(body.messages.map(m => ({ role: m.role, calls: m.tool_calls?.length, content: JSON.stringify(m.content)?.slice(0, 160) }))) + '\n');
     const userText = JSON.stringify(body.messages.filter(m => m.role === 'user'));
+    const titleRequest = body.messages.some(m => m.role === 'system' && JSON.stringify(m.content).includes('Create a concise title'));
+    if (titleRequest) {
+      process.stderr.write('ACP_TITLE_CALL\n');
+      const empty = userText.includes('TITLE_FAIL');
+      if (empty) process.stderr.write('ACP_TITLE_EMPTY\n');
+      return new Response(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: empty ? '' : 'ACP fixture session' }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } });
+    }
     if (userText.includes('WAIT_ABORT')) {
       process.stderr.write('ACP_WAIT_ABORT\n');
       return new Promise((_resolve, reject) => {

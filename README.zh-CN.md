@@ -258,7 +258,7 @@ DSH 固定为 `0.2.1-rc.3`（Desktop 组合包仍为 `0.2.0-rc.2`，即官方 De
 |---|---|
 | [更新日志](docs/CHANGELOG.md) | 每次发布，最新在前 |
 | [非交互执行](docs/exec.md) | `dscode exec`、JSON 输出、resume 与 effort/model/permission 参数 |
-| [ACP 客户端](docs/acp.md) | `dscode acp`、按服务配置过滤模型、自定义模型服务、客户端审批和协议限制 |
+| [ACP 客户端](docs/acp.md) | `dscode acp`、会话自动命名、按服务配置过滤模型、自定义模型服务、客户端审批和协议限制 |
 | [触发器](docs/triggers.md) | 由事件触发运行，可新建或复用会话：cron、延迟任务、托管脚本循环、`/trigger` TUI 管理、agent 工具、运行日志 |
 | [后台 Host](docs/host.md) | 独立的运行时进程、`dscode host` 命令、空闲退出、单进程模式与升级 |
 | [远程 Runtime](docs/remote-runtime.md) | `dscode server`、`dscode config --runtime` 与 `dscode runtime`：运行时在服务器上，终端在本机 |

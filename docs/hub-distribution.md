@@ -204,7 +204,7 @@ npm has announced that publishing directly with a bypass-2FA token is retired in
 
 Two workflows:
 
-- `.github/workflows/checks.yml`: runs `npm run check` on `macos-14` for every push/PR (a matrix of Node 22.19.0 and 24) and uploads the coverage artifacts; a newer push to the same ref cancels the previous run.
+- `.github/workflows/checks.yml`: runs `npm run check` on `macos-15` for every push/PR (a matrix of Node 22.19.0 and 24) and uploads the coverage artifacts; a newer push to the same ref cancels the previous run.
 - `.github/workflows/release.yml`: on a `v*` tag push (or a manual `workflow_dispatch`) it runs the `build` job first — `npm run check` → `npm run build:packages` → `npm run release:hub` → `npm run verify:hub` — uploading `artifacts/npm` and `artifacts/local/hub-verification.json` as the `release-candidates` artifact. A separate `desktop` job prepares Harness 0.2.0-rc.2 and verifies the exact public Desktop archive with real Chrome, then uploads `desktop-candidate`. The `publish` job depends on both jobs and is attached to the `release` environment (add required reviewers under repository Settings → Environments for manual approval).
 
 Publish credentials live in repository Secrets (Settings → Secrets and variables → Actions):
