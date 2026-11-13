@@ -60,8 +60,8 @@ for name, command, fallback, task in cases:
         time.sleep(0.5)
         snapshot = helper.observe(app)
         if task == "find-file":
-            view = next(item for item in snapshot["elements"] if item["title"] == "List View" and item["actions"])
-            helper.act(snapshot, {"kind": "click"}, view)
+            helper.act_fresh(app, {"kind": "click"}, lambda item: item["title"] == "List View" and item["actions"],
+                scope={"name": "List View", "exact": True})
             time.sleep(0.3)
             snapshot = helper.observe(app)
             target = next(item for item in snapshot["elements"] if item["title"] == "benchmark.txt" or item.get("value") == "benchmark.txt")
@@ -91,13 +91,16 @@ for name, command, fallback, task in cases:
                 expected = current["elements"][0]["value"]
                 row["task"] = "click-and-verify"
             else:
-                helper.act(current, {"kind": "set-value", "value": expected}, current["elements"][0])
+                helper.act_fresh(app, {"kind": "set-value", "value": expected},
+                    lambda item: item["title"] == target["title"] and item["role"] == target["role"], scope=root_scope)
                 edited = helper.observe(app, root_scope)
                 assert edited["elements"][0]["value"] == expected, edited
             if task == "edit-and-click":
-                current = helper.observe(app)
-                button = next(item for item in current["elements"] if item["title"] == "Apply fixture" and item["actions"])
-                helper.act(current, {"kind": "click"}, button)
+                # Admit input against the button's scope, so unrelated browser
+                # accessibility updates do not stale the whole application tree.
+                helper.act_fresh(app, {"kind": "click"},
+                    lambda item: item["title"] == "Apply fixture" and item["actions"],
+                    scope={"name": "Apply fixture", "exact": True})
                 deadline = time.monotonic() + 3
                 while time.monotonic() < deadline:
                     current = helper.observe(app)
@@ -113,6 +116,7 @@ for name, command, fallback, task in cases:
         if snapshot:
             row["observedRoles"] = [{"role": item["role"], "title": item["title"], "value": item.get("value")} for item in snapshot["elements"][-40:]]
     finally:
+        row["actionRetries"] = helper.action_retries
         helper.close()
         try:
             if child:
