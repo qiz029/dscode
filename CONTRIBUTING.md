@@ -29,7 +29,7 @@ npm run test:e2e    # optional locally, needs a Docker daemon; CI runs it for yo
 
 | Check | What it runs |
 |---|---|
-| `Checks` (`checks (22.19.0)`, `checks (24)`) | `npm run check` on macOS 14, both Node versions |
+| `Checks` (`checks (22.19.0)`, `checks (24)`) | `npm run check` on macOS 15, both Node versions |
 | `Linux e2e` (`linux-container`) | The same gate plus the installed-bundle Hub lifecycle inside `docker/e2e.Dockerfile`, on Linux |
 
 The Linux job is also the only place `verify:hub` runs at all: it needs a sandbox nesting a dscode session refuses. Run it locally with `npm run test:e2e` when a Docker daemon is available. `npm run eval:compaction` runs the compaction evaluation on the offline pipeline; the live LongMemEval setup lives under `eval/`.
