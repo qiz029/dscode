@@ -87,6 +87,8 @@ try {
       assert.equal(pkg.exports['./openrouter'], './plugins/openrouter/index.mjs');
       assert.equal(pkg.exports['./anthropic'], './plugins/anthropic/index.mjs');
       assert(existsSync(join(destination, 'plugins/anthropic/models.mjs')));
+      assert.equal(pkg.exports['./minimax'], './plugins/minimax/index.mjs');
+      assert(existsSync(join(destination, 'plugins/minimax/models.mjs')));
       assert.equal(pkg.exports['./compaction'], './plugins/compaction/engine.mjs', 'the bundle exports the DSCODE compaction engine');
       assert.match(pkg.dependencies['@deepseek-ai/dsh-compaction-basic'], /^\d+\.\d+\.\d+/, 'the engine resolves its upstream base from the bundle dependencies');
       assert.match(readFileSync(join(destination, 'plugins/compaction/engine.mjs'), 'utf8'), /from '\.\/threshold\.mjs'/);
@@ -98,6 +100,7 @@ try {
       assert.match(readFileSync(join(destination, 'vendor/tui/lib/app.mjs'), 'utf8'), /DscodeOpenRouterPanel/);
       const bundlePatch = readFileSync(join(destination, 'cordis.patch.yml'), 'utf8');
       assert.match(bundlePatch, /dscode-bundle\/anthropic/);
+      assert.match(bundlePatch, /dscode-bundle\/minimax/);
       assert.match(bundlePatch, /- id: llm-pi-ai\n {2}disabled: true\n/);
       assert.match(bundlePatch, /searchProvider: dscode-web/);
       assert.match(bundlePatch, /name: ['"]?@toddzheng024\/dscode-bundle\/openrouter['"]?\n/);

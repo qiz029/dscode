@@ -4652,9 +4652,9 @@ function Input({ effortSurface, ultraPulse, active, frozen, frozenHint, busy, de
   sessionKey: string
   interrupt: () => boolean
   quit: (fast?: boolean) => void
-  /** dscode: store a provider API key locally (/login [deepseek|openrouter|anthropic]). */
+  /** dscode: store a provider API key locally (/login [provider]). */
   openLogin: (provider?: string) => void
-  /** dscode: switch the session between DeepSeek and OpenRouter. */
+  /** dscode: switch the session's active model provider. */
   openProvider: (provider?: string) => void
   /** dscode: open the OpenRouter account panel. */
   openOpenRouter: () => void
