@@ -8,6 +8,8 @@ The preset combines the pinned minimal preset's owner-scoped persistent shell wi
 
 The preset also registers a `review` tool and `/review` command backed by one independent, read-only model request over the selected Git diff. The main agent is guided to call it after code changes and focused checks, before its final reply. This is a diff-only review, not a tool-using subagent or a substitute for tests; it does not change Ultra delegation policy. See [TUI review usage](tui-commands.md).
 
+The persistent Bash shell accepts UTF-8 command arguments and file names, including Chinese, accented letters and emoji, even when the inherited locale is `C`. Its Readline input settings preserve high bytes instead of interpreting them as Meta shortcuts. Command locale settings remain inherited; this does not transcode programs that emit a different encoding. Existing shell sessions need to be recreated after updating.
+
 The model uses dedicated file tools for text files:
 
 | Tool | Behavior |

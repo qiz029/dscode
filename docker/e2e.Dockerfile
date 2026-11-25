@@ -12,10 +12,11 @@ FROM ${DSCODE_E2E_BASE_IMAGE}
 
 # git: verify:hub initialises a repository and the worktree probe creates its own.
 # curl: install.sh needs it on the piped path, and its unit tests run it for real.
+# python3: the Unicode shell regression drives a real PTY with the standard library.
 # bubblewrap: the Linux backend the harness confines commands with.
 # ca-certificates: npm, the loopback Hub fixture's upstream proxy, and the registry.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl git bubblewrap \
+  && apt-get install -y --no-install-recommends ca-certificates curl git bubblewrap python3 \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /dscode
