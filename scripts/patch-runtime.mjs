@@ -6,6 +6,7 @@ import { patchAcpStatus } from './patch-acp-status.mjs';
 import { patchAcpTitles } from './patch-acp-titles.mjs';
 import { patchMacStdin } from './patch-mac-stdin.mjs';
 import { patchStdinStall } from './patch-stdin-stall.mjs';
+import { patchShellUnicode } from './patch-shell-unicode.mjs';
 import { patchShellCapture, patchTerminalCapture } from './patch-shell-capture.mjs';
 import { patchFileTools, patchLocalFileIO } from './patch-file-io.mjs';
 import { patchPersistentSpill } from './patch-output-spill.mjs';
@@ -71,14 +72,14 @@ export { STDIN_STALL_MS, STDIN_STALL_NOTE, patchStdinStall } from './patch-stdin
 export { patchShellCapture, patchTerminalCapture } from './patch-shell-capture.mjs';
 
 export function patchTerminalBash(text) {
-  if (text.includes('// dscode-no-history-expansion-v1')) return patchTerminalCapture(text);
+  if (text.includes('// dscode-no-history-expansion-v1')) return patchShellUnicode(patchTerminalCapture(text));
   // The persistent tool sends one interactive Bash line. History expansion on
   // a literal `!` rejects that line before its completion marker can run.
-  return patchTerminalCapture('// dscode-no-history-expansion-v1\n' + replaceOnce(
+  return patchShellUnicode(patchTerminalCapture('// dscode-no-history-expansion-v1\n' + replaceOnce(
     text,
     '"--norc",\n\t"-i"',
     '"--norc",\n\t"+H",\n\t"-i"',
-  ));
+  )));
 }
 // Child-effort guidance names no level: any model can delegate, and level names differ per model.
 const CHILD_EFFORT_CHOICE = ' Optionally set reasoning_effort for this child without changing its provider/model. Omit to inherit. Use a level the current model offers: the lowest that fits the task, raised only for difficult work or real uncertainty.';
