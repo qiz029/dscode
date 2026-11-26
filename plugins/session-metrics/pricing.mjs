@@ -5,6 +5,7 @@ import { isOpenRouterRoute } from '../providers/catalog.mjs';
 // https://api-docs.deepseek.com/quick_start/pricing/
 export const PRICE_SOURCE = 'https://api-docs.deepseek.com/quick_start/pricing/';
 export const PRICE_VERSION = 'deepseek-2026-09-11';
+export const MINIMAX_PRICE_VERSION = 'minimax-2026-10-27';
 // OpenRouter calls carry their billed cost; an unbilled one is estimated from the live model listing (plugins/openrouter/models.mjs).
 // Until that table loads, the DeepSeek models keep these list prices from the pinned
 // pi-ai 0.85.1 catalog. OpenRouter bills no peak window. [cache read, input, output].
@@ -19,6 +20,7 @@ const OPENROUTER_PRICES = {
 
 /** The price table a ledger entry for this route is estimated with. */
 export function priceVersionFor(provider, model) {
+  if (provider === 'minimax') return MINIMAX_PRICE_VERSION;
   if (!isOpenRouterRoute(provider)) return PRICE_VERSION;
   return model !== undefined && openRouterRates(model) !== undefined ? openRouterPriceVersion() : OPENROUTER_PRICE_VERSION;
 }
@@ -27,6 +29,10 @@ const promptTokens = usage => (usage.inputTokens ?? 0) + (usage.cacheReadTokens 
 
 export function estimateCost(provider, model, usage, time) {
   if (!usage || !Number.isFinite(time)) return null;
+  if (provider === 'minimax') {
+    const rates = minimaxRates(model);
+    return rates ? charge(usage, rates) : null;
+  }
   if (isOpenRouterRoute(provider)) {
     // A model that lists no cache-read or cache-write price bills that input at the input rate.
     const live = openRouterRates(model, promptTokens(usage));
@@ -38,6 +44,11 @@ export function estimateCost(provider, model, usage, time) {
   if (!rates) return null;
   const cost = charge(usage, rates);
   return cost === null ? null : cost * (isPeak(time) ? 2 : 1);
+}
+
+function minimaxRates(model) {
+  if (model === 'MiniMax-M3.1-Flash') return [0.015, 0.15, 0.6];
+  return undefined;
 }
 
 /** DeepSeek list prices [cache read, input, output] at `time`, before the peak multiplier. */
@@ -60,6 +71,7 @@ export function cacheReadRatio(provider, model, time = Date.now()) {
     const live = openRouterRates(model);
     rates = live ? [live.cacheRead ?? live.input, live.input] : OPENROUTER_PRICES[model];
   } else if (provider === 'deepseek-official') rates = deepSeekRates(model, time);
+  else if (provider === 'minimax') rates = minimaxRates(model);
   return rates && rates[1] > 0 ? rates[0] / rates[1] : undefined;
 }
 
